@@ -4,6 +4,7 @@ import {
   parsePermission,
   type PermissionSet,
   within,
+  withinEnvelope,
 } from "./envelope.ts";
 
 Deno.test("parsePermission: scoped and unscoped", () => {
@@ -61,6 +62,29 @@ Deno.test("net/run require exact scope match", () => {
 Deno.test("allow-all envelope covers everything", () => {
   const env = parsePermission("allow-all");
   assertEquals(covers(env, parsePermission("allow-write=/")), true);
+});
+
+Deno.test("withinEnvelope: deny blocks a direct request for a denied path", () => {
+  const env = {
+    allow: [parsePermission("allow-read=/repo")],
+    deny: [parsePermission("allow-read=/repo/.env")],
+  };
+  // a normal file under the repo is fine
+  assertEquals(
+    withinEnvelope([parsePermission("allow-read=/repo/src/main.ts")], env),
+    true,
+  );
+  // a direct request for the denied secret is not within the envelope
+  assertEquals(
+    withinEnvelope([parsePermission("allow-read=/repo/.env")], env),
+    false,
+  );
+  // a broad request that merely *contains* a denied child is still within
+  // (Deno's --deny-read carves out the child at runtime)
+  assertEquals(
+    withinEnvelope([parsePermission("allow-read=/repo")], env),
+    true,
+  );
 });
 
 Deno.test("within: scratch-readonly envelope", () => {

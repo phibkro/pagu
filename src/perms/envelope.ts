@@ -74,10 +74,32 @@ export function covers(env: Permission, req: Permission): boolean {
   return env.scope === req.scope; // net/run/env/sys/ffi/import: exact match
 }
 
-/** True iff every requested permission is covered by some envelope entry. */
+/** A session's capability envelope: allowed scopes minus denied ones. */
+export interface Envelope {
+  allow: PermissionSet;
+  deny?: PermissionSet;
+}
+
+/**
+ * True iff every requested permission is covered by some `allow` and by no
+ * `deny`. A deny of a *child* path does not block a broader allow — Deno's
+ * `--deny-*` carves that out at runtime — but a request *for* a denied
+ * path is not within the envelope (so it won't auto-approve).
+ */
+export function withinEnvelope(
+  requested: PermissionSet,
+  env: Envelope,
+): boolean {
+  const deny = env.deny ?? [];
+  return requested.every((r) =>
+    env.allow.some((a) => covers(a, r)) && !deny.some((d) => covers(d, r))
+  );
+}
+
+/** Allow-only convenience: every requested permission covered by the set. */
 export function within(
   requested: PermissionSet,
-  envelope: PermissionSet,
+  allow: PermissionSet,
 ): boolean {
-  return requested.every((r) => envelope.some((e) => covers(e, r)));
+  return withinEnvelope(requested, { allow });
 }
