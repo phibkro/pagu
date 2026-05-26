@@ -12,15 +12,15 @@ export interface ProviderConfig {
 export interface PhaseInput {
   log: Entry[];
   provider: ProviderConfig;
-  /** User's free-form environment notes (from environment.md), injected
-   * into the phase's system prompt. Empty if none configured. */
-  environment?: string;
+  /** Merged AGENTS.md instructions (global + project), injected into the
+   * phase's system prompt. Empty if none configured. */
+  agents?: string;
 }
 
-/** Compose a phase's system prompt with the user's environment notes. */
-export function withEnvironment(system: string, environment?: string): string {
-  return environment
-    ? `${system}\n\nUser environment notes:\n${environment}`
+/** Compose a phase's system prompt with the AGENTS.md instructions. */
+export function withAgents(system: string, agents?: string): string {
+  return agents
+    ? `${system}\n\nAgent instructions (AGENTS.md):\n${agents}`
     : system;
 }
 

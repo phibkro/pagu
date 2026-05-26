@@ -55,7 +55,7 @@ async function readApproval(promptText: string): Promise<string | null> {
 type ScriptEntry = Extract<Entry, { kind: "script" }>;
 const isScript = (e: Entry): e is ScriptEntry => e.kind === "script";
 
-const { config: fileConfig, environment } = await loadConfig();
+const { config: fileConfig, agents } = await loadConfig();
 const { config: cfg, task, logPath } = applyArgs(fileConfig, Deno.args);
 if (!task) {
   console.error(
@@ -75,7 +75,7 @@ try {
   // new conversation
 }
 const persist = () => Deno.writeTextFileSync(logPath, serializeLog(log));
-const input = (): PhaseInput => ({ log, provider, environment });
+const input = (): PhaseInput => ({ log, provider, agents });
 
 log.push({ kind: "message", role: "user", text: task });
 persist();

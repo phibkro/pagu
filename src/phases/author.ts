@@ -1,7 +1,7 @@
 import { chat } from "../provider/ollama.ts";
 import { handleWrite, writeToolDef } from "../tools/write.ts";
 import { logToMessages } from "./messages.ts";
-import { readInput, withEnvironment, writeOutput } from "./ipc.ts";
+import { readInput, withAgents, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
 
 // Author phase entrypoint. Launched with `--allow-net=<ollama>` ONLY —
@@ -34,7 +34,7 @@ const SYSTEM =
 const input = await readInput();
 const messages = logToMessages(
   input.log,
-  withEnvironment(SYSTEM, input.environment),
+  withAgents(SYSTEM, input.agents),
 );
 const res = await chat(input.provider, messages, [writeToolDef]);
 

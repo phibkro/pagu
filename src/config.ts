@@ -20,8 +20,17 @@ export const DEFAULTS: PaguConfig = {
 
 export interface Loaded {
   config: PaguConfig;
-  /** Verbatim contents of environment.md (or "" if absent). */
-  environment: string;
+  /** Merged AGENTS.md instructions (the cross-tool standard): global
+   * (~/.config/pagu/AGENTS.md) then project (./AGENTS.md). "" if none. */
+  agents: string;
+}
+
+async function readIfPresent(path: string): Promise<string> {
+  try {
+    return (await Deno.readTextFile(path)).trim();
+  } catch {
+    return "";
+  }
 }
 
 /** Merge a parsed config object onto a base, ignoring unknown/ill-typed
@@ -69,12 +78,13 @@ export async function loadConfig(): Promise<Loaded> {
     config = mergeConfig(config, parsed);
   }
 
-  let environment = "";
-  try {
-    environment = (await Deno.readTextFile(`${dir}/environment.md`)).trim();
-  } catch {
-    // absent — no environment notes
-  }
+  // AGENTS.md — the cross-tool standard (also read by Codex, Cursor, …).
+  // Global notes first, then the project-local file (shared with other
+  // agents), merged. config.json stays the home for structured settings.
+  const parts = [
+    await readIfPresent(`${dir}/AGENTS.md`),
+    await readIfPresent("AGENTS.md"),
+  ].filter((s) => s.length > 0);
 
-  return { config, environment };
+  return { config, agents: parts.join("\n\n") };
 }

@@ -76,8 +76,11 @@ Zero-config works. To customize, drop files in `~/.config/pagu/` (or
 }
 ```
 
-`environment.md` — free-form notes about your machine, injected into the agent's
-prompts (markdown so multi-line prose is natural). For example:
+`AGENTS.md` — free-form agent instructions, injected into the prompts. This is
+the cross-tool standard (also read by Codex, Cursor, Copilot, …), so one file
+guides pagu and your other agents. pagu merges a **global**
+`~/.config/pagu/AGENTS.md` (machine notes) with a **project-local**
+`./AGENTS.md` (this repo). For example:
 
 ```markdown
 I'm on NixOS with bash. Projects live under ~/work. Prefer ripgrep over grep.
