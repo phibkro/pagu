@@ -1,7 +1,7 @@
 import { chat, type ChatMessage } from "../provider/ollama.ts";
 import { handleRead, readToolDef } from "../tools/read.ts";
 import { logToMessages } from "./messages.ts";
-import { readInput, writeOutput } from "./ipc.ts";
+import { readInput, withEnvironment, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
 
 // Observe phase entrypoint. Launched with `--allow-net=<ollama>` and
@@ -18,7 +18,10 @@ const SYSTEM =
 const MAX_ROUNDS = 5;
 
 const input = await readInput();
-const messages = logToMessages(input.log, SYSTEM);
+const messages = logToMessages(
+  input.log,
+  withEnvironment(SYSTEM, input.environment),
+);
 const out: Entry[] = [];
 
 for (let round = 0; round < MAX_ROUNDS; round++) {

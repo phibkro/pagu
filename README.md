@@ -35,7 +35,7 @@ proposal and run.
 
 ```sh
 deno install --global --force \
-  --allow-run --allow-read --allow-write \
+  --allow-run --allow-read --allow-write --allow-env \
   -n pagu ./src/cli.ts
 ```
 
@@ -60,6 +60,31 @@ Flags:
 At the review prompt, enter the permissions to grant the script (e.g.
 `allow-read=./photos allow-write=./count.txt`), blank for none, or `n` to
 reject.
+
+## Config (optional)
+
+Zero-config works. To customize, drop files in `~/.config/pagu/` (or
+`$XDG_CONFIG_HOME/pagu/`):
+
+`config.json` — structured settings (CLI flags override these):
+
+```json
+{
+  "model": "qwen3.5:9b",
+  "ollama": "http://127.0.0.1:11434",
+  "allow": ["/home/me/work", "/home/me/notes"]
+}
+```
+
+`environment.md` — free-form notes about your machine, injected into the agent's
+prompts (markdown so multi-line prose is natural). For example:
+
+```markdown
+I'm on NixOS with bash. Projects live under ~/work. Prefer ripgrep over grep.
+Don't touch ~/.ssh or anything under /etc.
+```
+
+A malformed `config.json` is a hard error (it won't silently fall back).
 
 ## Tests
 

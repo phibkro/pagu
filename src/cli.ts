@@ -6,6 +6,7 @@ import type { PhaseInput } from "./phases/ipc.ts";
 import { spawnPhase } from "./phases/spawn.ts";
 import { runScript } from "./runner/run.ts";
 import { classifyRun } from "./runner/classify.ts";
+import { loadConfig, type PaguConfig } from "./config.ts";
 
 /**
  * pagu orchestrator. Runs each phase as a separate scoped `deno run`
@@ -18,34 +19,28 @@ import { classifyRun } from "./runner/classify.ts";
  *     src/cli.ts "your task" --allow ./some/dir
  */
 
-interface Config {
+interface RunOpts {
+  config: PaguConfig;
   task: string;
   logPath: string;
-  model: string;
-  ollama: string;
-  allow: string[]; // read-allowlist for Observe + the cage
 }
 
-function parseArgs(argv: string[]): Config {
-  const cfg: Config = {
-    task: "",
-    logPath: "pagu.log.md",
-    model: "qwen3.5:9b",
-    ollama: "http://127.0.0.1:11434",
-    allow: [],
-  };
+/** Apply CLI args over a base config (from file/defaults). Flags win;
+ * `--allow` appends to the configured allowlist. */
+function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
+  const config: PaguConfig = { ...base, allow: [...base.allow] };
+  let logPath = "pagu.log.md";
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--log") cfg.logPath = argv[++i];
-    else if (a === "--model") cfg.model = argv[++i];
-    else if (a === "--ollama") cfg.ollama = argv[++i];
-    else if (a === "--allow") cfg.allow.push(argv[++i]);
+    if (a === "--log") logPath = argv[++i];
+    else if (a === "--model") config.model = argv[++i];
+    else if (a === "--ollama") config.ollama = argv[++i];
+    else if (a === "--allow") config.allow.push(argv[++i]);
     else positional.push(a);
   }
-  cfg.task = positional.join(" ");
-  if (cfg.allow.length === 0) cfg.allow.push(".");
-  return cfg;
+  if (config.allow.length === 0) config.allow.push(".");
+  return { config, task: positional.join(" "), logPath };
 }
 
 /** Read one approval line from stdin (works for pipe and TTY, unlike prompt). */
@@ -60,8 +55,9 @@ async function readApproval(promptText: string): Promise<string | null> {
 type ScriptEntry = Extract<Entry, { kind: "script" }>;
 const isScript = (e: Entry): e is ScriptEntry => e.kind === "script";
 
-const cfg = parseArgs(Deno.args);
-if (!cfg.task) {
+const { config: fileConfig, environment } = await loadConfig();
+const { config: cfg, task, logPath } = applyArgs(fileConfig, Deno.args);
+if (!task) {
   console.error(
     'usage: pagu "<task>" [--allow <path>]... [--model m] [--log f]',
   );
@@ -74,14 +70,14 @@ const ollamaHost = new URL(cfg.ollama).host;
 
 let log: Entry[] = [];
 try {
-  log = parseLog(await Deno.readTextFile(cfg.logPath));
+  log = parseLog(await Deno.readTextFile(logPath));
 } catch {
   // new conversation
 }
-const persist = () => Deno.writeTextFileSync(cfg.logPath, serializeLog(log));
-const input = (): PhaseInput => ({ log, provider });
+const persist = () => Deno.writeTextFileSync(logPath, serializeLog(log));
+const input = (): PhaseInput => ({ log, provider, environment });
 
-log.push({ kind: "message", role: "user", text: cfg.task });
+log.push({ kind: "message", role: "user", text: task });
 persist();
 
 // --- Observe: read-allowlist + net-to-provider only ---

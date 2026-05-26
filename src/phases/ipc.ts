@@ -12,6 +12,16 @@ export interface ProviderConfig {
 export interface PhaseInput {
   log: Entry[];
   provider: ProviderConfig;
+  /** User's free-form environment notes (from environment.md), injected
+   * into the phase's system prompt. Empty if none configured. */
+  environment?: string;
+}
+
+/** Compose a phase's system prompt with the user's environment notes. */
+export function withEnvironment(system: string, environment?: string): string {
+  return environment
+    ? `${system}\n\nUser environment notes:\n${environment}`
+    : system;
 }
 
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */
