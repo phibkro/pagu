@@ -47,6 +47,16 @@ function parseArgs(argv: string[]): Config {
   return cfg;
 }
 
+/** Read one line of approval from stdin. Unlike prompt(), this works with
+ * a piped (non-TTY) stdin as well as an interactive terminal. */
+async function readApproval(promptText: string): Promise<string | null> {
+  await Deno.stdout.write(new TextEncoder().encode(promptText));
+  const buf = new Uint8Array(4096);
+  const n = await Deno.stdin.read(buf);
+  if (n === null) return null;
+  return new TextDecoder().decode(buf.subarray(0, n)).trim();
+}
+
 const cfg = parseArgs(Deno.args);
 if (!cfg.task) {
   console.error(
@@ -106,9 +116,9 @@ if (!script || script.kind !== "script") {
 console.log(
   `\n--- proposed ${script.id} (${script.lang}) ---\n${script.body}\n`,
 );
-const ans = prompt(
+const ans = await readApproval(
   "Approve? enter granted perms (e.g. 'allow-read=. allow-write=./out'),\n" +
-    "blank for no perms, or 'n' to reject:",
+    "blank for no perms, or 'n' to reject: ",
 );
 
 if (ans === null || ans.trim() === "n") {

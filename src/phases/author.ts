@@ -14,7 +14,9 @@ const SYSTEM =
   "write ONE Deno TypeScript script that accomplishes the user's task. " +
   'Call the `write` tool exactly once with { lang: "ts", body }. The ' +
   "script will be reviewed by a human and run in a sandbox — you cannot " +
-  "run it. Use least privilege: touch only what's necessary.";
+  "run it. Use least privilege: touch only what's necessary. Use ONLY " +
+  "Deno built-in APIs (Deno.readDir, Deno.readTextFile, Deno.writeTextFile, " +
+  "Deno.stat) — no remote imports or URLs, so the script needs no network.";
 
 const input = await readInput();
 const messages = logToMessages(input.log, SYSTEM);
