@@ -143,10 +143,21 @@ breach isolation. Tier 2 closes that where the OS supports it.
 
 - **Runtime:** Deno (TypeScript). Cross-platform, runs TS directly,
   `deno compile` → single binary, permission model is the security floor.
+- **Core in plain TypeScript — no Effect.** effect-smol (v4) was
+  evaluated and dropped: it's a large conceptual dependency that works
+  *against* pagu's whole value prop (small TCB, auditable in one sitting,
+  minimal supply chain). Revisit only if orchestration pain justifies it,
+  and even then keep it out of the security-critical core. (If adopted
+  later, vendor the Effect repo as a read-only `git subtree` for agent
+  reference — deferred until that decision.)
 - **Provider:** Ollama first (native tool-calling), BYO key; pluggable.
-- **Harness:** our own minimal loop + phase FSM (inspired by Pi, not built
-  on it — our design needs *less* than Pi and a smaller TCB is the point).
-  `pi-ai` kept as an optional fallback if multi-provider becomes a need.
+- **Harness:** our own minimal loop + phase FSM, written from scratch —
+  inspired by Pi (loop shape, tool-call parsing), not forked. Smaller TCB
+  is the point, and from-scratch bakes in the no-exec/phase model from
+  line one. `pi-ai` kept as an optional fallback if multi-provider lands.
+- **Runner shell-out:** generated scripts call CLIs via `Deno.Command`
+  (low-level) or `dax` (`$`-style, the Bun-Shell analog) — both gated by
+  `--allow-run=<specific binaries>`, surfaced by the discovery run.
 - **UX:** CLI-first ("terminal with an LLM"); TUI for the transcript +
   approval view; GUI only if a real need appears.
 
