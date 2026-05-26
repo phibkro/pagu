@@ -1,0 +1,75 @@
+# pagu
+
+A local, cross-platform agent you use like a terminal — but **the model can
+never execute anything**. It reads context and _authors_ a script into an
+auditable conversation log; you approve it; a separate sandboxed process runs
+it. Named for _Paguroidea_ (hermit crabs): soft and untrusted inside, operating
+only through a hard, borrowed, disposable shell.
+
+See [`DESIGN.md`](./DESIGN.md) for the full rationale and threat model.
+
+## How it works
+
+A small capability-phased loop, each phase a **separate `deno` process**
+launched with only that phase's permissions:
+
+1. **Observe** — reads allowlisted files (`--allow-read=<allowlist>`,
+   `--allow-net=<model>`) to gather context.
+2. **Author** — proposes one Deno-TypeScript script via the `write` tool
+   (`--allow-net=<model>` only — _zero_ filesystem access).
+3. **Review** — you read the script and grant the exact permissions it may run
+   with.
+4. **Run** — a separate `deno run --no-prompt <granted flags>` executes the
+   approved script; output auto-returns only if no network was granted.
+
+The model has no execute capability at any point; the human gate sits between
+proposal and run.
+
+## Requirements
+
+- [Deno](https://deno.com/) 2.x
+- An Ollama endpoint with a tool-calling model (default `qwen3.5:9b` at
+  `http://127.0.0.1:11434`).
+
+## Install
+
+```sh
+deno install --global --force \
+  --allow-run --allow-read --allow-write \
+  -n pagu ./src/cli.ts
+```
+
+The orchestrator needs run/read/write; each phase subprocess still gets only its
+own scoped permissions regardless of what the orchestrator holds.
+
+## Usage
+
+```sh
+pagu "count the .txt files in ./photos and write the total to count.txt" \
+  --allow ./photos
+```
+
+Flags:
+
+- `--allow <path>` (repeatable) — read-allowlist for the Observe phase (defaults
+  to `.`).
+- `--model <name>` — Ollama model (default `qwen3.5:9b`).
+- `--ollama <url>` — Ollama base URL (default `http://127.0.0.1:11434`).
+- `--log <file>` — conversation log path (default `pagu.log.md`).
+
+At the review prompt, enter the permissions to grant the script (e.g.
+`allow-read=./photos allow-write=./count.txt`), blank for none, or `n` to
+reject.
+
+## Tests
+
+```sh
+deno test --allow-run --allow-read --allow-write --allow-net
+```
+
+## Status
+
+v1: the full observe → author → approve → run loop works against a local model.
+Deferred (see `DESIGN.md`): permission discovery + auto-approve modes,
+multi-turn self-correction, git-backed log, TUI, conversation forking, OS-level
+sandbox tiers beyond Deno permissions.
