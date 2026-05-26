@@ -86,6 +86,13 @@ One file, readable by a human, parseable by the harness, clean git diffs.
 
 ## Approval model
 
+> **v1 scope:** manual per-script approval only. The human reads the proposed
+> script, grants the permissions at approval time, and the runner enforces
+> exactly those. Auto-approve modes (below) are deferred because they require
+> _trustworthy_ permission discovery — see "Deferred: how to discover a proposed
+> script's permissions". The runner's enforcement is the actual security
+> boundary either way.
+
 - **Per-script explicit by default.**
 - **Auto-approve rules** may be configured. Safety invariant: a rule fires only
   when the script's **discovered permission set ⊆ a pre-vetted envelope**,
@@ -166,6 +173,21 @@ isolation. Tier 2 closes that where the OS supports it.
 
 ## Deferred / open
 
+- **Deferred design decision: how to discover a proposed script's permissions**
+  (needed before auto-approve modes; v1 ships manual approval instead). The
+  wrinkle: finding a script's required perms by _running_ it means executing
+  unreviewed code. Options to weigh when this comes back up:
+  - **A — Static analysis.** Scan the script AST for permission-requiring calls
+    (`Deno.readFile`, `fetch`, `Deno.Command`…). Never executes; portable;
+    imprecise on dynamically-computed scopes (flag as "unknown → review").
+    Current lean for the eventual implementation.
+  - **B — Hybrid.** Zero-perm run to catch the first requested perm + static
+    analysis for the rest.
+  - **C — Sandboxed dry-run.** Iterative grant+run entirely inside the
+    disposable sandbox (bwrap + tmpfs scratch). Most precise, most complex,
+    Linux-leaning.
+  - Whatever is chosen must feed `within()` (`src/perms/envelope.ts`) and never
+    trust the agent's self-declared perms.
 - Conversation **forking** mechanism (borrow Pi).
 - OS-isolation backends beyond Linux.
 - GUI/computer-use.
