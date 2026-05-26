@@ -38,12 +38,28 @@ blast radius is statically enumerable.
 - Multi-provider abstraction beyond the first provider.
 - Uniform OS-level sandboxing across every platform (see Security tiers).
 
-## Core principle: the model has no execute capability
+## Core principle: the model has no _real-effect_ execute capability
 
-The agent's only tools are **read** (allowlisted) and **write** (to the
-conversation log / scratch). There is no `bash`/exec tool. Execution happens in
-a separate process the agent cannot invoke; the only trigger is a human
-approval.
+The agent's only tools are **read** (allowlisted) and **write** (script
+proposals). There is no `bash`/exec tool. **Real-effect execution** — running a
+script with real-path writes, network, or broader permissions — happens only in
+a separate process triggered by **human approval**.
+
+Refinement (the cage): the agent _may_ run its proposed script in a **disposable
+cage** to self-test and self-correct before you see it. The cage grants
+`--allow-read=<allowlist>` + `--allow-write=<scratch>` only — **no network, no
+real-path writes** — so autonomous execution cannot exfiltrate or damage
+anything. The cage classifies each run:
+
+- **runtime/type error** → feed back to the Author phase; it fixes and retries
+  (bounded), so you review a _working_ script, not a buggy one;
+- **permission denial** → not a bug — the script asked for a real permission the
+  cage withholds; this _is_ the permission-discovery mechanism (see below),
+  surfaced to you at approval;
+- **clean exit** → present as-is.
+
+So the boundary is precise: autonomous execution is confined to a no-net,
+no-real-write rehearsal; real-effect execution stays human-gated.
 
 ## Phase FSM
 
@@ -173,21 +189,13 @@ isolation. Tier 2 closes that where the OS supports it.
 
 ## Deferred / open
 
-- **Deferred design decision: how to discover a proposed script's permissions**
-  (needed before auto-approve modes; v1 ships manual approval instead). The
-  wrinkle: finding a script's required perms by _running_ it means executing
-  unreviewed code. Options to weigh when this comes back up:
-  - **A — Static analysis.** Scan the script AST for permission-requiring calls
-    (`Deno.readFile`, `fetch`, `Deno.Command`…). Never executes; portable;
-    imprecise on dynamically-computed scopes (flag as "unknown → review").
-    Current lean for the eventual implementation.
-  - **B — Hybrid.** Zero-perm run to catch the first requested perm + static
-    analysis for the rest.
-  - **C — Sandboxed dry-run.** Iterative grant+run entirely inside the
-    disposable sandbox (bwrap + tmpfs scratch). Most precise, most complex,
-    Linux-leaning.
-  - Whatever is chosen must feed `within()` (`src/perms/envelope.ts`) and never
-    trust the agent's self-declared perms.
+- **Permission discovery — RESOLVED via the cage** (see "Core principle: the
+  cage"). The cage self-test runs the script with no real-path writes and no
+  net, and collects the permissions Deno _denies_ (`NotCapable` / "Requires X
+  access to …") as the requested set — without granting them. Surfaced at
+  approval; later fed to `within()` (`src/perms/envelope.ts`) to gate
+  auto-approve modes. Static AST analysis stays a possible precision refinement,
+  but is no longer required for v1.
 - Conversation **forking** mechanism (borrow Pi).
 - OS-isolation backends beyond Linux.
 - GUI/computer-use.
