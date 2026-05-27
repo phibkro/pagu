@@ -10,3 +10,4 @@ export {
 } from "./policy.ts";
 export { discoverTasks } from "./discovery.ts";
 export { handleRunTask, parseCommand, runTaskToolDef } from "./tool.ts";
+export { executeCommandInvocation } from "./execute.ts";

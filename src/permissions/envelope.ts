@@ -1,5 +1,5 @@
 // pure
-import { normalize } from "@std/path";
+import { normalize, resolve } from "@std/path";
 
 /**
  * Permission model — the security-critical core that decides whether a
@@ -117,4 +117,18 @@ export function within(
   allow: PermissionSet,
 ): boolean {
   return withinEnvelope(requested, { allow });
+}
+
+/**
+ * Resolve a discovered permission's path scope to absolute against `base`.
+ * Deno reports denied paths as the script referenced them (often relative);
+ * this normalises them before envelope checks or storage.
+ * Non-path flags (net, run, env…) pass through unchanged.
+ */
+export function absolutizePerm(flagStr: string, base: string): string {
+  const p = parsePermission(flagStr);
+  if ((p.flag === "read" || p.flag === "write") && p.scope) {
+    return formatFlag({ flag: p.flag, scope: resolve(base, p.scope) });
+  }
+  return flagStr;
 }

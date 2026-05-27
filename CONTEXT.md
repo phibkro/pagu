@@ -135,27 +135,61 @@ read-capable turn and no script at all.
 
 | Phase                | process permissions                                 | tools                                       | advances when                        |
 | -------------------- | --------------------------------------------------- | ------------------------------------------- | ------------------------------------ |
-| **Respond**          | read = allowlist; net = provider only               | `read`, `write`, `invoke_skill`, `run_task` | model replies (chat) or emits script |
+| **Respond**          | read = allowlist; net = provider only               | `read`, `write`, `invoke_skill`, `run_task` | model replies (chat) or emits action |
 | **Cage** (self-test) | read = allowlist; write = scratch; **no net**       | — (runner)                                  | proposal runs clean / needs-perms    |
-| **Review**           | _(no agent process)_                                | —                                           | **human** y/n (or envelope auto)     |
+| **Review**           | _(no agent process)_                                | —                                           | **human** y/n (or auto-approve rule) |
 | **Run**              | runner: scoped perms, in OS sandbox where available | — (runner)                                  | script exits → result re-enters loop |
 
 The agent process only ever holds read + net-to-model; it never holds write or
 run. After a run, the result re-enters the log and the loop continues (the model
 wraps up or proposes the next step), bounded by a turn limit.
 
+The three action paths diverge at the Respond→Cage transition:
+
+| Tool called    | Cage purpose              | Auto-approve rule                        | Fix loop?                                     |
+| -------------- | ------------------------- | ---------------------------------------- | --------------------------------------------- |
+| `write`        | Discover needed perms     | Envelope / skill-match / human y/n       | Yes (MAX_FIX=3) — model repairs buggy scripts |
+| `invoke_skill` | Validate within ceiling   | Ceiling match — auto only, no human gate | No — pre-authored, bug = reject               |
+| `run_task`     | Discover / verify ceiling | Ceiling match — auto only, no human gate | No — generated body, bug = reject             |
+
 ```mermaid
 stateDiagram-v2
   [*] --> Respond: user message
-  Respond --> [*]: chat reply (no action needed)
-  Respond --> Cage: proposes a script
-  Cage --> Cage: runtime bug, fix and retry (bounded)
-  Cage --> Review: clean run, or needed perms discovered
+
+  Respond --> [*]: chat reply (no action)
+  Respond --> SkillCage: invoke_skill(name)
+  Respond --> CommandCage: run_task(cmd)
+  Respond --> ScriptCage: write(body)
+
+  SkillCage --> SkillRun: ok / perms within ceiling
+  SkillCage --> [*]: ceiling exceeded or cage bug (reject)
+
+  CommandCage --> CommandRun: ok / perms within ceiling
+  CommandCage --> [*]: ceiling exceeded or cage bug (reject)
+  CommandCage --> Respond: not in policy (feed back, retry)
+
+  ScriptCage --> ScriptCage: bug → fix round (model repairs, bounded)
+  ScriptCage --> Review: ok / perms discovered
+
   Review --> [*]: rejected
-  Review --> Run: approved (y/n, or envelope auto)
-  Run --> Respond: result re-enters the log, continue
-  Run --> [*]: network granted, output not auto-returned
+  Review --> ScriptRun: auto-approved (envelope / skill match) or human y
+
+  SkillRun --> Respond: no net — result loops back
+  CommandRun --> Respond: no net — result loops back
+  ScriptRun --> Respond: no net — result loops back
+
+  SkillRun --> [*]: net granted — output not auto-returned
+  CommandRun --> [*]: net granted — output not auto-returned
+  ScriptRun --> [*]: net granted — output not auto-returned
 ```
+
+**On phases as a folder:** `phases/` (the respond subprocess infrastructure) and
+`runner/` (the cage + run execution engine) are both named after phases in the
+FSM, but they don't co-change — the respond phase subprocess and the runner are
+independent mechanisms. The coupling test: if you add a new tool, you change
+`phases/respond.ts` (add dispatch) and the relevant capability module
+(`skills/`, `tasks/`, `write/`) — you don't change `runner/`. The FSM is the
+mental model; the folder structure reflects coupling.
 
 ## State model: the conversation log _is_ the event store
 

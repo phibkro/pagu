@@ -8,3 +8,4 @@ export {
   type SkillScript,
 } from "./skill.ts";
 export { handleInvokeSkill, invokeSkillToolDef } from "./tool.ts";
+export { executeSkillInvocation } from "./execute.ts";
