@@ -2,29 +2,19 @@ import { fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { parseLog } from "./log/parse.ts";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";
-import type { PhaseInput } from "./phases/ipc.ts";
-import { spawnPhase } from "./phases/spawn.ts";
-import { runScript } from "./runner/run.ts";
-import { classifyRun } from "./runner/classify.ts";
 import { loadConfig, type PaguConfig, resolveProvider } from "./config.ts";
-import { formatFlag, parsePermission } from "./perms/envelope.ts";
-import { buildEnvelope, shouldAutoApprove } from "./session.ts";
+import { formatFlag } from "./perms/envelope.ts";
+import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
+import { type AgentContext, type Approver, runTask, type UI } from "./agent.ts";
 
 /**
- * pagu orchestrator. Runs each phase as a separate scoped `deno run`
- * subprocess (the agent never holds a real-effect execute capability),
- * self-tests the proposed script in a no-net / no-real-write cage (which
- * self-corrects bugs and discovers required perms), then runs the approved
- * script scoped to granted perms.
- *
- * Default: every script is gated by a human prompt. `--repo` enables repo
- * mode — read+write the current git repo, with .gitignore'd paths denied;
- * scripts confined to that envelope auto-approve (safe because git is the
- * undo buffer, secrets are denied, and there's no network).
+ * pagu CLI — one frontend onto the I/O-agnostic core (src/agent.ts).
+ * Builds the run context from config + flags and supplies a stdin
+ * approver; the TUI (src/tui.ts) is a second frontend onto the same core.
  *
  *   deno run --allow-run --allow-read --allow-write --allow-env \
- *     src/cli.ts "your task" [--repo] [--allow <dir>]... [--write <dir>]...
+ *     src/cli.ts "your task" [--repo] [--allow <dir>]... [--provider p]
  */
 
 interface RunOpts {
@@ -73,31 +63,17 @@ async function repoDirty(dir: string): Promise<boolean> {
       stdout: "piped",
       stderr: "piped",
     }).output();
-    return r.code === 0 &&
-      new TextDecoder().decode(r.stdout).trim().length > 0;
+    return r.code === 0 && new TextDecoder().decode(r.stdout).trim().length > 0;
   } catch {
     return false;
   }
 }
 
-/** Resolve a discovered perm's path scope to absolute against `base`
- * (read/write only; net/run scopes pass through). */
-function absolutizePerm(flagStr: string, base: string): string {
-  const p = parsePermission(flagStr);
-  if ((p.flag === "read" || p.flag === "write") && p.scope) {
-    return formatFlag({ flag: p.flag, scope: resolve(base, p.scope) });
-  }
-  return flagStr;
-}
-
-type ScriptEntry = Extract<Entry, { kind: "script" }>;
-const isScript = (e: Entry): e is ScriptEntry => e.kind === "script";
-
 const { config: fileConfig, agents } = await loadConfig();
 const opts = applyArgs(fileConfig, Deno.args);
 if (!opts.task) {
   console.error(
-    'usage: pagu "<task>" [--repo] [--allow <dir>]... [--write <dir>]...',
+    'usage: pagu "<task>" [--repo] [--allow <dir>]... [--provider p] [--model m]',
   );
   Deno.exit(2);
 }
@@ -114,10 +90,8 @@ if (apiKeyEnv && !apiKey) {
 const provider = { model: cfg.model, baseURL, apiKey };
 const providerHost = new URL(baseURL).host;
 
-// Session envelope. Repo mode grants read+write to the cwd repo (with its
-// .gitignore'd paths denied) and enables auto-approve within it.
 // Repo mode: explicit --repo, or auto-detect a git repo and offer it
-// (remembering the choice per repo). Non-interactive runs never auto-enable.
+// (remembered per repo). Non-interactive runs never auto-enable.
 const repoRoot = await gitRoot(Deno.cwd());
 let repoMode = opts.repo;
 if (!repoMode && repoRoot) {
@@ -141,9 +115,7 @@ if (!repoMode && repoRoot) {
   }
 }
 const repo = repoMode ? (repoRoot ?? Deno.cwd()) : undefined;
-// Resolve to absolute: Deno's denial paths are absolute, so the envelope
-// must be too for path containment to match. In repo mode the runner cwd
-// is the repo, so the model's relative paths resolve where they're granted.
+
 const readPaths = [...cfg.allow, ...(repo ? [repo] : [])].map((p) =>
   resolve(p)
 );
@@ -155,17 +127,12 @@ const envelope = await buildEnvelope({
   write: writePaths,
   repo,
 });
-// Only deny-WRITE at runtime. Deno's --deny-read of a child path makes
-// listing its parent directory fail (readDir can't enumerate a dir that
-// contains a denied entry), which breaks almost every task. Read-
-// protection of gitignored files within a broadly-allowed repo is a known
-// limitation, deferred (mitigated for now by the no-net runner). deny-read
-// stays in the envelope so explicit requests for a secret still won't
-// auto-approve.
+// Only deny-WRITE at runtime — Deno's --deny-read of a child breaks listing
+// its parent dir. (deny-read stays in the envelope so explicit secret reads
+// still won't auto-approve.)
 const denyFlags = (envelope.deny ?? [])
   .filter((p) => p.flag === "write")
   .map((p) => formatFlag(p, "deny"));
-const autoEnabled = repo !== undefined;
 
 if (repo && await repoDirty(repo)) {
   console.error(
@@ -180,170 +147,35 @@ try {
 } catch {
   // new conversation
 }
-const persist = () => Deno.writeTextFileSync(logPath, serializeLog(log));
-const input = (): PhaseInput => ({ log, provider, agents });
 
-log.push({ kind: "message", role: "user", text: task });
-persist();
-
-// --- Observe: read scope + net-to-provider only ---
-console.error("· observing…");
-const observed = await spawnPhase({
-  entry: `${phaseDir}observe.ts`,
-  flags: [
-    `--allow-net=${providerHost}`,
-    ...readPaths.map((p) => `--allow-read=${p}`),
-  ],
-  input: input(),
-});
-log.push(...observed);
-persist();
-
-// --- Author: net-to-provider ONLY (no filesystem) ---
-const author = () =>
-  spawnPhase({
-    entry: `${phaseDir}author.ts`,
-    flags: [`--allow-net=${providerHost}`],
-    input: input(),
-  });
-
-console.error("· authoring…");
-let authored = await author();
-log.push(...authored);
-persist();
-
-let script = authored.findLast(isScript);
-if (!script) {
-  const msg = authored.find((e) => e.kind === "message");
-  console.log(
-    msg && msg.kind === "message" ? msg.text : "(no script proposed)",
-  );
-  Deno.exit(0);
-}
-
-// --- Cage self-test: no net, real reads in scope, writes only to scratch
-// (+ session denies applied). Bugs feed back to Author; permission denials
-// become discovered perms. ---
-const MAX_FIX = 3;
-let discovered: string[] = [];
-for (let attempt = 1; attempt <= MAX_FIX; attempt++) {
-  const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
-  const file = `${scratch}/${script.id}.ts`;
-  await Deno.writeTextFile(file, script.body);
-  console.error(`· self-testing in cage (attempt ${attempt})…`);
-  const r = await runScript({
-    scriptPath: file,
-    perms: [
-      ...readPaths.map((p) => `allow-read=${p}`),
-      `allow-write=${scratch}`,
-      ...denyFlags,
-    ],
-    cwd: repo ?? scratch,
-  });
-  await Deno.remove(scratch, { recursive: true });
-
-  const cls = classifyRun(r.exit, r.stderr);
-  if (cls.kind === "ok") break;
-  if (cls.kind === "needs-perms") {
-    discovered = cls.perms;
-    break;
-  }
-  if (attempt === MAX_FIX) {
-    console.error("· self-test still failing; presenting last attempt.");
-    break;
-  }
-  log.push({
-    kind: "message",
-    role: "user",
-    text: `Sandbox self-test of ${script.id} failed:\n${
-      cls.error || "(no output; possibly timed out)"
-    }\nFix the script and propose it again with the write tool.`,
-  });
-  persist();
-  console.error("· fixing…");
-  authored = await author();
-  log.push(...authored);
-  persist();
-  const next = authored.findLast(isScript);
-  if (!next) break;
-  script = next;
-}
-
-// Deno reports a denied path as the script referenced it (often relative
-// to the run cwd); resolve to absolute so it matches the absolute envelope.
-discovered = discovered.map((s) => absolutizePerm(s, repo ?? Deno.cwd()));
-
-// --- Review: auto-approve within the session envelope, else human gate ---
-console.log(
-  `\n--- proposed ${script.id} (${script.lang}) ---\n${script.body}\n`,
-);
-const suggested = [...readPaths.map((p) => `allow-read=${p}`), ...discovered];
-
-let perms: string[];
-if (shouldAutoApprove(discovered.map(parsePermission), envelope, autoEnabled)) {
-  perms = suggested;
-  console.error("· auto-approved (within session envelope)");
-  log.push({
-    kind: "decision",
-    script: script.id,
-    verdict: "approve",
-    rationale: `auto-approved (repo mode): ${perms.join(" ") || "(no perms)"}`,
-  });
-  persist();
-} else {
-  if (suggested.length > 0) {
-    console.log(`suggested perms (from sandbox): ${suggested.join(" ")}`);
-  }
+const ui: UI = {
+  status: (m) => console.error(`· ${m}`),
+  show: (m) => console.log(m),
+};
+const approve: Approver = async (_script, suggested) => {
   const ans = await readApproval(
     "Approve? 'y' to grant the suggested perms, or type perms " +
       "(e.g. 'allow-read=. allow-write=./out'), blank for none, 'n' to reject: ",
   );
-  if (ans === null || ans === "n") {
-    log.push({
-      kind: "decision",
-      script: script.id,
-      verdict: "reject",
-      rationale: "rejected at review",
-    });
-    persist();
-    console.log("rejected.");
-    Deno.exit(0);
-  }
-  perms = ans === "y" ? suggested : ans === "" ? [] : ans.split(/\s+/);
-  log.push({
-    kind: "decision",
-    script: script.id,
-    verdict: "approve",
-    rationale: `approved with: ${perms.join(" ") || "(no perms)"}`,
-  });
-  persist();
-}
+  if (ans === null || ans === "n") return { verdict: "reject", perms: [] };
+  const perms = ans === "y" ? suggested : ans === "" ? [] : ans.split(/\s+/);
+  return { verdict: "approve", perms };
+};
 
-// --- Run: real effects, scoped to granted perms + session denies ---
-console.error("· running…");
-const scratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
-const file = `${scratch}/${script.id}.ts`;
-await Deno.writeTextFile(file, script.body);
-const result = await runScript({
-  scriptPath: file,
-  perms: [...perms, ...denyFlags],
-  cwd: repo ?? scratch,
-});
-await Deno.remove(scratch, { recursive: true });
+const ctx: AgentContext = {
+  provider,
+  providerHost,
+  phaseDir,
+  agents,
+  readPaths,
+  repo,
+  envelope,
+  denyFlags,
+  autoEnabled: repo !== undefined,
+  log,
+  persist: () => Deno.writeTextFileSync(logPath, serializeLog(log)),
+  ui,
+  approve,
+};
 
-const output = result.stdout || result.stderr;
-log.push({
-  kind: "result",
-  script: script.id,
-  exit: result.exit,
-  ranWith: result.ranWith,
-  output,
-});
-persist();
-
-console.log(`\n--- result (exit ${result.exit}) ---\n${output}`);
-if (!result.autoReturn) {
-  console.log(
-    "\n[net was granted — output would NOT auto-return to the agent]",
-  );
-}
+await runTask(ctx, task);
