@@ -4,50 +4,48 @@ import type { CommandInvocationEntry } from "../log/schema.ts";
 import type { DiscoveredTask } from "../command-policy.ts";
 
 /**
- * The `run_task` tool. The agent names a pre-approved project task; the
- * orchestrator validates against the command policy, cages to discover or
- * verify the permission ceiling, then runs without a human prompt.
+ * The `run_task` tool. The agent passes the exact command string; the
+ * orchestrator parses it, validates against the command policy, cages,
+ * and runs without a human prompt.
  *
- * Deny by default: only tasks in the command policy (explicit allowlist or
- * inferred from a previous cage run) can be invoked. Everything else requires
- * `write` + full human review.
+ * Single-string interface matches the listed commands exactly — no
+ * separate program/args split for the model to get wrong.
  */
 export function runTaskToolDef(tasks: DiscoveredTask[]): ToolDef {
-  const list = tasks.length > 0
-    ? " Available: " +
-      tasks
-        .map((t) => `\`${t.program} ${t.args.join(" ")}\` (${t.description})`)
-        .join("; ") +
-      "."
+  const cmds = tasks.map((t) => `${t.program} ${t.args.join(" ")}`);
+  const list = cmds.length > 0
+    ? ` Available commands: ${cmds.map((c) => `\`${c}\``).join(", ")}.`
     : "";
   return {
     name: "run_task",
     description:
-      `Run a pre-approved project task or allowed command. Only tasks in the command policy are available — anything else requires the write tool.${list}`,
+      `Run a pre-approved project task. Pass the exact command string. Only listed commands are allowed — anything else requires the write tool.${list}`,
     parameters: {
       type: "object",
       properties: {
-        program: {
+        command: {
           type: "string",
-          description: 'The program to run (e.g. "deno", "npm", "just").',
-        },
-        args: {
-          type: "array",
-          items: { type: "string" },
+          enum: cmds,
           description:
-            'Arguments for the program (e.g. ["task", "lint"] for `deno task lint`).',
+            "The exact command to run (must match one of the available commands).",
         },
       },
-      required: ["program", "args"],
+      required: ["command"],
     },
   };
+}
+
+/** Parse "program arg1 arg2 …" into { program, args }. */
+export function parseCommand(cmd: string): { program: string; args: string[] } {
+  const parts = cmd.trim().split(/\s+/).filter(Boolean);
+  const [program = "", ...args] = parts;
+  return { program, args };
 }
 
 export function handleRunTask(
   toolArgs: Record<string, unknown>,
   id: string,
 ): CommandInvocationEntry {
-  const program = String(toolArgs.program ?? "");
-  const args = Array.isArray(toolArgs.args) ? toolArgs.args.map(String) : [];
+  const { program, args } = parseCommand(String(toolArgs.command ?? ""));
   return { kind: "command-invoke", id, program, args };
 }

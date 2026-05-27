@@ -1,0 +1,14 @@
+[
+  {
+    "program": "deno",
+    "args": [
+      "task",
+      "lint"
+    ],
+    "permissions": [
+      "allow-run=deno"
+    ],
+    "source": "inferred",
+    "inferredAt": "2026-05-27T19:52:02.609Z"
+  }
+]

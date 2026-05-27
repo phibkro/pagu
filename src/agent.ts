@@ -409,18 +409,16 @@ Deno.exit(r.code);
         const file = `${scratch}/${cmdInvoke.id}.ts`;
         await Deno.writeTextFile(file, cmdBody);
 
-        // Use stored ceiling if available, otherwise open for discovery
-        const cageCeiling = entry.permissions.length > 0
-          ? entry.permissions
-          : [];
+        // Cage with minimal perms (read + scratch only) to let Deno discover
+        // what the command actually needs. On subsequent runs (stored ceiling),
+        // use the ceiling so the cage validates rather than re-discovers.
+        const hasCeiling = entry.permissions.length > 0;
         const cageResult = await runScript({
           scriptPath: file,
           perms: [
             ...ctx.readPaths.map((p) => `allow-read=${p}`),
             `allow-write=${scratch}`,
-            ...(cageCeiling.length > 0
-              ? cageCeiling
-              : [`allow-run=${cmdInvoke.program}`]),
+            ...(hasCeiling ? entry.permissions : []),
             ...ctx.denyFlags,
           ],
           cwd: ctx.repo ?? ctx.projectBase,
@@ -431,7 +429,13 @@ Deno.exit(r.code);
         const cls = classifyRun(cageResult.exit, cageResult.stderr);
         let cmdPerms: string[];
         if (cls.kind === "ok") {
-          cmdPerms = ctx.readPaths.map((p) => `allow-read=${p}`);
+          // Cage passed with existing ceiling — use it for the actual run
+          cmdPerms = hasCeiling
+            ? [
+              ...ctx.readPaths.map((p) => `allow-read=${p}`),
+              ...entry.permissions,
+            ]
+            : ctx.readPaths.map((p) => `allow-read=${p}`);
         } else if (cls.kind === "needs-perms") {
           const discovered = cls.perms.map((s) =>
             parsePermission(absolutizePerm(s, ctx.repo ?? Deno.cwd()))
