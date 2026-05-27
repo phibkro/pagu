@@ -52,31 +52,41 @@ interface OpenAIChatResponse {
   }>;
 }
 
-/** Dispatch to the right wire format. The single entry point frontends use. */
+/** Called with each content token as it streams in (display side-channel). */
+export type TokenSink = (token: string) => void;
+
+/**
+ * Dispatch to the right wire format. The single entry point frontends use.
+ * Pass `onToken` to stream content tokens as they arrive (OpenAI format
+ * only; Anthropic stays buffered for now). The returned ChatResponse is
+ * identical either way — streaming is purely a display affordance.
+ */
 export function chat(
   cfg: ProviderConfig,
   messages: ChatMessage[],
   tools: ToolDef[] = [],
+  onToken?: TokenSink,
 ): Promise<ChatResponse> {
   return cfg.format === "anthropic"
     ? chatAnthropic(cfg, messages, tools)
-    : chatOpenAI(cfg, messages, tools);
+    : chatOpenAI(cfg, messages, tools, onToken);
 }
 
-async function chatOpenAI(
+/** Shared request shape for both the buffered and streaming paths. */
+function openAIRequest(
   cfg: ProviderConfig,
   messages: ChatMessage[],
-  tools: ToolDef[] = [],
-): Promise<ChatResponse> {
+  tools: ToolDef[],
+  stream: boolean,
+): { url: string; init: RequestInit } {
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
   if (cfg.apiKey) headers["authorization"] = `Bearer ${cfg.apiKey}`;
-
   const body = {
     model: cfg.model,
     messages,
-    stream: false,
+    stream,
     tools: tools.length > 0
       ? tools.map((t) => ({
         type: "function",
@@ -88,30 +98,109 @@ async function chatOpenAI(
       }))
       : undefined,
   };
+  return {
+    url: `${cfg.baseURL.replace(/\/$/, "")}/chat/completions`,
+    init: { method: "POST", headers, body: JSON.stringify(body) },
+  };
+}
 
-  const url = `${cfg.baseURL.replace(/\/$/, "")}/chat/completions`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new Error(`provider ${res.status}: ${await res.text()}`);
-  }
-
-  const data = await res.json() as OpenAIChatResponse;
-  const msg = data.choices?.[0]?.message ?? {};
-  const toolCalls: ToolCall[] = (msg.tool_calls ?? []).map((tc) => {
+/** Finalize accumulated tool-call argument strings into parsed ToolCalls. */
+function toToolCalls(
+  raw: Array<{ name: string; args: string }>,
+): ToolCall[] {
+  return raw.map((tc) => {
     let args: Record<string, unknown> = {};
-    const raw = tc.function?.arguments;
-    if (raw) {
+    if (tc.args) {
       try {
-        args = JSON.parse(raw);
+        args = JSON.parse(tc.args);
       } catch {
         args = {}; // tolerate malformed tool args
       }
     }
-    return { name: tc.function?.name ?? "", args };
+    return { name: tc.name, args };
   });
+}
+
+async function chatOpenAI(
+  cfg: ProviderConfig,
+  messages: ChatMessage[],
+  tools: ToolDef[] = [],
+  onToken?: TokenSink,
+): Promise<ChatResponse> {
+  const { url, init } = openAIRequest(cfg, messages, tools, !!onToken);
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    throw new Error(`provider ${res.status}: ${await res.text()}`);
+  }
+  return onToken && res.body
+    ? parseStream(res.body, onToken)
+    : parseBuffered(await res.json() as OpenAIChatResponse);
+}
+
+function parseBuffered(data: OpenAIChatResponse): ChatResponse {
+  const msg = data.choices?.[0]?.message ?? {};
+  const toolCalls = toToolCalls(
+    (msg.tool_calls ?? []).map((tc) => ({
+      name: tc.function?.name ?? "",
+      args: tc.function?.arguments ?? "",
+    })),
+  );
   return { content: msg.content ?? "", toolCalls };
+}
+
+interface StreamChoice {
+  delta?: {
+    content?: string | null;
+    tool_calls?: Array<
+      { index?: number; function?: { name?: string; arguments?: string } }
+    >;
+  };
+}
+
+/**
+ * Parse a Server-Sent-Events `chat/completions` stream. Content deltas are
+ * accumulated AND forwarded to `onToken` live; tool-call fragments are
+ * reassembled per index (name arrives once, `arguments` arrives in pieces).
+ */
+async function parseStream(
+  body: ReadableStream<Uint8Array>,
+  onToken: TokenSink,
+): Promise<ChatResponse> {
+  let content = "";
+  const calls = new Map<number, { name: string; args: string }>();
+  let buf = "";
+
+  for await (
+    const chunk of body.pipeThrough(new TextDecoderStream())
+  ) {
+    buf += chunk;
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) !== -1) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (payload === "" || payload === "[DONE]") continue;
+      let choice: StreamChoice;
+      try {
+        choice = (JSON.parse(payload).choices?.[0] ?? {}) as StreamChoice;
+      } catch {
+        continue; // tolerate keep-alive / malformed lines
+      }
+      const delta = choice.delta;
+      if (!delta) continue;
+      if (typeof delta.content === "string" && delta.content) {
+        content += delta.content;
+        onToken(delta.content);
+      }
+      for (const tc of delta.tool_calls ?? []) {
+        const idx = tc.index ?? 0;
+        const cur = calls.get(idx) ?? { name: "", args: "" };
+        if (tc.function?.name) cur.name = tc.function.name;
+        if (tc.function?.arguments) cur.args += tc.function.arguments;
+        calls.set(idx, cur);
+      }
+    }
+  }
+  return { content, toolCalls: toToolCalls([...calls.values()]) };
 }

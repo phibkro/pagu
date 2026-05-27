@@ -7,11 +7,17 @@ import type { PhaseInput } from "./ipc.ts";
  * permission flags — the runtime sandbox, not our code, bounds the phase.
  * Input is piped in as JSON on stdin; the phase's produced entries come
  * back as JSON on stdout. (Parent needs --allow-run to call this.)
+ *
+ * The phase's **stderr** is a live display side-channel: the phase streams
+ * model tokens there as they arrive, and `onStderr` (if given) is called
+ * with each chunk. It carries no capability — the phase still returns its
+ * auditable entries on stdout. stderr is also captured for diagnostics.
  */
 export async function spawnPhase(opts: {
   entry: string;
   flags: string[];
   input: PhaseInput;
+  onStderr?: (chunk: string) => void;
 }): Promise<Entry[]> {
   const command = new Deno.Command("deno", {
     args: ["run", "--no-prompt", ...opts.flags, opts.entry],
@@ -25,13 +31,27 @@ export async function spawnPhase(opts: {
   await writer.write(new TextEncoder().encode(JSON.stringify(opts.input)));
   await writer.close();
 
-  const { code, stdout, stderr } = await child.output();
-  const dec = new TextDecoder();
+  // Drain stdout (buffer → JSON) and stderr (forward live) concurrently to
+  // avoid a pipe-buffer deadlock; then await exit.
+  let stdoutText = "";
+  let stderrText = "";
+  const drainStdout = async () => {
+    for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
+      stdoutText += c;
+    }
+  };
+  const drainStderr = async () => {
+    for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
+      stderrText += c;
+      opts.onStderr?.(c);
+    }
+  };
+  await Promise.all([drainStdout(), drainStderr()]);
+  const { code } = await child.status;
+
   if (code !== 0) {
-    throw new Error(
-      `phase ${opts.entry} exited ${code}: ${dec.decode(stderr)}`,
-    );
+    throw new Error(`phase ${opts.entry} exited ${code}: ${stderrText}`);
   }
-  const parsed = JSON.parse(dec.decode(stdout)) as { entries: Entry[] };
+  const parsed = JSON.parse(stdoutText) as { entries: Entry[] };
   return parsed.entries;
 }

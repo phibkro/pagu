@@ -38,6 +38,40 @@ Deno.test("parses content + tool calls (arguments is a JSON string)", async () =
   }
 });
 
+Deno.test("streaming: forwards content tokens live, reassembles tool calls", async () => {
+  // SSE deltas: content arrives in pieces; a tool call's name comes once and
+  // its arguments stream across frames (the fiddly part we must reassemble).
+  const frames = [
+    `data: {"choices":[{"delta":{"content":"Hel"}}]}\n`,
+    `data: {"choices":[{"delta":{"content":"lo"}}]}\n`,
+    `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"read","arguments":"{\\"pa"}}]}}]}\n`,
+    `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\\":\\"./x\\"}"}}]}}]}\n`,
+    `data: [DONE]\n`,
+  ];
+  const server = Deno.serve(
+    { port: 0, onListen() {} },
+    () =>
+      new Response(frames.join(""), {
+        headers: { "content-type": "text/event-stream" },
+      }),
+  );
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const seen: string[] = [];
+    const r = await chat(
+      { baseURL: `http://localhost:${port}/v1`, model: "m" },
+      [{ role: "user", content: "hi" }],
+      [{ name: "read", description: "read", parameters: {} }],
+      (t) => seen.push(t),
+    );
+    assertEquals(seen, ["Hel", "lo"]); // streamed live, in order
+    assertEquals(r.content, "Hello");
+    assertEquals(r.toolCalls, [{ name: "read", args: { path: "./x" } }]);
+  } finally {
+    await server.shutdown();
+  }
+});
+
 Deno.test("no key -> no Authorization header; tolerates no tool calls", async () => {
   let hadAuth = true;
   const server = Deno.serve({ port: 0, onListen() {} }, (req) => {
