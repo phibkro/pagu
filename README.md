@@ -185,8 +185,9 @@ TUI** frontends (the TUI **streams** replies live with a progress spinner and
 slash commands); **per-project conversation sessions** (list / new / open /
 fork, `--continue`); **OS sandbox tier** (bubblewrap / sandbox-exec — denies
 network and confines writes beneath the Deno floor); providers **Ollama /
-OpenRouter / OpenAI / Anthropic**; AGENTS.md + config. See `AGENTS.md` for how
-to work in the repo.
+OpenRouter / OpenAI / Anthropic**; **roles** (composable config+instruction
+bundles via `--role` / `/roles`); AGENTS.md + config; `pagu --help` and shell
+`completions` (cliffy). See `AGENTS.md` for how to work in the repo.
 
 Deferred (see `CONTEXT.md`): OS-layer **read** isolation (writes + network are
 done; reads still rely on the Deno floor), Landlock, `.gitignore`

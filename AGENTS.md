@@ -86,9 +86,14 @@ The loop and its frontends:
 
 - `src/agent.ts` — **the I/O-agnostic core**: `runTask(ctx, task)` +
   `AgentContext`/`Approver`/`UI`. The one seam between core and frontends.
-- `src/setup.ts` — flags→config merge + `buildContext` (shared by frontends).
+- `src/setup.ts` — `parseArgs` (flags via `@cliffy/command`: typed flags,
+  generated `--help`/usage, `pagu completions <shell>`) + `buildContext`, which
+  folds `defaults ⋄ config.json ⋄ roles ⋄ flags` and exposes runtime
+  `setProvider`/`setRoles` (the TUI's `/provider`, `/model`, `/roles`). Shared
+  by frontends.
 - `src/cli.ts` — one-shot frontend (stdin approver). `src/tui.ts` — REPL
-  frontend (colored, multi-turn). They differ _only_ in UI + Approver.
+  frontend (colored, multi-turn; slash commands + arrow-key pickers via
+  `src/select.ts`). They differ _only_ in UI + Approver.
 
 Provider + phases + config:
 
@@ -104,9 +109,16 @@ Provider + phases + config:
   `{entries}` JSON. The side-channel carries no capability — the security
   boundary is unchanged. Only the model's text streams; exfil-gated run output
   never does.
-- `src/{config,repo,session}.ts` — config presets and instruction load
-  (AGENTS.md, with a CLAUDE.md fallback per scope, prose only); git-repo detect
-  and per-repo memory; envelope building and auto-approve policy.
+- `src/config.ts` — provider presets, instruction load (AGENTS.md, CLAUDE.md
+  fallback per scope, prose only), and the **`ConfigLayer` monoid**
+  (`mergeLayer`/`composeLayers`/`toLayer`) that roles + flags fold through.
+  `src/{repo,session}.ts` — git-repo detect + per-repo memory; envelope building
+  and auto-approve policy.
+- `src/roles.ts` — composable config+instruction bundles (markdown +
+  frontmatter): discovery (project shadows global), load, `listRoles`. Folds via
+  the `config.ts` monoid; fail-loud on a missing `--role`.
+- `src/select.ts` — interactive list picker (pure `reduce`/`frame`/`intentOf`
+  model + a `@cliffy/keypress` loop) behind the TUI's `/roles` and `/open`.
 - `src/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
   `@std/dotenv`) so keys like `ANTHROPIC_API_KEY` need no manual export.
 - `src/conversations.ts` — the conversation-session store: per-project

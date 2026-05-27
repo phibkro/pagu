@@ -326,6 +326,30 @@ portable tier-1 floor around it (no regression).
   open an arrow-key list (`src/select.ts`); the selection model is pure and
   unit-tested, key decoding is borrowed from `@cliffy/keypress`. Both keep a
   text fallback when stdin is not a TTY.
+- **Config interop** — reads `CLAUDE.md` as a per-scope fallback when
+  `AGENTS.md` is absent (prose only, never `.claude/` settings).
+- **Roles** — composable config+instruction bundles: a markdown file whose YAML
+  frontmatter folds as a `ConfigLayer` monoid and whose body appends as prose.
+  `--role <name>` (repeatable) and the TUI `/roles` picker. See _Roles — decided
+  behavior_ below.
+
+### Roles — decided behavior (shipped; intended, surfaced — not bugs)
+
+- **Fold order:** defaults → global `config.json` → selected roles (in `--role`
+  order) → CLI flags (flags win last; roles are reusable middle layers). Prose:
+  base AGENTS/CLAUDE (global then project), then each role's body, concatenated.
+- **Merge law** (`mergeLayer`, a monoid): scalars last-write-wins; grants
+  (`allow`/`write`) set-union (order-independent); deny-wins lattice when
+  explicit denies arrive. See `docs/CONCEPTS.md`.
+- **Scopes:** global `~/.config/pagu/roles/<name>.md` (any project), project
+  `./.pagu/roles/<name>.md` (tracked/shared — `.gitignore` ignores only
+  `.pagu/sessions/`). Same name in both: the project file **shadows** global.
+- **Missing `--role <name>`:** **fail loud**, never silently ignored.
+- **Runtime `/roles <names>`** **replaces** the active group and re-derives the
+  whole effective config (provider, model, envelope/read-scope, prose). Most-
+  recent action wins between `/roles` and `/provider`/`/model`; an unknown name
+  leaves state unchanged. Repo mode is resolved once at startup, never
+  re-prompted. Safe because auto-approve is gated by repo mode, not roles.
 
 ### Open
 
@@ -347,65 +371,34 @@ portable tier-1 floor around it (no regression).
 
 ### Idea backlog (speculative / paradigm-level)
 
+**Next up: #1, composable extensibility / skills** — the natural successor to
+roles, and where feature flags and a pagu "skill" land.
+
 To knock out one at a time — not commitments. Designed through the compositional
 lens (see `AGENTS.md` → Values: functional/compositional core, composition over
 inheritance, category-theory/algebraic abstractions) and bound by the invariants
 above (esp. #1: no agent exec path). It's a personal harness, so packing ideas
-in is fair game — remove what doesn't earn its keep.
+in is fair game — remove what doesn't earn its keep. (Shipped already: config
+interop and roles — see the Shipped sections above.)
 
-1. **Config interop — CLAUDE.md fallback.** _Done._ Read `CLAUDE.md` per scope
-   when `AGENTS.md` is absent; prose only, never `.claude/` settings.
-2. **Roles — compositional configuration.** _Built: pure core (`mergeLayer`,
-   `composeLayers`), loading (`roles.ts`), `--role` wiring, and the TUI `/roles`
-   command (list + runtime apply)._ Named, composable bundles of config and
-   instructions; an agent **carries** several (a "profile" is the resolved
-   whole). A role is a **markdown file**: prose body with YAML frontmatter.
-   `AGENTS.md` is the always-on base role; named roles fold on top. Decided
-   behavior (intended, surfaced — not bugs):
-   - **Fold order:** defaults → global `config.json` → selected roles (in
-     `--role` order) → CLI flags (flags win last; roles are reusable middle
-     layers). Prose: base AGENTS/CLAUDE (global then project), then each role's
-     body, concatenated.
-   - **Merge law** (`mergeLayer`, a monoid): scalars last-write-wins; grants
-     (`allow`/`write`) set-union (order-independent); deny-wins lattice when
-     explicit denies arrive. See `docs/CONCEPTS.md`.
-   - **Scopes:** global `~/.config/pagu/roles/<name>.md` (any project), project
-     `./.pagu/roles/<name>.md` (tracked/shared — `.gitignore` ignores only
-     `.pagu/sessions/`).
-   - **Same name in both scopes:** **shadow** — the project file wins (one role
-     per name); compose-same-name deferred.
-   - **Missing `--role <name>`:** **fail loud** (error), never silently ignored.
-   - Roles set the envelope; the per-script/human gate stays the backstop.
-   - **Runtime `/roles <names>`:** **replaces** the active group (not additive)
-     and **re-derives the whole effective config** from the layers — provider,
-     model, permission envelope/read-scope, and prose all recompute. A prior
-     runtime `/provider`/`/model` is therefore superseded by a later `/roles`
-     (and vice-versa): **most-recent action wins**. An unknown name leaves state
-     unchanged (load fails before the re-derive). Repo mode is resolved once at
-     startup and never re-prompted by `/roles`. Re-deriving the envelope
-     mid-session is safe: auto-approve is gated by repo mode, not roles, so the
-     human still gates every script unless repo mode is on.
-
-   Selection: explicit/ordered first (`--role`, TUI `/roles`); context
-   auto-activation later (sugar).
-3. **Composable extensibility — plugins / extensions / feature flags.** Add
+1. **Composable extensibility — plugins / extensions / feature flags.** Add
    capability without forking the core, but an extension must **not** create an
    agent exec path (invariant #1) — so extensions are pure/effect-scoped units
    behind the existing ports (a provider behind `chat()`, a frontend behind
    `UI`/`Approver`, a tool that still only _proposes_). Feature flags =
-   compositional config (ties to #2). **Skills** land here: a pagu "skill" is
+   compositional config (ties to roles). **Skills** land here: a pagu "skill" is
    instruction + allowlisted reference files, not an exec bundle. Risk:
    **highest** (trust surface) — design the interface so the boundary holds by
    construction.
-4. **ACP (Agent Client Protocol).** Let pagu be driven by ACP clients (editors,
+2. **ACP (Agent Client Protocol).** Let pagu be driven by ACP clients (editors,
    …) as another **frontend** behind the `UI`/`Approver` seam, not a core change
    ("one state, many interfaces"). Clean if it stays a transport adapter.
-5. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
+3. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
    (or a smaller turn unit) as a **composable value** so loops combine: author →
    reviewer (iterative critique), fan-out/critique, etc. Multi-agent is _later_,
    but designing the loop as a composed procedure now (explicit in/out, no
    hidden actor state) keeps the door open — and that's the point where
    "independent actors" finally become appropriate. The capstone; depends on
-   #2/#3.
+   #1/#2.
 
-Suggested order **2 → 3 → 4 → 5** (re-sequence freely as constraints surface).
+Suggested order **1 → 2 → 3** (re-sequence freely as constraints surface).
