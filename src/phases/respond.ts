@@ -6,6 +6,7 @@ import {
   handleInvokeSkill,
   invokeSkillToolDef,
 } from "../tools/invoke-skill.ts";
+import { handleRunTask, runTaskToolDef } from "../tools/run-task.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
@@ -50,9 +51,13 @@ const messages = logToMessages(input.log, withAgents(system, input.agents));
 const out: Entry[] = [];
 
 const skillScripts = input.skillScripts ?? [];
-const tools = skillScripts.length > 0
-  ? [readToolDef, writeToolDef, invokeSkillToolDef(skillScripts)]
-  : [readToolDef, writeToolDef];
+const allowedTasks = input.allowedTasks ?? [];
+const tools = [
+  readToolDef,
+  writeToolDef,
+  ...(skillScripts.length > 0 ? [invokeSkillToolDef(skillScripts)] : []),
+  ...(allowedTasks.length > 0 ? [runTaskToolDef(allowedTasks)] : []),
+];
 
 try {
   await converse();
@@ -71,6 +76,16 @@ writeOutput(out);
 async function converse(): Promise<void> {
   for (let i = 0; i <= MAX_READS; i++) {
     const res = await chat(input.provider, messages, tools, onToken);
+
+    const runTaskCall = res.toolCalls.find((c) => c.name === "run_task");
+    if (runTaskCall) {
+      if (res.content) {
+        out.push({ kind: "message", role: "assistant", text: res.content });
+      }
+      const n = input.log.filter((e) => e.kind === "command-invoke").length + 1;
+      out.push(handleRunTask(runTaskCall.args, `ci${n}`));
+      break;
+    }
 
     const invokeCall = res.toolCalls.find((c) => c.name === "invoke_skill");
     if (invokeCall) {

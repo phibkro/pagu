@@ -17,6 +17,10 @@ export interface PhaseInput {
   /** Active skill scripts available for invoke_skill tool calls.
    * Only name and description are sent — the orchestrator owns the bodies. */
   skillScripts?: Array<{ name: string; description: string }>;
+  /** Tasks available for run_task: union of allowed + discovered tasks. */
+  allowedTasks?: Array<
+    { program: string; args: string[]; description: string }
+  >;
 }
 
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */

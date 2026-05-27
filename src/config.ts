@@ -22,6 +22,9 @@ export interface PaguConfig {
   allow: string[];
   /** When true, run the advisory reviewer before the human approval prompt. */
   advisor?: boolean;
+  /** Pre-approved commands the agent can run via run_task without a human
+   *  prompt. Format: "program arg1 arg2" (e.g. "deno task lint"). */
+  allowedTasks?: string[];
   /** Provider preset for the advisor (falls back to the main provider). */
   advisorProvider?: string;
   /** Model for the advisor (falls back to the main model). */
@@ -46,6 +49,7 @@ export interface ConfigLayer {
   advisor?: boolean;
   advisorProvider?: string;
   advisorModel?: string;
+  allowedTasks?: string[];
 }
 
 /** Provider presets. Most speak OpenAI Chat Completions; anthropic uses its
@@ -142,6 +146,12 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
       out.advisorProvider = p.advisorProvider;
     }
     if (typeof p.advisorModel === "string") out.advisorModel = p.advisorModel;
+    if (
+      Array.isArray(p.allowedTasks) &&
+      p.allowedTasks.every((x) => typeof x === "string")
+    ) {
+      out.allowedTasks = p.allowedTasks as string[];
+    }
   }
   return out;
 }
@@ -187,6 +197,8 @@ export function mergeLayer(a: ConfigLayer, b: ConfigLayer): ConfigLayer {
   if (advisorProvider !== undefined) out.advisorProvider = advisorProvider;
   const advisorModel = b.advisorModel ?? a.advisorModel;
   if (advisorModel !== undefined) out.advisorModel = advisorModel;
+  const allowedTasks = unionLists(a.allowedTasks, b.allowedTasks);
+  if (allowedTasks !== undefined) out.allowedTasks = allowedTasks;
   return out;
 }
 
@@ -216,6 +228,7 @@ export function toLayer(data: Record<string, unknown>): ConfigLayer {
     l.advisorProvider = data.advisorProvider;
   }
   if (typeof data.advisorModel === "string") l.advisorModel = data.advisorModel;
+  if (isStringArray(data.allowedTasks)) l.allowedTasks = data.allowedTasks;
   return l;
 }
 

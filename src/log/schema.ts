@@ -11,6 +11,7 @@ export type Entry =
   | Observation
   | ScriptEntry
   | SkillInvocationEntry
+  | CommandInvocationEntry
   | PermsEntry
   | Decision
   | ResultEntry;
@@ -29,6 +30,16 @@ export interface Observation {
   kind: "observation";
   source: string;
   content: string;
+}
+
+/** The agent chose to run a pre-approved project task or allowed command.
+ * The orchestrator validates against the command policy (explicit + inferred),
+ * cages to discover/verify permissions, stores the ceiling, then runs. */
+export interface CommandInvocationEntry {
+  kind: "command-invoke";
+  id: string;
+  program: string;
+  args: string[];
 }
 
 /** The agent chose to invoke a pre-approved skill script by name. The

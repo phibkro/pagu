@@ -18,6 +18,12 @@ import { detectSandbox } from "./runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
 import { loadRoles, type Role } from "./roles.ts";
 import { loadSkills, type Skill, type SkillScript } from "./skills.ts";
+import {
+  buildExplicitEntries,
+  type CommandEntry,
+  type DiscoveredTask,
+} from "./command-policy.ts";
+import { discoverTasks } from "./discovery.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
 import {
   latestSession,
@@ -257,6 +263,10 @@ export async function buildContext(
   let liveAdvisorConfig: ProviderConfig | undefined;
   let liveSkillScripts: SkillScript[] = [];
   let liveSkills: Skill[] = [];
+  let liveCommandEntries: CommandEntry[] = [];
+  const liveDiscoveredTasks: DiscoveredTask[] = await discoverTasks(
+    projectBase,
+  );
   let readPaths: string[];
   let envelope: Envelope;
   let denyFlags: string[];
@@ -377,6 +387,8 @@ export async function buildContext(
     ].join(" ");
 
     activeRoles = roleList.map((r) => r.name);
+
+    liveCommandEntries = buildExplicitEntries(effective.allowedTasks ?? []);
 
     if (liveSkillScripts.length > 0) {
       const scriptLines = liveSkillScripts
@@ -576,6 +588,10 @@ export async function buildContext(
     get denyFlags() {
       return denyFlags;
     },
+    get commandEntries() {
+      return liveCommandEntries;
+    },
+    discoveredTasks: liveDiscoveredTasks,
     get activeSkillScripts() {
       return liveSkillScripts;
     },

@@ -48,6 +48,16 @@ Deno.test("script body with backticks survives (tilde fences)", () => {
   assertEquals(parseLog(serializeLog(e)), e);
 });
 
+Deno.test("command-invoke round-trips", () => {
+  const e: Entry[] = [{
+    kind: "command-invoke",
+    id: "ci1",
+    program: "deno",
+    args: ["task", "lint"],
+  }];
+  assertEquals(parseLog(serializeLog(e)), e);
+});
+
 Deno.test("skill-invoke round-trips with and without args", () => {
   const withArgs: Entry[] = [{
     kind: "skill-invoke",

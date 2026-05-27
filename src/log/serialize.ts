@@ -34,6 +34,10 @@ export function serializeEntry(e: Entry): string {
       open = head("skill-invoke", { id: e.id, script: e.script });
       body = e.args ? e.args.join("\n") : "";
       break;
+    case "command-invoke":
+      open = head("command-invoke", { id: e.id, program: e.program });
+      body = e.args.join("\n");
+      break;
     case "perms":
       open = head("perms", { script: e.script });
       body = e.perms.join("\n");

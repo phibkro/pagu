@@ -13,6 +13,12 @@ import { shouldAutoApprove } from "./permissions/policy.ts";
 import { formatAdvisory, runAdvisor } from "./advisor.ts";
 import { buildReview, formatReview } from "./review.ts";
 import { matchesSkillScript, type SkillScript } from "./skills.ts";
+import {
+  type CommandEntry,
+  matchesPolicy,
+  storeInferred,
+} from "./command-policy.ts";
+import type { DiscoveredTask } from "./command-policy.ts";
 import type { SandboxKind } from "./runner/sandbox.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
@@ -30,6 +36,10 @@ const isScript = (e: Entry): e is ScriptEntry => e.kind === "script";
 type SkillInvocationEntry = Extract<Entry, { kind: "skill-invoke" }>;
 const isSkillInvoke = (e: Entry): e is SkillInvocationEntry =>
   e.kind === "skill-invoke";
+
+type CommandInvocationEntry = Extract<Entry, { kind: "command-invoke" }>;
+const isCommandInvoke = (e: Entry): e is CommandInvocationEntry =>
+  e.kind === "command-invoke";
 
 /** The one I/O seam for the human review gate (stdin / TUI prompt). Only
  * called when a proposal is NOT auto-approvable. The perms it would run
@@ -70,6 +80,10 @@ export interface AgentContext {
   repo?: string;
   envelope: Envelope;
   denyFlags: string[];
+  /** Explicit command policy entries (from allowed-tasks config + inferred). */
+  commandEntries: CommandEntry[];
+  /** Discovered project tasks (for the run_task tool listing). */
+  discoveredTasks: DiscoveredTask[];
   /** Pre-approved scripts from active skills. A proposed script whose body
    *  matches exactly and whose discovered perms are within the script's
    *  declared permission ceiling auto-approves without a human prompt. */
@@ -159,6 +173,28 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
       name: ss.name,
       description: ss.description,
     })),
+    allowedTasks: [
+      // Discovered tasks that have a matching policy entry
+      ...ctx.discoveredTasks.filter((t) =>
+        matchesPolicy(t.program, t.args, ctx.commandEntries) !== undefined
+      ),
+      // Explicit entries not covered by any discovered task (e.g. "git commit")
+      ...ctx.commandEntries
+        .filter((e) =>
+          e.source === "explicit" &&
+          !ctx.discoveredTasks.some(
+            (t) =>
+              t.program === e.program &&
+              t.args.length === e.args.length &&
+              t.args.every((a, i) => a === e.args[i]),
+          )
+        )
+        .map((e) => ({
+          program: e.program,
+          args: e.args,
+          description: `${e.program} ${e.args.join(" ")}`,
+        })),
+    ],
   });
   const stream = ctx.ui.stream;
   const respond = () =>
@@ -319,6 +355,180 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
           return;
         }
         continue; // loop: model sees result and can continue or wrap up
+      }
+
+      // Command invocation: agent called run_task. Validate against policy,
+      // cage (discover/verify permissions), store inferred ceiling, run.
+      const cmdInvoke = produced.findLast(isCommandInvoke);
+      if (cmdInvoke) {
+        const allEntries = [
+          ...ctx.commandEntries,
+          ...await (async () => {
+            try {
+              const { loadInferred } = await import("./command-policy.ts");
+              return await loadInferred(ctx.projectBase);
+            } catch {
+              return [];
+            }
+          })(),
+        ];
+        const entry = matchesPolicy(
+          cmdInvoke.program,
+          cmdInvoke.args,
+          allEntries,
+        );
+        if (!entry) {
+          const cmd = `${cmdInvoke.program} ${cmdInvoke.args.join(" ")}`;
+          ctx.ui.show(`✗ run_task: "${cmd}" is not in the command policy`);
+          ctx.log.push({
+            kind: "message",
+            role: "user",
+            text:
+              `run_task rejected: "${cmd}" is not in the allowed-tasks list. ` +
+              `Use the write tool to propose a script instead.`,
+          });
+          ctx.persist();
+          continue;
+        }
+
+        // Generate a temporary Deno script that invokes the command
+        const cmdBody = `const r = await new Deno.Command(${
+          JSON.stringify(cmdInvoke.program)
+        }, {
+  args: ${JSON.stringify(cmdInvoke.args)},
+  cwd: Deno.cwd(),
+  stdout: "inherit",
+  stderr: "inherit",
+}).output();
+Deno.exit(r.code);
+`;
+        ctx.ui.status(
+          `caging command: ${cmdInvoke.program} ${cmdInvoke.args.join(" ")}…`,
+        );
+        const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
+        const file = `${scratch}/${cmdInvoke.id}.ts`;
+        await Deno.writeTextFile(file, cmdBody);
+
+        // Use stored ceiling if available, otherwise open for discovery
+        const cageCeiling = entry.permissions.length > 0
+          ? entry.permissions
+          : [];
+        const cageResult = await runScript({
+          scriptPath: file,
+          perms: [
+            ...ctx.readPaths.map((p) => `allow-read=${p}`),
+            `allow-write=${scratch}`,
+            ...(cageCeiling.length > 0
+              ? cageCeiling
+              : [`allow-run=${cmdInvoke.program}`]),
+            ...ctx.denyFlags,
+          ],
+          cwd: ctx.repo ?? ctx.projectBase,
+          sandbox: ctx.sandboxKind,
+        });
+        await Deno.remove(scratch, { recursive: true });
+
+        const cls = classifyRun(cageResult.exit, cageResult.stderr);
+        let cmdPerms: string[];
+        if (cls.kind === "ok") {
+          cmdPerms = ctx.readPaths.map((p) => `allow-read=${p}`);
+        } else if (cls.kind === "needs-perms") {
+          const discovered = cls.perms.map((s) =>
+            parsePermission(absolutizePerm(s, ctx.repo ?? Deno.cwd()))
+          );
+          // If there's a stored ceiling, enforce it; otherwise accept and store
+          if (entry.permissions.length > 0) {
+            const ceiling = entry.permissions.flatMap((p) => {
+              try {
+                return [parsePermission(p)];
+              } catch {
+                return [];
+              }
+            });
+            if (!withinEnvelope(discovered, { allow: ceiling })) {
+              ctx.ui.show(
+                `✗ command "${cmdInvoke.program} ${
+                  cmdInvoke.args.join(" ")
+                }" needs perms outside stored ceiling`,
+              );
+              ctx.log.push({
+                kind: "decision",
+                script: cmdInvoke.id,
+                verdict: "reject",
+                rationale: "discovered perms exceed stored ceiling",
+              });
+              ctx.persist();
+              return;
+            }
+          } else {
+            // First run: infer and store the ceiling
+            await storeInferred(ctx.projectBase, {
+              program: cmdInvoke.program,
+              args: cmdInvoke.args,
+              permissions: cls.perms.map((s) =>
+                absolutizePerm(s, ctx.repo ?? Deno.cwd())
+              ),
+              source: "inferred",
+              inferredAt: new Date().toISOString(),
+            });
+          }
+          cmdPerms = [
+            ...ctx.readPaths.map((p) => `allow-read=${p}`),
+            ...cls.perms.map((s) => absolutizePerm(s, ctx.repo ?? Deno.cwd())),
+          ];
+        } else {
+          ctx.ui.show(`✗ command cage failed:\n${cls.error}`);
+          ctx.log.push({
+            kind: "decision",
+            script: cmdInvoke.id,
+            verdict: "reject",
+            rationale: `cage bug: ${cls.error}`,
+          });
+          ctx.persist();
+          return;
+        }
+
+        ctx.ui.status(
+          `running: ${cmdInvoke.program} ${cmdInvoke.args.join(" ")}…`,
+        );
+        ctx.log.push({
+          kind: "decision",
+          script: cmdInvoke.id,
+          verdict: "approve",
+          rationale: `auto-approved command: ${cmdInvoke.program} ${
+            cmdInvoke.args.join(" ")
+          }`,
+        });
+        ctx.persist();
+
+        const runScratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
+        const runFile = `${runScratch}/${cmdInvoke.id}.ts`;
+        await Deno.writeTextFile(runFile, cmdBody);
+        const result = await runScript({
+          scriptPath: runFile,
+          perms: [...cmdPerms, ...ctx.denyFlags],
+          cwd: ctx.repo ?? ctx.projectBase,
+          sandbox: ctx.sandboxKind,
+        });
+        await Deno.remove(runScratch, { recursive: true });
+
+        const output = result.stdout || result.stderr;
+        ctx.log.push({
+          kind: "result",
+          script: cmdInvoke.id,
+          exit: result.exit,
+          ranWith: result.ranWith,
+          output,
+        });
+        ctx.persist();
+        ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
+        if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
+          ctx.ui.show(
+            "\n[net was granted — output would NOT auto-return to the agent]",
+          );
+          return;
+        }
+        continue;
       }
 
       let script = produced.findLast(isScript);

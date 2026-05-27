@@ -39,6 +39,14 @@ export function parseLog(md: string): Entry[] {
       case "script":
         entries.push({ kind, id: a.id ?? "", lang: a.lang ?? "ts", body });
         break;
+      case "command-invoke":
+        entries.push({
+          kind: "command-invoke",
+          id: a.id ?? "",
+          program: a.program ?? "",
+          args: body ? body.split("\n") : [],
+        });
+        break;
       case "skill-invoke": {
         const inv: import("./schema.ts").SkillInvocationEntry = {
           kind: "skill-invoke",
