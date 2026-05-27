@@ -244,12 +244,23 @@ portable tier-1 floor around it (no regression).
 
 - **Runtime:** Deno (TypeScript). Cross-platform, runs TS directly,
   `deno compile` → single binary, permission model is the security floor.
-- **Core in plain TypeScript — no Effect.** effect-smol (v4) was evaluated and
-  dropped: it's a large conceptual dependency that works _against_ pagu's whole
-  value prop (small TCB, auditable in one sitting, minimal supply chain).
-  Revisit only if orchestration pain justifies it, and even then keep it out of
-  the security-critical core. (If adopted later, vendor the Effect repo as a
-  read-only `git subtree` for agent reference — deferred until that decision.)
+- **Core in plain TypeScript — no Effect (evaluated, declined 2026-05).** A
+  throwaway spike confirmed Effect v4-beta (`effect@4.0.0-beta.71` plus
+  `@effect/ai-anthropic`/`-openai@4.0.0-beta.71`) _does_ run under Deno: the
+  runtime, `effect/unstable/ai`, and `Tool`/`Toolkit`/handlers all compose and
+  type-check. Declined anyway on measured cost — the AI layer is
+  `effect/unstable/ai` (an explicitly _unstable_ API on a _beta_ runtime, with
+  docs still v3-shaped); the `effect` package unpacks to ~48 MB over a wide
+  transitive graph; and importing the AI modules adds ~120 ms to a cold process,
+  which matters because pagu spawns a **fresh process per turn**. All of that
+  works _against_ the value prop (small TCB, auditable in one sitting, minimal
+  supply chain), and Effect's strength (in-process structured concurrency)
+  doesn't touch pagu's real security seam (separate processes plus Deno
+  permissions). **Direction:** build our own minimal abstractions in Effect's
+  _footsteps_ — typed errors, composable layers, explicit effects at the seams —
+  without the runtime. Revisit only if `effect/ai` stabilizes out of `unstable/`
+  _and_ orchestration pain justifies it; even then, keep it out of the
+  security-critical core.
 - **Provider:** a hand-rolled **OpenAI Chat Completions** client is the default
   wire format (covers Ollama — the local default — plus OpenRouter, OpenAI,
   Groq, LM Studio, vLLM…), with a native **Anthropic** Messages client
