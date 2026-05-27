@@ -1,23 +1,23 @@
 // effects: terminal frontend (one-shot)
-import { loadConfig } from "./config.ts";
+import { loadConfig } from "../config/config.ts";
 import {
   buildContext,
   completionsCommand,
   parseArgs,
   readLine,
-} from "./setup.ts";
-import { type Approver, runTask, type UI } from "./agent.ts";
-import { gitRoot } from "./repo.ts";
-import { listSessions } from "./sessions.ts";
+} from "../config/setup.ts";
+import { type Approver, runTask, type UI } from "../agent.ts";
+import { gitRoot } from "../config/repo.ts";
+import { listSessions } from "../config/sessions.ts";
 
 /**
  * pagu CLI — the one-shot frontend onto the I/O-agnostic core
  * (src/agent.ts). `pagu "<task>"` runs once; bare `pagu` in a terminal
- * (or `--tui`) launches the REPL TUI (src/tui.ts). Both build the same
+ * (or `--tui`) launches the REPL TUI (src/frontends/tui.ts). Both build the same
  * context via setup.ts; they differ only in UI + Approver.
  *
  *   deno run --allow-run --allow-read --allow-write --allow-env \
- *     src/cli.ts "your task" [--repo] [--allow <dir>]... [--provider p]
+ *     src/frontends/cli.ts "your task" [--repo] [--allow <dir>]... [--provider p]
  */
 
 // `pagu completions <shell>` emits a shell completion script (cliffy). Handle

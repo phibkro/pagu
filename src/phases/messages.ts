@@ -1,5 +1,5 @@
 // pure
-import type { ChatMessage } from "../provider/chat.ts";
+import type { ChatMessage } from "../providers/chat.ts";
 import type { Entry } from "../log/schema.ts";
 
 /** Project the conversation log into chat messages for the model. */

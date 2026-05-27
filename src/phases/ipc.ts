@@ -1,6 +1,6 @@
 // effects: stdio (stdin/stdout)
 import type { Entry } from "../log/schema.ts";
-import type { ProviderConfig } from "../provider/chat.ts";
+import type { ProviderConfig } from "../providers/chat.ts";
 
 /** What a phase subprocess receives on stdin. The log carries all prior
  * context (including the user's task as the latest message), so a phase

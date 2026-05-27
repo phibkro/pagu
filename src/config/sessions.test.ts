@@ -1,5 +1,5 @@
 import { assertEquals, assertMatch } from "@std/assert";
-import { serializeLog } from "./log/serialize.ts";
+import { serializeLog } from "../log/serialize.ts";
 import {
   latestSession,
   listSessions,

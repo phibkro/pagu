@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { listSkills, loadSkill, matchesSkillScript } from "./skills.ts";
-import { parsePermission } from "./permissions/envelope.ts";
+import { listSkills, loadSkill, matchesSkillScript } from "./skill.ts";
+import { parsePermission } from "../permissions/envelope.ts";
 
 // --- helpers ---
 

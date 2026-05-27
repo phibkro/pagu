@@ -1,5 +1,5 @@
 // pure
-import type { ToolDef } from "../provider/chat.ts";
+import type { ToolDef } from "../providers/chat.ts";
 import type { SkillInvocationEntry } from "../log/schema.ts";
 
 /**

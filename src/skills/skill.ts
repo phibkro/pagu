@@ -1,12 +1,16 @@
 // effects: fs (skill discovery + load); matchesSkillScript is pure
 import { join } from "@std/path";
-import { frontmatter } from "./frontmatter.ts";
-import { configDirFromEnv, type ConfigLayer, toLayer } from "./config.ts";
+import { frontmatter } from "../config/frontmatter.ts";
+import {
+  configDirFromEnv,
+  type ConfigLayer,
+  toLayer,
+} from "../config/config.ts";
 import {
   parsePermission,
   type Permission,
   withinEnvelope,
-} from "./permissions/envelope.ts";
+} from "../permissions/envelope.ts";
 
 /**
  * A pre-approved script bundled with a skill. The body is loaded from disk at

@@ -1,5 +1,5 @@
 // pure
-import type { ToolDef } from "../provider/chat.ts";
+import type { ToolDef } from "../providers/chat.ts";
 import type { ScriptEntry } from "../log/schema.ts";
 
 /**

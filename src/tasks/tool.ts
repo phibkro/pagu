@@ -1,5 +1,5 @@
 // pure
-import type { ToolDef } from "../provider/chat.ts";
+import type { ToolDef } from "../providers/chat.ts";
 import type { CommandInvocationEntry } from "../log/schema.ts";
 /** Subset of DiscoveredTask sufficient for the tool listing. */
 type TaskListing = { program: string; args: string[]; description: string };

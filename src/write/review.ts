@@ -3,7 +3,7 @@ import {
   type Envelope,
   parsePermission,
   withinEnvelope,
-} from "./permissions/envelope.ts";
+} from "../permissions/envelope.ts";
 
 /**
  * Risk tier derived from the permission set — computed without reading the

@@ -1,6 +1,6 @@
 // effects: reads project task-runner config files
 import { join, resolve } from "@std/path";
-import type { DiscoveredTask } from "./command-policy.ts";
+import type { DiscoveredTask } from "./policy.ts";
 
 /**
  * Scan the project for runnable named tasks across common task runners.

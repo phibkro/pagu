@@ -1,6 +1,6 @@
 // effect: runAdvisor calls the model; formatAdvisory is pure.
-import { chat } from "./provider/chat.ts";
-import type { ProviderConfig } from "./provider/chat.ts";
+import { chat } from "../providers/chat.ts";
+import type { ProviderConfig } from "../providers/chat.ts";
 
 const SYSTEM_PROMPT =
   "You are a security reviewer for a script proposed by an AI agent. " +

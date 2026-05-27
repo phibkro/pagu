@@ -2,8 +2,8 @@
 import { Command } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { dirname, fromFileUrl, resolve } from "@std/path";
-import { serializeLog } from "./log/serialize.ts";
-import type { Entry } from "./log/schema.ts";
+import { serializeLog } from "../log/serialize.ts";
+import type { Entry } from "../log/schema.ts";
 import {
   composeLayers,
   type ConfigLayer,
@@ -11,20 +11,20 @@ import {
   type PaguConfig,
   resolveProvider,
 } from "./config.ts";
-import { type Envelope, formatFlag } from "./permissions/envelope.ts";
-import { buildEnvelope } from "./permissions/policy.ts";
+import { type Envelope, formatFlag } from "../permissions/envelope.ts";
+import { buildEnvelope } from "../permissions/policy.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
-import { detectSandbox } from "./runner/sandbox.ts";
+import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
 import { loadRoles, type Role } from "./roles.ts";
-import { loadSkills, type Skill, type SkillScript } from "./skills.ts";
+import { loadSkills, type Skill, type SkillScript } from "../skills/skill.ts";
 import {
   buildExplicitEntries,
   type CommandEntry,
   type DiscoveredTask,
-} from "./command-policy.ts";
-import { discoverTasks } from "./discovery.ts";
-import type { ProviderConfig } from "./provider/chat.ts";
+} from "../tasks/policy.ts";
+import { discoverTasks } from "../tasks/discovery.ts";
+import type { ProviderConfig } from "../providers/chat.ts";
 import {
   latestSession,
   loadSession,
@@ -32,7 +32,7 @@ import {
   serializeFrontmatter,
   sessionPath,
 } from "./sessions.ts";
-import type { AgentContext, Approver, UI } from "./agent.ts";
+import type { AgentContext, Approver, UI } from "../agent.ts";
 
 /**
  * Shared frontend plumbing: parse flags over config, then build the
@@ -207,7 +207,7 @@ export async function buildContext(
   ui: UI,
   approve: Approver,
 ): Promise<AgentContext> {
-  const phaseDir = fromFileUrl(new URL("./phases/", import.meta.url));
+  const phaseDir = fromFileUrl(new URL("../phases/", import.meta.url));
 
   // Offer to load a cwd .env first, so its keys are visible to the provider
   // resolution below (e.g. ANTHROPIC_API_KEY without a manual export).

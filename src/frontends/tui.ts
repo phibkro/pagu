@@ -1,18 +1,23 @@
 // effects: terminal frontend (REPL)
-import { loadConfig, PRESETS } from "./config.ts";
-import { buildContext, parseArgs, readLine } from "./setup.ts";
-import { type AgentContext, type Approver, runTask, type UI } from "./agent.ts";
+import { loadConfig, PRESETS } from "../config/config.ts";
+import { buildContext, parseArgs, readLine } from "../config/setup.ts";
+import {
+  type AgentContext,
+  type Approver,
+  runTask,
+  type UI,
+} from "../agent.ts";
 import {
   listSessions,
   loadSession,
   newSessionId,
   type SessionInfo,
   sessionPath,
-} from "./sessions.ts";
-import { listRoles } from "./roles.ts";
-import { listSkills } from "./skills.ts";
+} from "../config/sessions.ts";
+import { listRoles } from "../config/roles.ts";
+import { listSkills } from "../skills/skill.ts";
 import { selectFromList } from "./select.ts";
-import type { Entry } from "./log/schema.ts";
+import type { Entry } from "../log/schema.ts";
 
 /**
  * pagu TUI — a colored REPL frontend onto the same core as the CLI. A

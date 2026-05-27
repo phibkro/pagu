@@ -10,20 +10,20 @@ import {
   withinEnvelope,
 } from "./permissions/envelope.ts";
 import { shouldAutoApprove } from "./permissions/policy.ts";
-import { formatAdvisory, runAdvisor } from "./advisor.ts";
-import { buildReview, formatReview } from "./review.ts";
-import { matchesSkillScript, type SkillScript } from "./skills.ts";
+import { formatAdvisory, runAdvisor } from "./write/advisor.ts";
+import { buildReview, formatReview } from "./write/review.ts";
+import { matchesSkillScript, type SkillScript } from "./skills/skill.ts";
 import {
   type CommandEntry,
   filterStaleInferred,
   matchesPolicy,
   storeInferred,
-} from "./command-policy.ts";
-import type { DiscoveredTask } from "./command-policy.ts";
+} from "./tasks/policy.ts";
+import type { DiscoveredTask } from "./tasks/policy.ts";
 import type { SandboxKind } from "./runner/sandbox.ts";
 import type { Entry } from "./log/schema.ts";
-import type { ProviderConfig } from "./provider/chat.ts";
-import type { SessionMeta } from "./sessions.ts";
+import type { ProviderConfig } from "./providers/chat.ts";
+import type { SessionMeta } from "./config/sessions.ts";
 
 /**
  * The I/O-agnostic core loop. Flags, config, and a TUI are all just
@@ -390,7 +390,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
           ...ctx.commandEntries,
           ...await (async () => {
             try {
-              const { loadInferred } = await import("./command-policy.ts");
+              const { loadInferred } = await import("./tasks/policy.ts");
               const raw = await loadInferred(ctx.projectBase);
               return await filterStaleInferred(raw); // drop stale ceilings
             } catch {

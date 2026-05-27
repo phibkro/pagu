@@ -1,6 +1,6 @@
 // effects: filesystem reads
-import type { ToolDef } from "../provider/chat.ts";
-import type { Observation } from "../log/schema.ts";
+import type { ToolDef } from "./providers/chat.ts";
+import type { Observation } from "./log/schema.ts";
 
 /**
  * The `read` tool (Observe phase). Reads a file or lists a directory.

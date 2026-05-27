@@ -1,8 +1,8 @@
 // effects: filesystem (session store); pure: path/id/frontmatter helpers
 import { join } from "@std/path";
-import { parseLog } from "./log/parse.ts";
+import { parseLog } from "../log/parse.ts";
 import { frontmatter } from "./frontmatter.ts";
-import type { Entry } from "./log/schema.ts";
+import type { Entry } from "../log/schema.ts";
 
 /**
  * The conversation-session store. A session is one conversation-log file

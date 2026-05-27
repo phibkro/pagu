@@ -1,12 +1,9 @@
 // effects: phase entrypoint (reads allowlist, talks to model, emits chat/script)
-import { chat, type ChatMessage } from "../provider/chat.ts";
-import { handleRead, readToolDef } from "../tools/read.ts";
-import { handleWrite, writeToolDef } from "../tools/write.ts";
-import {
-  handleInvokeSkill,
-  invokeSkillToolDef,
-} from "../tools/invoke-skill.ts";
-import { handleRunTask, runTaskToolDef } from "../tools/run-task.ts";
+import { chat, type ChatMessage } from "../providers/chat.ts";
+import { handleRead, readToolDef } from "../read.ts";
+import { handleWrite, writeToolDef } from "../write/write.ts";
+import { handleInvokeSkill, invokeSkillToolDef } from "../skills/tool.ts";
+import { handleRunTask, runTaskToolDef } from "../tasks/tool.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";

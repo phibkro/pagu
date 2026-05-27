@@ -6,7 +6,7 @@ import {
   loadInferred,
   matchesPolicy,
   saveInferred,
-} from "./command-policy.ts";
+} from "./policy.ts";
 
 // --- matchesPolicy ---
 

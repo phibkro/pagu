@@ -5,7 +5,7 @@ import {
   formatReview,
   lineDiff,
 } from "./review.ts";
-import type { Envelope } from "./permissions/envelope.ts";
+import type { Envelope } from "../permissions/envelope.ts";
 
 // --- riskTier (via buildReview) ---
 
