@@ -13,12 +13,8 @@ fi
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
-echo "pre-commit: deno fmt --check"
-deno fmt --check
-echo "pre-commit: deno lint"
-deno lint
-echo "pre-commit: deno check src"
-deno check src
-echo "pre-commit: deno test"
-deno test --allow-run --allow-read --allow-write --allow-net --allow-env
+# The gate is defined once as `deno task ci` (fmt-check + lint + check + test)
+# in deno.json, so the hook and a manual run can't drift apart.
+echo "pre-commit: deno task ci"
+deno task ci
 echo "pre-commit: all green ✓"

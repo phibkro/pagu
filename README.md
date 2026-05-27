@@ -48,16 +48,16 @@ proposal and run.
 Run this **from the repo root** (so `deno.json` is found):
 
 ```sh
-deno install --global --force --config deno.json \
-  --allow-run --allow-read --allow-write --allow-env \
-  -n pagu ./src/cli.ts
+deno task install
 ```
 
-The **`--config deno.json` is required**: pagu's imports resolve through that
-file's import map, and `deno install --global` otherwise ignores `deno.json` (it
-would fail with `Import "@std/…" not a dependency`). Then make sure
-**`~/.deno/bin` is on your `PATH`** (deno prints this on install) so `pagu` is
-runnable — e.g. add `export PATH="$HOME/.deno/bin:$PATH"` to your shell rc.
+That wraps the full `deno install --global --force --config deno.json …` (see
+`deno.json` → tasks). The **`--config deno.json` is required**: pagu's imports
+resolve through that file's import map, and `deno install --global` otherwise
+ignores `deno.json` (it would fail with `Import "@std/…" not a dependency`) —
+which is why it's baked into the task. Then make sure **`~/.deno/bin` is on your
+`PATH`** (deno prints this on install) so `pagu` is runnable — e.g. add
+`export PATH="$HOME/.deno/bin:$PATH"` to your shell rc.
 
 The orchestrator needs run/read/write; each phase subprocess still gets only its
 own scoped permissions regardless of what the orchestrator holds.
@@ -173,7 +173,8 @@ because sourcing cwd env is a small trust decision. Gitignore your `.env`.
 ## Tests
 
 ```sh
-deno test --allow-run --allow-read --allow-write --allow-net --allow-env
+deno task test   # the suite (perms baked in)
+deno task ci     # full gate: fmt-check + lint + check + test
 ```
 
 ## Status

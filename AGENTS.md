@@ -135,12 +135,13 @@ Provider + phases + config:
 
 ## Feedback loops
 
-- `deno test --allow-run --allow-read --allow-write --allow-net --allow-env` —
-  the suite (pure cores + HTTP-mocked providers + sandboxed integration). Keep
-  it green.
-- `deno fmt && deno lint && deno check src` before committing — or enable the
-  pre-commit hook once per clone: `git config core.hooksPath .githooks` (runs
-  fmt-check + lint + check + tests; skips if deno isn't on PATH).
+- `deno task test` — the suite (pure cores + HTTP-mocked providers + sandboxed
+  integration; the perms are baked into the task). Keep it green.
+- `deno task ci` — the full gate (fmt-check + lint + check + test), the same
+  thing the pre-commit hook runs. Enable the hook once per clone:
+  `git config core.hooksPath .githooks` (skips if deno isn't on PATH).
+- `deno task install` — (re)install the `pagu` binary with the right
+  `--config`/perms (see Gotchas re: why `--config deno.json` is required).
 - **Live-verify** real changes against Ollama (default provider). The no-stdin
   recipe (auto-approves in repo mode, so it's self-contained):
   ```sh
