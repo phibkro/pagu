@@ -67,6 +67,32 @@ anything. The cage classifies each run:
 So the boundary is precise: autonomous execution is confined to a no-net,
 no-real-write rehearsal; real-effect execution stays human-gated.
 
+## System map
+
+Who holds which capability. The agent process (`respond`) only ever has read +
+net-to-the-model; **write and run live only in the human-gated runner**, itself
+wrapped by the OS sandbox where available.
+
+```mermaid
+flowchart TD
+  human["Human"]
+  model["LLM provider"]
+  subgraph machine["your machine"]
+    orch["orchestrator · CLI / TUI<br/>(holds run + read + write)"]
+    respond["respond phase<br/>--allow-net=model, --allow-read=allowlist<br/>never write or run"]
+    subgraph sandbox["OS sandbox · bwrap / sandbox-exec"]
+      runner["runner<br/>deno run --no-prompt &lt;approved flags&gt;"]
+    end
+    fs[("files")]
+  end
+  human -->|"task / approve (y/n)"| orch
+  orch -->|"spawn: read + net-to-model only"| respond
+  respond <-->|"tokens + read / write tool calls"| model
+  respond -->|"chat reply OR proposed script"| orch
+  orch -->|"run — only after approval"| runner
+  runner -->|"writes confined to granted paths"| fs
+```
+
 ## Phase FSM (chat-or-act)
 
 The loop is a small state machine. **Each turn is a separate, short-lived
@@ -90,6 +116,19 @@ read-capable turn and no script at all.
 The agent process only ever holds read + net-to-model; it never holds write or
 run. After a run, the result re-enters the log and the loop continues (the model
 wraps up or proposes the next step), bounded by a turn limit.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Respond: user message
+  Respond --> [*]: chat reply (no action needed)
+  Respond --> Cage: proposes a script
+  Cage --> Cage: runtime bug, fix and retry (bounded)
+  Cage --> Review: clean run, or needed perms discovered
+  Review --> [*]: rejected
+  Review --> Run: approved (y/n, or envelope auto)
+  Run --> Respond: result re-enters the log, continue
+  Run --> [*]: network granted, output not auto-returned
+```
 
 ## State model: the conversation log _is_ the event store
 
@@ -171,6 +210,18 @@ double-gate output for net-less runs.
 Honest ceiling: with only tier 1, a Deno/V8 escape would breach isolation; tier
 2 closes the write/network escape (incl. via subprocesses) where the OS supports
 it. Read confinement of subprocesses is the remaining tier-2 gap.
+
+```mermaid
+flowchart TD
+  subgraph tier2["Tier 2 · OS sandbox — bwrap / sandbox-exec (Linux/macOS)<br/>denies network · confines writes · contains --allow-run subprocesses"]
+    subgraph tier1["Tier 1 · Deno permissions — always on, portable<br/>--allow-read / write / net / run, exactly scoped"]
+      script["approved script"]
+    end
+  end
+```
+
+The script sits inside both walls; on a platform without tier 2 it still has the
+portable tier-1 floor around it (no regression).
 
 ## Threat model (load-bearing parts)
 
