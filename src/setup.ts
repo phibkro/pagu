@@ -1,4 +1,5 @@
-// effects: config/env/fs (buildContext); pure: applyArgs
+// effects: config/env/fs (buildContext); parseArgs (cliffy: --help/usage exit)
+import { Command } from "@cliffy/command";
 import { dirname, fromFileUrl, resolve } from "@std/path";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";
@@ -50,46 +51,95 @@ export interface RunOpts {
   /** `--no-sandbox`: disable the OS sandbox tier (Deno floor still applies). */
   noSandbox: boolean;
   repo: boolean;
+  /** `--tui`: force the interactive REPL (the entrypoint reads this). */
+  tui: boolean;
 }
 
-export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
+/** The CLI surface as a cliffy Command — the single source of the flag set,
+ * its `--help`/usage, and (via cliffy) shell completions. Built fresh per
+ * parse. The flag→config split happens in parseArgs: scalar/list overrides
+ * become a ConfigLayer (folded last, so flags win); the rest drive RunOpts. */
+function makeCommand() {
+  return new Command()
+    .name("pagu")
+    .description(
+      "Local capability-phased agent: the model authors scripts into an " +
+        "auditable log; a human approves; a sandboxed runner executes.",
+    )
+    .arguments("[task...]")
+    .option("--model <name:string>", "Model id (e.g. qwen3.5:9b).")
+    .option(
+      "--provider <preset:string>",
+      "Provider preset: ollama, openrouter, openai, anthropic, or custom.",
+    )
+    .option(
+      "--base-url <url:string>",
+      "Override the API root (OpenAI-compatible endpoint).",
+    )
+    .option("--allow <path:string>", "Read-allowlist path (repeatable).", {
+      collect: true,
+    })
+    .option(
+      "--write <dir:string>",
+      "Directory scripts may write to (repeatable).",
+      {
+        collect: true,
+      },
+    )
+    .option(
+      "--role <name:string>",
+      "Apply a role (repeatable; folds in order).",
+      {
+        collect: true,
+      },
+    )
+    .option("--session <id:string>", "Open a specific stored conversation.")
+    .option("--continue", "Resume the most recent conversation.")
+    .option("--list-sessions", "Print saved conversations and exit.")
+    .option(
+      "--log <file:string>",
+      "Use an explicit log file, bypassing the session store.",
+    )
+    .option(
+      "--no-sandbox",
+      "Disable the OS sandbox tier (Deno floor still applies).",
+    )
+    .option(
+      "--repo",
+      "Repo mode: read+write the git repo and auto-approve within it.",
+    )
+    .option("--tui", "Force the interactive REPL.");
+}
+
+/**
+ * Parse argv over the base config into RunOpts. Effectful: cliffy prints
+ * `--help`/usage and exits on `-h`/`--help` or a bad flag (standard CLI
+ * behavior). `--no-sandbox` arrives as `sandbox: false`; `[task...]` as the
+ * trailing args, joined.
+ */
+export async function parseArgs(
+  base: PaguConfig,
+  argv: string[],
+): Promise<RunOpts> {
+  const { options, args } = await makeCommand().parse(argv);
   const cli: ConfigLayer = {}; // flag overrides; folded last (win)
-  const roles: string[] = [];
-  let logPath: string | undefined;
-  let session: string | undefined;
-  let cont = false;
-  let listSessions = false;
-  let noSandbox = false;
-  let repo = false;
-  const positional: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--log") logPath = argv[++i];
-    else if (a === "--session") session = argv[++i];
-    else if (a === "--continue") cont = true;
-    else if (a === "--list-sessions") listSessions = true;
-    else if (a === "--no-sandbox") noSandbox = true;
-    else if (a === "--role") roles.push(argv[++i]);
-    else if (a === "--model") cli.model = argv[++i];
-    else if (a === "--provider") cli.provider = argv[++i];
-    else if (a === "--base-url") cli.baseURL = argv[++i];
-    else if (a === "--allow") (cli.allow ??= []).push(argv[++i]);
-    else if (a === "--write") (cli.write ??= []).push(argv[++i]);
-    else if (a === "--repo") repo = true;
-    else if (a === "--tui") { /* handled by the entrypoint */ }
-    else positional.push(a);
-  }
+  if (options.model) cli.model = options.model;
+  if (options.provider) cli.provider = options.provider;
+  if (options.baseUrl) cli.baseURL = options.baseUrl;
+  if (options.allow) cli.allow = options.allow;
+  if (options.write) cli.write = options.write;
   return {
     base,
     cli,
-    roles,
-    task: positional.join(" "),
-    logPath,
-    session,
-    cont,
-    listSessions,
-    noSandbox,
-    repo,
+    roles: options.role ?? [],
+    task: (args as string[]).join(" "),
+    logPath: options.log,
+    session: options.session,
+    cont: options.continue ?? false,
+    listSessions: options.listSessions ?? false,
+    noSandbox: !options.sandbox, // cliffy: --no-sandbox → sandbox === false
+    repo: options.repo ?? false,
+    tui: options.tui ?? false,
   };
 }
 

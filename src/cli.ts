@@ -1,6 +1,6 @@
 // effects: terminal frontend (one-shot)
 import { loadConfig } from "./config.ts";
-import { applyArgs, buildContext, readLine } from "./setup.ts";
+import { buildContext, parseArgs, readLine } from "./setup.ts";
 import { type Approver, runTask, type UI } from "./agent.ts";
 import { gitRoot } from "./repo.ts";
 import { listSessions } from "./conversations.ts";
@@ -16,7 +16,7 @@ import { listSessions } from "./conversations.ts";
  */
 
 const { config: fileConfig, agents } = await loadConfig();
-const opts = applyArgs(fileConfig, Deno.args);
+const opts = await parseArgs(fileConfig, Deno.args);
 
 // --list-sessions: print stored conversations for this project and exit.
 if (opts.listSessions) {
@@ -30,7 +30,7 @@ if (opts.listSessions) {
 }
 
 // No task on a terminal (or --tui) → interactive REPL.
-if (Deno.args.includes("--tui") || (!opts.task && Deno.stdin.isTerminal())) {
+if (opts.tui || (!opts.task && Deno.stdin.isTerminal())) {
   await (await import("./tui.ts")).tuiMain();
   Deno.exit(0);
 }

@@ -1,0 +1,78 @@
+import { assertEquals } from "@std/assert";
+import { parseArgs } from "./setup.ts";
+import { DEFAULTS } from "./config.ts";
+
+// parseArgs maps the cliffy-parsed flags onto RunOpts. These encode the
+// contract the rest of the app depends on: scalar/list flag overrides become
+// a ConfigLayer (folded last so flags win), `--role` collects in order, the
+// trailing args are the task, and the booleans map through (including
+// cliffy's `--no-sandbox` → `noSandbox`). cliffy's own parsing is its concern.
+
+Deno.test("parseArgs: flags become a ConfigLayer; roles collect; task joins", async () => {
+  const o = await parseArgs(DEFAULTS, [
+    "fix",
+    "the",
+    "bug",
+    "--model",
+    "qwen3.5:32b",
+    "--provider",
+    "openai",
+    "--base-url",
+    "http://x/v1",
+    "--allow",
+    "/a",
+    "--allow",
+    "/b",
+    "--write",
+    "/w",
+    "--role",
+    "dev",
+    "--role",
+    "rust",
+  ]);
+  assertEquals(o.task, "fix the bug");
+  assertEquals(o.cli, {
+    model: "qwen3.5:32b",
+    provider: "openai",
+    baseURL: "http://x/v1",
+    allow: ["/a", "/b"],
+    write: ["/w"],
+  });
+  assertEquals(o.roles, ["dev", "rust"]);
+  assertEquals(o.base, DEFAULTS); // base passes through untouched
+});
+
+Deno.test("parseArgs: session/log/boolean flags map through", async () => {
+  const o = await parseArgs(DEFAULTS, [
+    "--session",
+    "s1",
+    "--log",
+    "/tmp/x.md",
+    "--continue",
+    "--list-sessions",
+    "--no-sandbox",
+    "--repo",
+    "--tui",
+  ]);
+  assertEquals(o.session, "s1");
+  assertEquals(o.logPath, "/tmp/x.md");
+  assertEquals(o.cont, true);
+  assertEquals(o.listSessions, true);
+  assertEquals(o.noSandbox, true); // --no-sandbox → sandbox:false → noSandbox
+  assertEquals(o.repo, true);
+  assertEquals(o.tui, true);
+});
+
+Deno.test("parseArgs: defaults when no flags are given", async () => {
+  const o = await parseArgs(DEFAULTS, []);
+  assertEquals(o.task, "");
+  assertEquals(o.cli, {}); // empty layer — nothing overrides the base
+  assertEquals(o.roles, []);
+  assertEquals(o.cont, false);
+  assertEquals(o.listSessions, false);
+  assertEquals(o.noSandbox, false); // sandbox on by default
+  assertEquals(o.repo, false);
+  assertEquals(o.tui, false);
+  assertEquals(o.logPath, undefined);
+  assertEquals(o.session, undefined);
+});

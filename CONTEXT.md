@@ -261,7 +261,7 @@ portable tier-1 floor around it (no regression).
   without the runtime. Revisit only if `effect/ai` stabilizes out of `unstable/`
   _and_ orchestration pain justifies it; even then, keep it out of the
   security-critical core.
-- **`@cliffy/keypress` for key decoding (adopted 2026-05).** Terminal key
+- **`@cliffy/keypress` + `@cliffy/command` (adopted 2026-05).** Terminal key
   parsing (SS3 arrows, modifiers) is fiddly, edge-case-heavy, and
   non-differentiating, so we borrow the focused, stable `@cliffy/keypress` (1.x,
   small @std-based dep) for it — the opposite profile to the rejected Effect
@@ -269,7 +269,12 @@ portable tier-1 floor around it (no regression).
   use `@cliffy/prompt`'s Select/Checkbox despite the overlap: they call
   `exit(130)` on Ctrl-C, which would kill the whole REPL. Driving keypress at
   the event level lets Ctrl-C/Esc cancel just the picker; the pure selection
-  model (`reduce`/`frame`) stays ours and stays tested.
+  model (`reduce`/`frame`) stays ours and stays tested. Likewise `parseArgs`
+  uses `@cliffy/command` for the CLI surface: typed flags, generated
+  `--help`/usage, and shell completions as the flag set grows. Flags still map
+  onto the same `RunOpts`/`ConfigLayer` split (reversible), and an unknown
+  `--flag` falls into the free-text task — matching the prior hand-rolled
+  behavior and harmless under the no-exec invariant.
 - **Provider:** a hand-rolled **OpenAI Chat Completions** client is the default
   wire format (covers Ollama — the local default — plus OpenRouter, OpenAI,
   Groq, LM Studio, vLLM…), with a native **Anthropic** Messages client

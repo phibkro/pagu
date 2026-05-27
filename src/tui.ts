@@ -1,6 +1,6 @@
 // effects: terminal frontend (REPL)
 import { loadConfig, PRESETS } from "./config.ts";
-import { applyArgs, buildContext, readLine } from "./setup.ts";
+import { buildContext, parseArgs, readLine } from "./setup.ts";
 import { type AgentContext, type Approver, runTask, type UI } from "./agent.ts";
 import {
   listSessions,
@@ -222,7 +222,7 @@ async function readCommandLine(prompt: string): Promise<string | null> {
 
 export async function tuiMain(): Promise<void> {
   const { config: fileConfig, agents } = await loadConfig();
-  const opts = applyArgs(fileConfig, Deno.args);
+  const opts = await parseArgs(fileConfig, Deno.args);
 
   const spinner = makeSpinner();
   const ui: UI = {
