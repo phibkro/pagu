@@ -149,6 +149,12 @@ Don't touch ~/.ssh or anything under /etc.
 
 A malformed `config.json` is a hard error (it won't silently fall back).
 
+**API keys / `.env`:** pagu reads keys from the process environment (e.g.
+`ANTHROPIC_API_KEY`), so `export` them or use your shell's env. As a
+convenience, if a `.env` sits in the working directory, pagu offers **once per
+folder (remembered)** to load it into the environment — gated by a prompt
+because sourcing cwd env is a small trust decision. Gitignore your `.env`.
+
 ## Tests
 
 ```sh

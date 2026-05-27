@@ -56,6 +56,24 @@ interface OpenAIChatResponse {
 export type TokenSink = (token: string) => void;
 
 /**
+ * Build a one-line error from a non-OK provider response: extract the API's
+ * `error.message` when the body is JSON (the readable part), else truncate
+ * the raw body. Keeps a 401/404/billing error from becoming a stack dump.
+ */
+export async function providerError(
+  name: string,
+  res: Response,
+): Promise<Error> {
+  const body = await res.text();
+  let msg = body;
+  try {
+    const j = JSON.parse(body) as { error?: { message?: string } };
+    msg = j?.error?.message ?? body;
+  } catch { /* not JSON — keep the raw body */ }
+  return new Error(`${name} ${res.status}: ${msg.slice(0, 300)}`);
+}
+
+/**
  * Dispatch to the right wire format. The single entry point frontends use.
  * Pass `onToken` to stream content tokens as they arrive (OpenAI format
  * only; Anthropic stays buffered for now). The returned ChatResponse is
@@ -130,7 +148,7 @@ async function chatOpenAI(
   const { url, init } = openAIRequest(cfg, messages, tools, !!onToken);
   const res = await fetch(url, init);
   if (!res.ok) {
-    throw new Error(`provider ${res.status}: ${await res.text()}`);
+    throw await providerError("provider", res);
   }
   return onToken && res.body
     ? parseStream(res.body, onToken)

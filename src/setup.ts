@@ -7,6 +7,7 @@ import { formatFlag } from "./permissions/envelope.ts";
 import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "./runner/sandbox.ts";
+import { maybeLoadEnvFile } from "./envfile.ts";
 import {
   latestSession,
   loadSession,
@@ -109,6 +110,13 @@ export async function buildContext(
 ): Promise<AgentContext> {
   const cfg = opts.config;
   const phaseDir = fromFileUrl(new URL("./phases/", import.meta.url));
+
+  // Offer to load a cwd .env first, so its keys are visible to the provider
+  // resolution below (e.g. ANTHROPIC_API_KEY without a manual export).
+  const loadedEnv = await maybeLoadEnvFile(readLine);
+  if (loadedEnv.length > 0) {
+    console.error(`· loaded .env (${loadedEnv.join(", ")})`);
+  }
 
   const { baseURL, apiKeyEnv, format } = resolveProvider(cfg);
   const apiKey = apiKeyEnv ? Deno.env.get(apiKeyEnv) : undefined;

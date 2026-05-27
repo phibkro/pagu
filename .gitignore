@@ -2,3 +2,4 @@
 pagu.log.md
 *.log.md
 .pagu/
+.env

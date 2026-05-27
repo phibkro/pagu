@@ -72,6 +72,32 @@ Deno.test("streaming: forwards content tokens live, reassembles tool calls", asy
   }
 });
 
+Deno.test("a non-OK response throws a one-line error from the JSON body", async () => {
+  const server = Deno.serve(
+    { port: 0, onListen() {} },
+    () =>
+      new Response(
+        JSON.stringify({ error: { message: "credit balance is too low" } }),
+        { status: 400 },
+      ),
+  );
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    let caught = "";
+    try {
+      await chat({ baseURL: `http://localhost:${port}/v1`, model: "m" }, [
+        { role: "user", content: "hi" },
+      ]);
+    } catch (e) {
+      caught = e instanceof Error ? e.message : String(e);
+    }
+    // Clean one line — the API's error.message, not the raw JSON dump.
+    assertEquals(caught, "provider 400: credit balance is too low");
+  } finally {
+    await server.shutdown();
+  }
+});
+
 Deno.test("no key -> no Authorization header; tolerates no tool calls", async () => {
   let hadAuth = true;
   const server = Deno.serve({ port: 0, onListen() {} }, (req) => {

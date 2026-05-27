@@ -1,10 +1,11 @@
 // effects: network (model HTTP)
-import type {
-  ChatMessage,
-  ChatResponse,
-  ProviderConfig,
-  ToolCall,
-  ToolDef,
+import {
+  type ChatMessage,
+  type ChatResponse,
+  type ProviderConfig,
+  providerError,
+  type ToolCall,
+  type ToolDef,
 } from "./chat.ts";
 
 /**
@@ -82,9 +83,7 @@ export async function chatAnthropic(
     headers,
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    throw new Error(`anthropic ${res.status}: ${await res.text()}`);
-  }
+  if (!res.ok) throw await providerError("anthropic", res);
 
   const data = await res.json() as AnthropicResponse;
   let content = "";

@@ -45,58 +45,72 @@ const system = input.capabilities
 const messages = logToMessages(input.log, withAgents(system, input.agents));
 const out: Entry[] = [];
 
-for (let i = 0; i <= MAX_READS; i++) {
-  const res = await chat(
-    input.provider,
-    messages,
-    [readToolDef, writeToolDef],
-    onToken,
-  );
-
-  const writeCall = res.toolCalls.find((c) => c.name === "write");
-  if (writeCall) {
-    if (res.content) {
-      out.push({ kind: "message", role: "assistant", text: res.content });
-    }
-    const n = input.log.filter((e) => e.kind === "script").length + 1;
-    out.push(handleWrite(writeCall.args, `s${n}`));
-    break;
+try {
+  await converse();
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  // A provider HTTP error (auth/model/billing) is expected operational
+  // failure, not a bug: report it as one clean line, no stack.
+  if (/^(provider|anthropic) \d+:/.test(msg)) {
+    console.error(msg);
+    Deno.exit(1);
   }
+  throw e; // genuine bug — let it surface with its stack
+}
+writeOutput(out);
 
-  const readCalls = res.toolCalls.filter((c) => c.name === "read");
-  if (readCalls.length === 0) {
-    // Pure chat reply — no action needed.
-    if (res.content) {
-      out.push({ kind: "message", role: "assistant", text: res.content });
+async function converse(): Promise<void> {
+  for (let i = 0; i <= MAX_READS; i++) {
+    const res = await chat(
+      input.provider,
+      messages,
+      [readToolDef, writeToolDef],
+      onToken,
+    );
+
+    const writeCall = res.toolCalls.find((c) => c.name === "write");
+    if (writeCall) {
+      if (res.content) {
+        out.push({ kind: "message", role: "assistant", text: res.content });
+      }
+      const n = input.log.filter((e) => e.kind === "script").length + 1;
+      out.push(handleWrite(writeCall.args, `s${n}`));
+      break;
     }
-    break;
-  }
 
-  // Execute reads, feed results back, and continue deciding. The read
-  // result is logged as an observation; also announce the action live on
-  // the stderr side-channel so the user sees what the agent inspected.
-  if (res.content) messages.push({ role: "assistant", content: res.content });
-  for (const call of readCalls) {
-    const path = String(call.args.path ?? "");
-    try {
-      const obs = await handleRead(call.args);
-      onToken(`\n· ${obs.source}\n`); // e.g. "· ls src" / "· read README.md"
-      out.push(obs);
-      messages.push(
-        {
-          role: "tool",
-          content: `[${obs.source}]\n${obs.content}`,
-        } as ChatMessage,
-      );
-    } catch (err) {
-      onToken(`\n· read ${path} (denied)\n`);
-      const msg = `read failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`;
-      out.push({ kind: "observation", source: "error", content: msg });
-      messages.push({ role: "tool", content: msg });
+    const readCalls = res.toolCalls.filter((c) => c.name === "read");
+    if (readCalls.length === 0) {
+      // Pure chat reply — no action needed.
+      if (res.content) {
+        out.push({ kind: "message", role: "assistant", text: res.content });
+      }
+      break;
+    }
+
+    // Execute reads, feed results back, and continue deciding. The read
+    // result is logged as an observation; also announce the action live on
+    // the stderr side-channel so the user sees what the agent inspected.
+    if (res.content) messages.push({ role: "assistant", content: res.content });
+    for (const call of readCalls) {
+      const path = String(call.args.path ?? "");
+      try {
+        const obs = await handleRead(call.args);
+        onToken(`\n· ${obs.source}\n`); // e.g. "· ls src" / "· read README.md"
+        out.push(obs);
+        messages.push(
+          {
+            role: "tool",
+            content: `[${obs.source}]\n${obs.content}`,
+          } as ChatMessage,
+        );
+      } catch (err) {
+        onToken(`\n· read ${path} (denied)\n`);
+        const msg = `read failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`;
+        out.push({ kind: "observation", source: "error", content: msg });
+        messages.push({ role: "tool", content: msg });
+      }
     }
   }
 }
-
-writeOutput(out);
