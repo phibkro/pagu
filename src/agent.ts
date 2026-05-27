@@ -14,6 +14,7 @@ import { executeSkillInvocation } from "./skills/index.ts";
 import { executeCommandInvocation } from "./tasks/index.ts";
 import { executeScriptProposal } from "./write/index.ts";
 import type { Entry } from "./log/index.ts";
+import { type Flow, loop, type Step } from "./loop.ts";
 
 // Re-export the port interfaces — frontends import from here.
 export type { AgentContext, Approver, UI };
@@ -80,42 +81,53 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     else for (const m of msgs) ctx.ui.show(m.text);
   };
 
-  ctx.log.push({ kind: "message", role: "user", text: task });
-  ctx.persist();
+  // One turn as a composable Step (closes over ctx — the carrier `loop`
+  // threads). Respond, then dispatch to whichever capability the produced
+  // entries call for, mapping its "stop"/"loop" to the Flow coproduct. status
+  // is the turn's concern (an effect) — `loop` stays pure — and tracks
+  // first-vs-subsequent here. The inner cage fix-round loop stays encapsulated
+  // inside executeScriptProposal (the turn is atomic over it).
+  let turnIndex = 0;
+  const turn: Step<AgentContext> = async (): Promise<Flow> => {
+    ctx.ui.status(turnIndex++ === 0 ? "thinking…" : "continuing…");
+    const produced = await respond();
+    ctx.log.push(...produced);
+    ctx.persist();
+    showReply(produced);
 
-  try {
-    for (let turn = 1; turn <= MAX_TURNS; turn++) {
-      ctx.ui.status(turn === 1 ? "thinking…" : "continuing…");
-      const produced = await respond();
-      ctx.log.push(...produced);
-      ctx.persist();
-      showReply(produced);
+    const skillInvoke = produced.findLast(isSkillInvoke);
+    if (skillInvoke) {
+      return (await executeSkillInvocation(skillInvoke, ctx)) === "stop"
+        ? "done"
+        : "continue";
+    }
 
-      const skillInvoke = produced.findLast(isSkillInvoke);
-      if (skillInvoke) {
-        const action = await executeSkillInvocation(skillInvoke, ctx);
-        if (action === "stop") return;
-        continue;
-      }
+    const cmdInvoke = produced.findLast(isCommandInvoke);
+    if (cmdInvoke) {
+      return (await executeCommandInvocation(cmdInvoke, ctx)) === "stop"
+        ? "done"
+        : "continue";
+    }
 
-      const cmdInvoke = produced.findLast(isCommandInvoke);
-      if (cmdInvoke) {
-        const action = await executeCommandInvocation(cmdInvoke, ctx);
-        if (action === "stop") return;
-        continue;
-      }
-
-      const script = produced.findLast(isScript);
-      if (!script) return; // pure chat turn — no action needed
-      const action = await executeScriptProposal(
+    const script = produced.findLast(isScript);
+    if (!script) return "done"; // pure chat turn — no action needed
+    return (await executeScriptProposal(
         script,
         task,
         ctx,
         respond,
         showReply,
-      );
-      if (action === "stop") return;
-    }
+      )) ===
+        "stop"
+      ? "done"
+      : "continue";
+  };
+
+  ctx.log.push({ kind: "message", role: "user", text: task });
+  ctx.persist();
+
+  try {
+    await loop(turn, MAX_TURNS)(ctx);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     ctx.ui.show("✗ " + cleanPhaseError(msg));

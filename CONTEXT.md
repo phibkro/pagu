@@ -445,6 +445,20 @@ portable tier-1 floor around it (no regression).
   the runner stays the only exec path (invariant #1); ACP carries conversation +
   approval UX only. Deferred: session/cancel (needs cancellable `runTask`),
   images/audio, MCP, remote transport.
+- **Composable agent loops — substrate (v1)** (`src/loop.ts`) — the agent loop
+  is now a composable value, not a hand-written `for`. Denotation:
+  `⟦Flow⟧ =
+  continue | done` (coproduct), `⟦Step<C>⟧ = C → Promise<Flow>` (a
+  turn), `⟦loop⟧ =
+  bounded fixpoint`. `loop : Step → Step` is closed over the
+  type (a loop is itself a composable turn) — the lawful reason it returns a
+  `Step`, not a runner. `runTask` is reconstructed as
+  `loop(turn, MAX_TURNS)(ctx)`, behavior-identical (full suite + live run
+  green). The turn is **atomic over the inner cage fix-round loop** (unification
+  deferred). `andThen` (composition) and `fanOut` (monoidal product, + immutable
+  carrier) are deferred extensions the type accommodates — pulled in when a real
+  second loop needs them. See
+  `docs/specs/2026-05-28-composable-agent-loops-design.md`.
 
 ### Roles — decided behavior (shipped; intended, surfaced — not bugs)
 
@@ -484,8 +498,9 @@ portable tier-1 floor around it (no regression).
 
 ### Idea backlog (speculative / paradigm-level)
 
-**Next up: #1, composable agent loops** — ACP shipped (2026-05-27); the capstone
-is making the loop itself a composable value.
+**Next up: #1, composable agent loops — the substrate (v1) shipped 2026-05-28**
+(`src/loop.ts`; see Shipped). The loop is now a composable value; the next
+concrete loop (author→critic) is what pulls `andThen` into existence.
 
 To knock out one at a time — not commitments. Designed through the compositional
 lens (see `AGENTS.md` → Values: functional/compositional core, composition over
@@ -495,13 +510,14 @@ in is fair game — remove what doesn't earn its keep. (Shipped already: config
 interop, roles, skills, command policy, ACP frontend — see the Shipped sections
 above.)
 
-1. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
-   (or a smaller turn unit) as a **composable value** so loops combine: author →
-   reviewer (iterative critique), fan-out/critique, etc. Multi-agent is _later_,
-   but designing the loop as a composed procedure now (explicit in/out, no
-   hidden actor state) keeps the door open — and that's the point where
-   "independent actors" finally become appropriate. The capstone (ACP, its
-   prerequisite frontend seam, is shipped).
+1. **Composable agent loops — iterative review / multi-agent.** Substrate (v1)
+   **shipped** 2026-05-28 (`src/loop.ts`): the turn is a `Step<C>`, `runTask` is
+   `loop(turn)`. Remaining: the first real composed loop — author → reviewer
+   (iterative critique) — which implements `andThen` (composition); then
+   fan-out/critique (`fanOut` = monoidal product, needs the immutable carrier);
+   multi-agent _later_, the point where "independent actors" finally become
+   appropriate. Also queued: unifying the inner cage fix-round loop under the
+   same combinator.
 2. **Composable extensibility — plugins / feature flags.** Further extension
    beyond skills/tasks without forking the core; new providers behind `chat()`,
    new frontends behind `UI`/`Approver`, new tools that still only _propose_.

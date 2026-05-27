@@ -134,6 +134,14 @@ Orchestrator:
 
 - `src/agent.ts` — **the I/O-agnostic core**: `runTask(ctx, task)` +
   `AgentContext`/`Approver`/`UI`. The one seam between core and frontends.
+  `runTask` is `loop(turn, MAX_TURNS)(ctx)` — it builds the effectful `turn`
+  step and runs it through the `loop` combinator below.
+- `src/loop.ts` — **pure control core**: the composable loop substrate. `Flow`
+  (`continue | done` coproduct), `Step<C>` (`C → Promise<Flow>`, a turn), and
+  `loop : Step → Step` (the bounded fixpoint, closed over the type so a loop is
+  itself a composable turn). Generic over the carrier so it imports nothing —
+  tested by law. `andThen`/`fanOut` are deferred extensions the type
+  accommodates.
 
 Primary adapters (frontends):
 

@@ -120,6 +120,14 @@ is a **lawful merge**.
   (declared in `SKILL.md` frontmatter); the cage verifies at invocation that the
   actual run stays within it — so composition cannot silently widen the
   capability surface.
+- **The agent loop as a composable value** (`src/loop.ts`). The loop itself
+  follows the same meaning-first method: a turn _means_
+  `⟦Step<C>⟧ = C → Promise<Flow>` (an effectful turn yielding the coproduct
+  `⟦Flow⟧ = continue | done`), and `⟦loop⟧` is the bounded fixpoint over that
+  coproduct. `loop : Step → Step` is **closed over the type** — a loop is itself
+  a composable turn — which is what will let loops combine (`andThen` =
+  composition, `fanOut` = monoidal product) as the substrate grows. `runTask` is
+  just `loop(turn)`.
 
 ## Command policy as a type system
 
