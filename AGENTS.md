@@ -1,0 +1,119 @@
+# AGENTS.md — working in pagu
+
+Operating manual for an agent (or human) picking up this codebase cold.
+**Usage** lives in `README.md`; **rationale + threat model** in `DESIGN.md`.
+This file is the _how we work here_ layer. (It's also the cross-tool AGENTS.md
+standard — and pagu reads it itself, so keep it concise.)
+
+## What pagu is (the goal)
+
+A local, cross-platform agent you drive like a terminal, where **the model can
+never execute anything with real effect**. It reads context and _authors_ a
+Deno-TypeScript script into an auditable conversation log; a human (or an
+envelope rule) approves; a separate sandboxed process runs it. North star:
+_"safe computer use" — terminal-era control with LLM ergonomics, local-first,
+the blast radius statically enumerable._
+
+## Invariants (do not break these)
+
+1. **The agent has no real-effect execute capability.** Phases (Observe, Author)
+   run as separate `deno` processes with scoped perms; neither can write real
+   files or reach the net beyond the model. Real effects happen only in the
+   **runner**, triggered by approval. New tools/features must not hand the agent
+   an execute path.
+2. **The runner's Deno permissions are the security boundary**, not our code.
+   Anything that runs untrusted (the cage self-test, the runner) gets
+   exactly-scoped `--allow-*` flags.
+3. **Reads are untrusted input** (prompt-injection / exfil surface). The
+   per-proposal human gate is the backstop; never auto-approve outside a
+   pre-vetted envelope.
+4. **Security is the invariant; utility is maximized within it.** No compromise
+   of #1–#3 for convenience. When they tension, security wins and you surface
+   the tradeoff.
+5. **Minimal trusted core, offline-capable.** Hand-roll the security core and
+   the (trivial) provider HTTP. Take a dependency only for genuinely fiddly
+   non-security work, and never one that breaks "runs anywhere."
+6. **No Anthropic subscription OAuth** (Anthropic bars it for third-party tools
+   — account risk). API-key billing only.
+
+## Values / paradigms
+
+- **Capability-phased FSM:** each phase = a short-lived process with exactly its
+  phase's permissions; the runtime, not just code, enforces the bound.
+- **The conversation log is the event store** (CQRS): markdown with typed
+  `pagu:*` fenced blocks; append-only; the single source of truth.
+- **One state, many interfaces.** Flags, config, and the TUI are interfaces onto
+  the same settings; the core (`agent.ts`) is I/O-agnostic.
+- **Iterate-to-stable, then codify.** Ship the simplest correct thing, let the
+  next constraint surface, verify live, commit small.
+
+## Architecture map (where things live)
+
+Security-critical pure cores (unit-tested — change with care + tests first):
+
+- `src/log/` — `pagu:*` block parse/serialize (the event store format).
+- `src/perms/envelope.ts` — `covers`/`within`/`withinEnvelope` (auto-approve
+  gate); `gitignore.ts` — deny derivation via `git ls-files`.
+- `src/runner/run.ts` — sandboxed `deno run`; `classify.ts` — cage result → ok /
+  needs-perms (discovery) / bug.
+
+The loop and its frontends:
+
+- `src/agent.ts` — **the I/O-agnostic core**: `runTask(ctx, task)` +
+  `AgentContext`/`Approver`/`UI`. The one seam between core and frontends.
+- `src/setup.ts` — flags→config merge + `buildContext` (shared by frontends).
+- `src/cli.ts` — one-shot frontend (stdin approver). `src/tui.ts` — REPL
+  frontend (colored, multi-turn). They differ _only_ in UI + Approver.
+
+Provider + phases + config:
+
+- `src/provider/chat.ts` — `chat()` **dispatcher** (OpenAI Chat Completions,
+  default) → `anthropic.ts` (native Messages API) by `format`. Add providers
+  here, behind `chat()`.
+- `src/phases/{observe,author}.ts` — phase entrypoints (read stdin, call the
+  model, emit events); `spawn.ts`, `messages.ts`, `ipc.ts` support them.
+- `src/{config,repo,session}.ts` — config presets + AGENTS.md load; git-repo
+  detect + per-repo memory; envelope building + auto-approve policy.
+
+## Feedback loops
+
+- `deno test --allow-run --allow-read --allow-write --allow-net --allow-env` —
+  the suite (pure cores + HTTP-mocked providers + sandboxed integration). Keep
+  it green.
+- `deno fmt && deno lint && deno check src` before committing.
+- **Live-verify** real changes against Ollama (default provider). The no-stdin
+  recipe (auto-approves in repo mode, so it's self-contained):
+  ```sh
+  R=$(mktemp -d); (cd "$R" && git init -q && for f in a b c; do echo x>$f.txt; done && git add -A && git -c user.email=t@t -c user.name=t commit -qm i)
+  cd "$R" && pagu 'count the .txt files and write the number to count.txt' --repo </dev/null
+  ```
+- The **cage self-test** is the product's own feedback loop: a proposal's bugs
+  feed back to Author (bounded) before a human sees it.
+- **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
+  trailer
+  `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
+  Remote: private `github.com/phibkro/pagu` (origin/main).
+
+## How to resume, in good spirit
+
+1. Read `DESIGN.md` (rationale/threat model) + this file; skim `README.md`.
+2. Run the suite; do one live Ollama run to feel the loop.
+3. Pick the next slice from **`DESIGN.md` → Deferred / open**. Prefer the
+   lowest-risk thing that serves daily usefulness; don't over-build.
+4. Respect the invariants above. New provider → behind `chat()`. New frontend →
+   behind `Approver`/`UI`. New capability → never an agent exec path.
+5. Verify live, commit small, keep the TCB small. When unsure between patterns,
+   pick the one that keeps the security boundary clearest.
+
+## Gotchas (hard-won)
+
+- Deno `--deny-read=<child>` breaks `readDir` of its parent → gitignore denies
+  are **write-only** at runtime (read-protection deferred).
+- Deno reports denied paths _as the script referenced them_ (often relative) →
+  `absolutizePerm` before envelope checks.
+- `prompt()` returns `null` on piped stdin → use `readLine` (raw stdin).
+- Deno flakes only see **git-tracked** files → `git add` new files before a
+  build/`deno install`. Imports use full `jsr:` specifiers so global install
+  needs no `--config`.
+- Small models (e.g. qwen3.5:9b) write buggy first scripts; the cage
+  compensates. A bigger model (OpenRouter/Anthropic) needs fewer rounds.

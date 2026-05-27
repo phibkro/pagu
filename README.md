@@ -129,7 +129,10 @@ deno test --allow-run --allow-read --allow-write --allow-net
 
 ## Status
 
-v1: the full observe → author → approve → run loop works against a local model.
-Deferred (see `DESIGN.md`): permission discovery + auto-approve modes,
-multi-turn self-correction, git-backed log, TUI, conversation forking, OS-level
-sandbox tiers beyond Deno permissions.
+Working: observe → author → **cage self-test** (self-correct + permission
+discovery) → approve → sandboxed run; **repo mode** auto-approve; **CLI + TUI**
+frontends; providers **Ollama / OpenRouter / OpenAI / Anthropic**; AGENTS.md +
+config. See `AGENTS.md` for how to work in the repo.
+
+Deferred (see `DESIGN.md`): session store + resume + conversation forking,
+`.gitignore` read-protection, OS-level sandbox tiers beyond Deno permissions.
