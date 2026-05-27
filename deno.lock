@@ -1,6 +1,9 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@cliffy/internal@1.1.0": "1.1.0",
+    "jsr:@cliffy/keycode@1.1.0": "1.1.0",
+    "jsr:@cliffy/keypress@^1.1.0": "1.1.0",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/bytes@^1.0.6": "1.0.6",
     "jsr:@std/dotenv@0.225": "0.225.7",
@@ -12,6 +15,19 @@
     "jsr:@std/yaml@^1.0.5": "1.1.1"
   },
   "jsr": {
+    "@cliffy/internal@1.1.0": {
+      "integrity": "433dd7755680d0da6b0a6186694327f6fd8e80807be314cf4bb06270bab28023"
+    },
+    "@cliffy/keycode@1.1.0": {
+      "integrity": "66c0bfa2e299f9158a20bdecd7fcf77c8499a9872c8888ab912fa28977bdff0d"
+    },
+    "@cliffy/keypress@1.1.0": {
+      "integrity": "b32280139f0a14d47e814e019336f7618ca26ca9ef97ff7709f26e5d9776e184",
+      "dependencies": [
+        "jsr:@cliffy/internal",
+        "jsr:@cliffy/keycode"
+      ]
+    },
     "@std/assert@1.0.19": {
       "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
       "dependencies": [
@@ -51,6 +67,7 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@cliffy/keypress@^1.1.0",
       "jsr:@std/assert@1",
       "jsr:@std/dotenv@0.225",
       "jsr:@std/front-matter@1",

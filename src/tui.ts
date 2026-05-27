@@ -10,14 +10,16 @@ import {
   sessionPath,
 } from "./conversations.ts";
 import { listRoles } from "./roles.ts";
+import { selectFromList } from "./select.ts";
 import type { Entry } from "./log/schema.ts";
 
 /**
  * pagu TUI — a colored REPL frontend onto the same core as the CLI. A
  * session reuses one conversation log across tasks, so prior turns are
- * context for the next (multi-turn continuity). Hand-rolled ANSI keeps it
- * dependency-free; the UI/Approver seam means a richer prompt lib could
- * drop in later without touching the core.
+ * context for the next (multi-turn continuity). ANSI rendering is hand-rolled;
+ * interactive list selection (`/roles`, `/open`) is in `select.ts`, which
+ * borrows `@cliffy/keypress` for robust key decoding. The UI/Approver seam
+ * means a richer frontend could drop in later without touching the core.
  */
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -62,10 +64,10 @@ const COMMANDS: Record<string, string> = {
   "/help": "show this",
   "/provider": "list providers, or switch (e.g. /provider openai)",
   "/model": "set the model (e.g. /model anthropic/claude-sonnet-4.5)",
-  "/roles": "list roles, or apply a group (e.g. /roles dev rust)",
+  "/roles": "pick roles, or apply a group (e.g. /roles dev rust)",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
-  "/open": "open conversation N from /sessions (e.g. /open 2)",
+  "/open": "pick a conversation to open (or /open <n>)",
   "/fork": "branch this conversation into a new one",
   "/rename": "name the active conversation (e.g. /rename refactor)",
   "/history": "show recent messages (/history [n|all], default 3)",
@@ -322,7 +324,7 @@ async function handleCommand(
       return true;
     }
     case "/roles": {
-      const names = line.split(/\s+/).slice(1);
+      let names = line.split(/\s+/).slice(1);
       if (names.length === 0) {
         const available = await listRoles(ctx.projectBase);
         if (available.length === 0) {
@@ -333,12 +335,21 @@ async function handleCommand(
           return true;
         }
         const active = new Set(ctx.roleNames());
-        for (const r of available) {
-          const mark = active.has(r.name) ? "*" : " ";
-          console.log(dim(`  ${mark} ${r.name.padEnd(16)} (${r.scope})`));
+        const picked = await selectFromList(available, {
+          multi: true,
+          label: (r) => `${r.name}  (${r.scope})`,
+          selected: (r) => active.has(r.name),
+          header: dim("  roles — space to toggle, enter to apply:"),
+        });
+        if (picked === null) { // cancelled or no TTY — fall back to a listing
+          for (const r of available) {
+            const mark = active.has(r.name) ? "*" : " ";
+            console.log(dim(`  ${mark} ${r.name.padEnd(16)} (${r.scope})`));
+          }
+          console.log(dim("  apply a group: /roles <name> [name…]"));
+          return true;
         }
-        console.log(dim("  apply a group: /roles <name> [name…]"));
-        return true;
+        names = picked.map((r) => r.name); // [] clears all roles (→ "(none)")
       }
       const r = await ctx.setRoles(names);
       console.log(dim(`  ${r.ok ? "→ roles:" : "✗"} ${r.message}`));
@@ -376,7 +387,29 @@ async function handleCommand(
       if (nav.listing.length === 0) {
         nav.listing = await listSessions(ctx.sessionBase);
       }
-      const s = nav.listing[Number(line.split(/\s+/)[1]) - 1];
+      if (nav.listing.length === 0) {
+        console.log(dim("  no saved conversations yet"));
+        return true;
+      }
+      const arg = line.split(/\s+/)[1];
+      let s;
+      if (arg) {
+        s = nav.listing[Number(arg) - 1];
+      } else {
+        const active = ctx.currentLogPath();
+        const picked = await selectFromList(nav.listing, {
+          label: (x) =>
+            `${x.path === active ? "*" : " "} ${x.title}  (${x.entries})`,
+          header: dim("  open conversation — enter to select:"),
+        });
+        if (picked === null) { // cancelled or no TTY
+          console.log(
+            dim("  usage: /open <n> — see /sessions for the numbers"),
+          );
+          return true;
+        }
+        s = picked[0];
+      }
       if (!s) {
         console.log(dim("  usage: /open <n> — see /sessions for the numbers"));
         return true;
