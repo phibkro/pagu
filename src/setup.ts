@@ -9,12 +9,13 @@ import {
   type PaguConfig,
   resolveProvider,
 } from "./config.ts";
-import { formatFlag } from "./permissions/envelope.ts";
+import { type Envelope, formatFlag } from "./permissions/envelope.ts";
 import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "./runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
-import { loadRoles } from "./roles.ts";
+import { loadRoles, type Role } from "./roles.ts";
+import type { ProviderConfig } from "./provider/chat.ts";
 import {
   latestSession,
   loadSession,
@@ -133,40 +134,133 @@ export async function buildContext(
   const repoRoot = await gitRoot(Deno.cwd());
   const projectBase = repoRoot ?? Deno.cwd();
 
-  // Effective config = defaults ⋄ config.json (opts.base) ⋄ selected roles
-  // (in --role order) ⋄ CLI flags. Roles also contribute prose, folded after
-  // the base AGENTS/CLAUDE instructions. loadRoles fails loud on a bad name.
-  const roles = await loadRoles(opts.roles, projectBase);
-  const effective = composeLayers([
-    opts.base,
-    ...roles.map((r) => r.layer),
-    opts.cli,
-  ]);
-  const cfg: PaguConfig = {
-    provider: effective.provider ?? DEFAULTS.provider,
-    model: effective.model ?? DEFAULTS.model,
-    baseURL: effective.baseURL,
-    apiKeyEnv: effective.apiKeyEnv,
-    format: effective.format,
-    allow: effective.allow && effective.allow.length > 0
-      ? effective.allow
-      : ["."],
-  };
-  const roleWrites = effective.write ?? [];
-  const agentsText = [agents, ...roles.map((r) => r.prose)]
-    .filter((s) => s.length > 0)
-    .join("\n\n");
+  // Repo mode: explicit --repo, or auto-detect + offer (remembered per repo).
+  // Resolved before roles because it's role-independent and folds into the
+  // read/write scope below; a runtime /roles switch must not re-prompt for it.
+  let repoMode = opts.repo;
+  if (!repoMode && repoRoot) {
+    const prefs = await loadRepoPrefs();
+    if (repoRoot in prefs) {
+      repoMode = prefs[repoRoot] === "enabled";
+    } else if (Deno.stdin.isTerminal()) {
+      console.log(
+        `\nThis is a git repo: ${repoRoot}\n` +
+          "Repo mode lets the agent's scripts read+write the whole repo and\n" +
+          "auto-approves them with no per-script prompt. It's safe because:\n" +
+          "  • git is your undo buffer (commit or stash first),\n" +
+          "  • .gitignore'd paths are denied write,\n" +
+          "  • scripts run with no network access.\n",
+      );
+      const ans = await readLine(
+        "Enable repo mode here? (remembered for this folder) [y/N]: ",
+      );
+      repoMode = (ans ?? "").toLowerCase().startsWith("y");
+      await saveRepoPref(repoRoot, repoMode);
+    }
+  }
+  const repo = repoMode ? (repoRoot ?? Deno.cwd()) : undefined;
 
-  const { baseURL, apiKeyEnv, format } = resolveProvider(cfg);
-  const apiKey = apiKeyEnv ? Deno.env.get(apiKeyEnv) : undefined;
-  if (apiKeyEnv && !apiKey) {
+  if (repo && await repoDirty(repo)) {
     console.error(
-      `⚠ provider "${cfg.provider}" expects an API key in $${apiKeyEnv}, but it is unset.`,
+      "⚠ repo has uncommitted changes — auto-approved writes could clobber " +
+        "them. Commit or stash first if you want git as your undo buffer.",
     );
   }
-  // Provider/host are switchable at runtime (the TUI's /provider, /model).
-  let liveProvider = { model: cfg.model, baseURL, apiKey, format };
-  let liveHost = new URL(baseURL).host;
+
+  // Config, permissions, prose, and capabilities are all derived from the
+  // folded effective layer, so a runtime /roles switch can re-derive them.
+  // `cfg` is the live resolved config (also mutated by /provider); the boxes
+  // below are what the core reads each turn, refreshed in place by applyRoles.
+  const cfg: PaguConfig = { ...DEFAULTS, allow: ["."] };
+  let liveProvider: ProviderConfig;
+  let liveHost: string;
+  let readPaths: string[];
+  let envelope: Envelope;
+  let denyFlags: string[];
+  let agentsText: string;
+  let capabilities: string;
+  let activeRoles: string[];
+
+  // Re-derive the role-dependent state from a set of roles. Effective config
+  // = defaults ⋄ config.json (opts.base) ⋄ roles (in order) ⋄ CLI flags; flags
+  // win, permission grants union, deny wins. Roles also contribute prose,
+  // folded after the base AGENTS/CLAUDE instructions. Async because the
+  // envelope reads .gitignore.
+  const applyRoles = async (roleList: Role[]): Promise<void> => {
+    const effective = composeLayers([
+      opts.base,
+      ...roleList.map((r) => r.layer),
+      opts.cli,
+    ]);
+    cfg.provider = effective.provider ?? DEFAULTS.provider;
+    cfg.model = effective.model ?? DEFAULTS.model;
+    cfg.baseURL = effective.baseURL;
+    cfg.apiKeyEnv = effective.apiKeyEnv;
+    cfg.format = effective.format;
+    cfg.allow = effective.allow && effective.allow.length > 0
+      ? effective.allow
+      : ["."];
+
+    const prov = resolveProvider(cfg);
+    const apiKey = prov.apiKeyEnv ? Deno.env.get(prov.apiKeyEnv) : undefined;
+    if (prov.apiKeyEnv && !apiKey) {
+      console.error(
+        `⚠ provider "${cfg.provider}" expects an API key in $${prov.apiKeyEnv}, but it is unset.`,
+      );
+    }
+    liveProvider = {
+      model: cfg.model,
+      baseURL: prov.baseURL,
+      apiKey,
+      format: prov.format,
+    };
+    liveHost = new URL(prov.baseURL).host;
+
+    const roleWrites = effective.write ?? [];
+    readPaths = [...cfg.allow, ...(repo ? [repo] : [])].map((p) => resolve(p));
+    const writePaths = [...roleWrites, ...(repo ? [repo] : [])].map((p) =>
+      resolve(p)
+    );
+    envelope = await buildEnvelope({
+      read: readPaths,
+      write: writePaths,
+      repo,
+    });
+    // deny-WRITE only at runtime (Deno --deny-read of a child breaks readDir
+    // of its parent); deny-read stays in the envelope for auto-approve gating.
+    denyFlags = (envelope.deny ?? [])
+      .filter((p) => p.flag === "write")
+      .map((p) => formatFlag(p, "deny"));
+
+    agentsText = [agents, ...roleList.map((r) => r.prose)]
+      .filter((s) => s.length > 0)
+      .join("\n\n");
+
+    // Tell the agent its real reach, so it neither under- nor over-claims:
+    // it reads here, and the scripts it authors run on the machine with real
+    // effect within the approved scope (not merely "in a sandbox").
+    capabilities = [
+      `You can read: ${readPaths.join(", ") || "(nothing configured)"}.`,
+      repo
+        ? `Scripts you author can read and write anywhere under the repo ${repo} ` +
+          `(auto-approved within it), except .gitignored paths (write-denied).`
+        : `Scripts you author run under permissions the human grants per run ` +
+          `(e.g. write to a specific directory).`,
+      `An approved script runs on the machine with REAL effect — it genuinely ` +
+      `creates/edits files and can run programs — though with no network ` +
+      `access unless explicitly granted. So within the approved scope you do ` +
+      `have real power to change the system; you are not limited to talking.`,
+    ].join(" ");
+
+    activeRoles = roleList.map((r) => r.name);
+  };
+
+  // Initial fold: the --role names (loadRoles fails loud on a bad name).
+  await applyRoles(await loadRoles(opts.roles, projectBase));
+
+  // Switch provider/model at runtime (the TUI's /provider, /model). Mutates
+  // cfg directly so a preset switch resets the wire settings (which a layer
+  // union cannot express). Most-recent action wins between this and /roles.
   const setProvider = (
     change: { provider?: string; model?: string; baseURL?: string },
   ): { ok: boolean; message: string } => {
@@ -196,53 +290,24 @@ export async function buildContext(
     return { ok: true, message: `${cfg.provider} · ${cfg.model}${warn}` };
   };
 
-  // Repo mode: explicit --repo, or auto-detect + offer (remembered per repo).
-  let repoMode = opts.repo;
-  if (!repoMode && repoRoot) {
-    const prefs = await loadRepoPrefs();
-    if (repoRoot in prefs) {
-      repoMode = prefs[repoRoot] === "enabled";
-    } else if (Deno.stdin.isTerminal()) {
-      console.log(
-        `\nThis is a git repo: ${repoRoot}\n` +
-          "Repo mode lets the agent's scripts read+write the whole repo and\n" +
-          "auto-approves them with no per-script prompt. It's safe because:\n" +
-          "  • git is your undo buffer (commit or stash first),\n" +
-          "  • .gitignore'd paths are denied write,\n" +
-          "  • scripts run with no network access.\n",
-      );
-      const ans = await readLine(
-        "Enable repo mode here? (remembered for this folder) [y/N]: ",
-      );
-      repoMode = (ans ?? "").toLowerCase().startsWith("y");
-      await saveRepoPref(repoRoot, repoMode);
+  // Set the active role group at runtime: re-fold base ⋄ roles ⋄ flags and
+  // re-derive config/permissions/prose. Fails loud (without changing state)
+  // on an unknown name, since loadRoles throws before applyRoles runs.
+  const setRoles = async (
+    names: string[],
+  ): Promise<{ ok: boolean; message: string }> => {
+    let loaded: Role[];
+    try {
+      loaded = await loadRoles(names, projectBase);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
     }
-  }
-  const repo = repoMode ? (repoRoot ?? Deno.cwd()) : undefined;
-
-  const readPaths = [...cfg.allow, ...(repo ? [repo] : [])].map((p) =>
-    resolve(p)
-  );
-  const writePaths = [...roleWrites, ...(repo ? [repo] : [])].map((p) =>
-    resolve(p)
-  );
-  const envelope = await buildEnvelope({
-    read: readPaths,
-    write: writePaths,
-    repo,
-  });
-  // deny-WRITE only at runtime (Deno --deny-read of a child breaks readDir
-  // of its parent); deny-read stays in the envelope for auto-approve gating.
-  const denyFlags = (envelope.deny ?? [])
-    .filter((p) => p.flag === "write")
-    .map((p) => formatFlag(p, "deny"));
-
-  if (repo && await repoDirty(repo)) {
-    console.error(
-      "⚠ repo has uncommitted changes — auto-approved writes could clobber " +
-        "them. Commit or stash first if you want git as your undo buffer.",
-    );
-  }
+    await applyRoles(loaded);
+    return {
+      ok: true,
+      message: activeRoles.length ? activeRoles.join(", ") : "(none)",
+    };
+  };
 
   // Resolve which conversation log this run uses. Explicit --log bypasses
   // the store; otherwise sessions live per-project under .pagu/sessions/:
@@ -283,22 +348,6 @@ export async function buildContext(
     );
   };
 
-  // Tell the agent its real reach, so it neither under- nor over-claims:
-  // it reads here, and the scripts it authors run on the machine with real
-  // effect within the approved permission scope (not merely "in a sandbox").
-  const capabilities = [
-    `You can read: ${readPaths.join(", ") || "(nothing configured)"}.`,
-    repo
-      ? `Scripts you author can read and write anywhere under the repo ${repo} ` +
-        `(auto-approved within it), except .gitignored paths (write-denied).`
-      : `Scripts you author run under permissions the human grants per run ` +
-        `(e.g. write to a specific directory).`,
-    `An approved script runs on the machine with REAL effect — it genuinely ` +
-    `creates/edits files and can run programs — though with no network ` +
-    `access unless explicitly granted. So within the approved scope you do ` +
-    `have real power to change the system; you are not limited to talking.`,
-  ].join(" ");
-
   return {
     get provider() {
       return liveProvider;
@@ -308,14 +357,27 @@ export async function buildContext(
     },
     setProvider,
     providerName: () => cfg.provider,
+    projectBase,
+    roleNames: () => activeRoles,
+    setRoles,
     phaseDir,
-    agents: agentsText,
-    readPaths,
+    get agents() {
+      return agentsText;
+    },
+    get readPaths() {
+      return readPaths;
+    },
     repo,
-    envelope,
-    denyFlags,
+    get envelope() {
+      return envelope;
+    },
+    get denyFlags() {
+      return denyFlags;
+    },
     autoEnabled: repo !== undefined,
-    capabilities,
+    get capabilities() {
+      return capabilities;
+    },
     sandboxKind,
     log,
     persist,

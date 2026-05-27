@@ -80,7 +80,10 @@ and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
 `/open <n>`, `/fork`, and `/rename <name>` manage them live; `/history [n|all]`
 recalls past messages and `/clear` deletes the active conversation (after a
 confirm). Switch model/provider mid-session with `/model <name>` and
-`/provider <name>` (`/provider` alone lists them).
+`/provider <name>` (`/provider` alone lists them). `/roles` lists available
+roles; `/roles <name> [name…]` applies a group at runtime, re-deriving the
+config, permissions, and instructions (most-recent action wins between this and
+`/provider`).
 
 Flags:
 

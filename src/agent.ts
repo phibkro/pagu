@@ -49,6 +49,13 @@ export interface AgentContext {
   ) => { ok: boolean; message: string };
   /** The active provider preset name (reflects roles/flags + /provider). */
   providerName: () => string;
+  /** Project dir (git root, else cwd) where roles are discovered. */
+  projectBase: string;
+  /** Names of the currently applied roles, in compose order. */
+  roleNames: () => string[];
+  /** Set the active role group at runtime: re-folds config and re-derives
+   * permissions/prose. Fails loud (state unchanged) on an unknown name. */
+  setRoles: (names: string[]) => Promise<{ ok: boolean; message: string }>;
   phaseDir: string;
   agents: string;
   readPaths: string[];

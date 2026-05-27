@@ -324,12 +324,13 @@ in is fair game — remove what doesn't earn its keep.
 
 1. **Config interop — CLAUDE.md fallback.** _Done._ Read `CLAUDE.md` per scope
    when `AGENTS.md` is absent; prose only, never `.claude/` settings.
-2. **Roles — compositional configuration.** _Pure core built and proven
-   (`mergeLayer`, `composeLayers`); loading and wiring next._ Named, composable
-   bundles of config and instructions; an agent **carries** several (a "profile"
-   is the resolved whole). A role is a **markdown file**: prose body with YAML
-   frontmatter. `AGENTS.md` is the always-on base role; named roles fold on top.
-   Decided behavior (intended, surfaced — not bugs):
+2. **Roles — compositional configuration.** _Built: pure core (`mergeLayer`,
+   `composeLayers`), loading (`roles.ts`), `--role` wiring, and the TUI `/roles`
+   command (list + runtime apply)._ Named, composable bundles of config and
+   instructions; an agent **carries** several (a "profile" is the resolved
+   whole). A role is a **markdown file**: prose body with YAML frontmatter.
+   `AGENTS.md` is the always-on base role; named roles fold on top. Decided
+   behavior (intended, surfaced — not bugs):
    - **Fold order:** defaults → global `config.json` → selected roles (in
      `--role` order) → CLI flags (flags win last; roles are reusable middle
      layers). Prose: base AGENTS/CLAUDE (global then project), then each role's
@@ -344,9 +345,18 @@ in is fair game — remove what doesn't earn its keep.
      per name); compose-same-name deferred.
    - **Missing `--role <name>`:** **fail loud** (error), never silently ignored.
    - Roles set the envelope; the per-script/human gate stays the backstop.
+   - **Runtime `/roles <names>`:** **replaces** the active group (not additive)
+     and **re-derives the whole effective config** from the layers — provider,
+     model, permission envelope/read-scope, and prose all recompute. A prior
+     runtime `/provider`/`/model` is therefore superseded by a later `/roles`
+     (and vice-versa): **most-recent action wins**. An unknown name leaves state
+     unchanged (load fails before the re-derive). Repo mode is resolved once at
+     startup and never re-prompted by `/roles`. Re-deriving the envelope
+     mid-session is safe: auto-approve is gated by repo mode, not roles, so the
+     human still gates every script unless repo mode is on.
 
    Selection: explicit/ordered first (`--role`, TUI `/roles`); context
-   auto-activation later (sugar). _Open:_ the frontmatter parser (see below).
+   auto-activation later (sugar).
 3. **Composable extensibility — plugins / extensions / feature flags.** Add
    capability without forking the core, but an extension must **not** create an
    agent exec path (invariant #1) — so extensions are pure/effect-scoped units

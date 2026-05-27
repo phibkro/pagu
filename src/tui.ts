@@ -9,6 +9,7 @@ import {
   type SessionInfo,
   sessionPath,
 } from "./conversations.ts";
+import { listRoles } from "./roles.ts";
 import type { Entry } from "./log/schema.ts";
 
 /**
@@ -61,6 +62,7 @@ const COMMANDS: Record<string, string> = {
   "/help": "show this",
   "/provider": "list providers, or switch (e.g. /provider openai)",
   "/model": "set the model (e.g. /model anthropic/claude-sonnet-4.5)",
+  "/roles": "list roles, or apply a group (e.g. /roles dev rust)",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
   "/open": "open conversation N from /sessions (e.g. /open 2)",
@@ -317,6 +319,35 @@ async function handleCommand(
       }
       const r = ctx.setProvider({ model: name });
       console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
+      return true;
+    }
+    case "/roles": {
+      const names = line.split(/\s+/).slice(1);
+      if (names.length === 0) {
+        const available = await listRoles(ctx.projectBase);
+        if (available.length === 0) {
+          console.log(
+            dim("  no roles — add one at ./.pagu/roles/<name>.md (project)"),
+          );
+          console.log(dim("  or ~/.config/pagu/roles/<name>.md (global)"));
+          return true;
+        }
+        const active = new Set(ctx.roleNames());
+        for (const r of available) {
+          const mark = active.has(r.name) ? "*" : " ";
+          console.log(dim(`  ${mark} ${r.name.padEnd(16)} (${r.scope})`));
+        }
+        console.log(dim("  apply a group: /roles <name> [name…]"));
+        return true;
+      }
+      const r = await ctx.setRoles(names);
+      console.log(dim(`  ${r.ok ? "→ roles:" : "✗"} ${r.message}`));
+      if (r.ok) {
+        console.log(
+          dim(`    provider ${ctx.providerName()} · ${ctx.provider.model}`),
+        );
+        console.log(dim(`    reads    ${ctx.readPaths.join(", ")}`));
+      }
       return true;
     }
     case "/sessions": {
