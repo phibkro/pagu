@@ -1,11 +1,15 @@
-# pagu — design
+# pagu — context & design
 
 > Status: the v1 loop is implemented and in daily use. Command: `pagu`. Named
 > for _Paguroidea_, the hermit-crab superfamily — soft and untrusted inside (the
 > LLM), operating only through a hard, borrowed, disposable shell (the sandboxed
-> runner). This doc is the rationale + threat model; **`README.md`** is usage
-> and **`AGENTS.md`** is how-we-work. The **Roadmap** at the bottom tracks
-> what's shipped vs. open.
+> runner).
+>
+> **This is the single source of truth for the project** — rationale, threat
+> model, design, roadmap, and the idea backlog. Durable project context goes
+> here, not scattered across docs. **`README.md`** is usage; **`AGENTS.md`** is
+> how-we-work (and points here). The **Roadmap** at the bottom tracks shipped /
+> open / backlog.
 
 ## One-liner
 
@@ -310,5 +314,41 @@ portable tier-1 floor around it (no regression).
   secrets.
 - GUI / computer-use.
 
-Speculative / paradigm-level explorations (profiles, composable extensibility,
-ACP, composable agent loops) live in [`docs/ideas.md`](./docs/ideas.md).
+### Idea backlog (speculative / paradigm-level)
+
+To knock out one at a time — not commitments. Designed through the compositional
+lens (see `AGENTS.md` → Values: functional/compositional core, composition over
+inheritance, category-theory/algebraic abstractions) and bound by the invariants
+above (esp. #1: no agent exec path). It's a personal harness, so packing ideas
+in is fair game — remove what doesn't earn its keep.
+
+1. **Config interop — CLAUDE.md fallback.** _Done._ Read `CLAUDE.md` per scope
+   when `AGENTS.md` is absent; prose only, never `.claude/` settings.
+2. **Profiles — compositional configuration.** Named, domain-specific config
+   bundles (provider/model, allowlist, write/envelope policy, instructions) that
+   **compose** across project + environment rather than merely nest. Model a
+   profile as a _partial config value_ and composition as the combinator —
+   generalize `mergeConfig` into an associative merge with an identity (a
+   monoid), and hierarchy/inheritance falls out for free. Fit: extends today's
+   global+project layering. Risk: low–med. **Likely first** — underpins flags.
+3. **Composable extensibility — plugins / extensions / feature flags.** Add
+   capability without forking the core, but an extension must **not** create an
+   agent exec path (invariant #1) — so extensions are pure/effect-scoped units
+   behind the existing ports (a provider behind `chat()`, a frontend behind
+   `UI`/`Approver`, a tool that still only _proposes_). Feature flags =
+   compositional config (ties to #2). **Skills** land here: a pagu "skill" is
+   instruction + allowlisted reference files, not an exec bundle. Risk:
+   **highest** (trust surface) — design the interface so the boundary holds by
+   construction.
+4. **ACP (Agent Client Protocol).** Let pagu be driven by ACP clients (editors,
+   …) as another **frontend** behind the `UI`/`Approver` seam, not a core change
+   ("one state, many interfaces"). Clean if it stays a transport adapter.
+5. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
+   (or a smaller turn unit) as a **composable value** so loops combine: author →
+   reviewer (iterative critique), fan-out/critique, etc. Multi-agent is _later_,
+   but designing the loop as a composed procedure now (explicit in/out, no
+   hidden actor state) keeps the door open — and that's the point where
+   "independent actors" finally become appropriate. The capstone; depends on
+   #2/#3.
+
+Suggested order **2 → 3 → 4 → 5** (re-sequence freely as constraints surface).

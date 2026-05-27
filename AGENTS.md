@@ -1,9 +1,11 @@
 # AGENTS.md — working in pagu
 
 Operating manual for an agent (or human) picking up this codebase cold.
-**Usage** lives in `README.md`; **rationale + threat model** in `DESIGN.md`.
-This file is the _how we work here_ layer. (It's also the cross-tool AGENTS.md
-standard — and pagu reads it itself, so keep it concise.)
+**Usage** lives in `README.md`. **`CONTEXT.md` is the single source of truth**
+for project design, rationale, threat model, roadmap, and the idea backlog — put
+durable project context there, not scattered across docs. This file is the _how
+we work here_ layer. (It's also the cross-tool AGENTS.md standard — and pagu
+reads it itself, so keep it concise.)
 
 ## What pagu is (the goal)
 
@@ -51,7 +53,7 @@ the blast radius statically enumerable._
   inheritance/hierarchy** — hierarchy emerges from composing values, so prefer
   combinators over class trees; lean on category-theory / algebraic thinking for
   abstractions that are safe _and_ powerful (lawful, composable units). The
-  forward backlog in `docs/ideas.md` is designed through this lens.
+  forward backlog in `CONTEXT.md` → Roadmap is designed through this lens.
 - **Iterate-to-stable, then codify.** Ship the simplest correct thing, let the
   next constraint surface, verify live, commit small.
 - **Clarity over brevity; readability over code-writing velocity; security over
@@ -134,10 +136,10 @@ Provider + phases + config:
 
 ## How to resume, in good spirit
 
-1. Read `DESIGN.md` (rationale/threat model) + this file; skim `README.md`.
+1. Read `CONTEXT.md` (the source of truth) + this file; skim `README.md`.
 2. Run the suite; do one live Ollama run to feel the loop.
-3. Pick the next slice from **`DESIGN.md` → Deferred / open**. Prefer the
-   lowest-risk thing that serves daily usefulness; don't over-build.
+3. Pick the next slice from **`CONTEXT.md` → Roadmap**. Prefer the lowest-risk
+   thing that serves daily usefulness; don't over-build.
 4. Respect the invariants above. New provider → behind `chat()`. New frontend →
    behind `Approver`/`UI`. New capability → never an agent exec path.
 5. Verify live, commit small, keep the TCB small. When unsure between patterns,

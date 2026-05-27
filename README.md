@@ -6,7 +6,8 @@ auditable conversation log; you approve it; a separate sandboxed process runs
 it. Named for _Paguroidea_ (hermit crabs): soft and untrusted inside, operating
 only through a hard, borrowed, disposable shell.
 
-See [`DESIGN.md`](./DESIGN.md) for the full rationale and threat model.
+See [`CONTEXT.md`](./CONTEXT.md) for the full rationale, threat model, and
+roadmap (the project's single source of truth).
 
 ## How it works
 
@@ -178,6 +179,6 @@ network and confines writes beneath the Deno floor); providers **Ollama /
 OpenRouter / OpenAI / Anthropic**; AGENTS.md + config. See `AGENTS.md` for how
 to work in the repo.
 
-Deferred (see `DESIGN.md`): OS-layer **read** isolation (writes + network are
+Deferred (see `CONTEXT.md`): OS-layer **read** isolation (writes + network are
 done; reads still rely on the Deno floor), Landlock, `.gitignore`
 read-protection.
