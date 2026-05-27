@@ -1,6 +1,11 @@
 // effects: terminal frontend (one-shot)
 import { loadConfig } from "./config.ts";
-import { buildContext, parseArgs, readLine } from "./setup.ts";
+import {
+  buildContext,
+  completionsCommand,
+  parseArgs,
+  readLine,
+} from "./setup.ts";
 import { type Approver, runTask, type UI } from "./agent.ts";
 import { gitRoot } from "./repo.ts";
 import { listSessions } from "./conversations.ts";
@@ -14,6 +19,15 @@ import { listSessions } from "./conversations.ts";
  *   deno run --allow-run --allow-read --allow-write --allow-env \
  *     src/cli.ts "your task" [--repo] [--allow <dir>]... [--provider p]
  */
+
+// `pagu completions <shell>` emits a shell completion script (cliffy). Handle
+// it before the normal flow — it needs no config and must not fall through to
+// a task/TUI. (A task that literally starts with "completions" is intercepted;
+// an acceptable edge for an unlikely prompt.)
+if (Deno.args[0] === "completions") {
+  await completionsCommand().parse(Deno.args);
+  Deno.exit(0);
+}
 
 const { config: fileConfig, agents } = await loadConfig();
 const opts = await parseArgs(fileConfig, Deno.args);

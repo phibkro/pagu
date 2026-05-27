@@ -85,7 +85,8 @@ roles; `/roles <name> [name…]` applies a group at runtime, re-deriving the
 config, permissions, and instructions (most-recent action wins between this and
 `/provider`).
 
-Flags (run `pagu --help` for the generated list):
+Flags (run `pagu --help` for the generated list; for shell completions,
+`source <(pagu completions bash)` — also `zsh`/`fish`):
 
 - `--allow <path>` (repeatable) — read-allowlist the agent may inspect (defaults
   to `.`).

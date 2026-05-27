@@ -320,6 +320,8 @@ portable tier-1 floor around it (no regression).
   - native Anthropic.
 - **Frontends** — CLI one-shot + streaming TUI (spinner, slash commands with
   ghost-text autocomplete, context readout).
+- **CLI ergonomics** — flags parsed by `@cliffy/command`: a generated
+  `pagu --help`, and `pagu completions <bash|zsh|fish>` for shell completion.
 - **Interactive pickers** — `/roles` (multi-select) and `/open` (single-select)
   open an arrow-key list (`src/select.ts`); the selection model is pure and
   unit-tested, key decoding is borrowed from `@cliffy/keypress`. Both keep a

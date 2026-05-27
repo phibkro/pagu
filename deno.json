@@ -9,6 +9,7 @@
   "lint": { "rules": { "tags": ["recommended"] } },
   "imports": {
     "@cliffy/command": "jsr:@cliffy/command@^1.1.0",
+    "@cliffy/command/completions": "jsr:@cliffy/command@^1.1.0/completions",
     "@cliffy/keypress": "jsr:@cliffy/keypress@^1.1.0",
     "@std/assert": "jsr:@std/assert@^1",
     "@std/dotenv": "jsr:@std/dotenv@^0.225",

@@ -1,5 +1,6 @@
 // effects: config/env/fs (buildContext); parseArgs (cliffy: --help/usage exit)
 import { Command } from "@cliffy/command";
+import { CompletionsCommand } from "@cliffy/command/completions";
 import { dirname, fromFileUrl, resolve } from "@std/path";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";
@@ -56,9 +57,10 @@ export interface RunOpts {
 }
 
 /** The CLI surface as a cliffy Command — the single source of the flag set,
- * its `--help`/usage, and (via cliffy) shell completions. Built fresh per
- * parse. The flag→config split happens in parseArgs: scalar/list overrides
- * become a ConfigLayer (folded last, so flags win); the rest drive RunOpts. */
+ * its `--help`/usage, and (via completionsCommand) shell completions. Built
+ * fresh per parse. The flag→config split happens in parseArgs: scalar/list
+ * overrides become a ConfigLayer (folded last, so flags win); the rest drive
+ * RunOpts. No subcommand here, so parse()'s option types stay precise. */
 function makeCommand() {
   return new Command()
     .name("pagu")
@@ -109,6 +111,13 @@ function makeCommand() {
       "Repo mode: read+write the git repo and auto-approve within it.",
     )
     .option("--tui", "Force the interactive REPL.");
+}
+
+/** The command with the `completions` subcommand attached, for the entrypoint
+ * to dispatch `pagu completions <shell>`. Kept separate from makeCommand so the
+ * subcommand union doesn't widen parse()'s option types in parseArgs. */
+export function completionsCommand() {
+  return makeCommand().command("completions", new CompletionsCommand());
 }
 
 /**
