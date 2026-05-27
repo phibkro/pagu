@@ -10,6 +10,7 @@ import {
   sessionPath,
 } from "./sessions.ts";
 import { listRoles } from "./roles.ts";
+import { listSkills } from "./skills.ts";
 import { selectFromList } from "./select.ts";
 import type { Entry } from "./log/schema.ts";
 
@@ -67,6 +68,7 @@ const COMMANDS: Record<string, string> = {
   "/advisor":
     "toggle advisory reviewer, or configure (e.g. /advisor openrouter claude-sonnet-4-5)",
   "/roles": "pick roles, or apply a group (e.g. /roles dev rust)",
+  "/skills": "pick skills, or apply a group (e.g. /skills git testing)",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
   "/open": "pick a conversation to open (or /open <n>)",
@@ -374,6 +376,45 @@ async function handleCommand(
         console.log(
           dim(`    provider ${ctx.providerName()} · ${ctx.provider.model}`),
         );
+        console.log(dim(`    reads    ${ctx.readPaths.join(", ")}`));
+      }
+      return true;
+    }
+    case "/skills": {
+      let names = line.split(/\s+/).slice(1);
+      if (names.length === 0) {
+        const available = await listSkills(ctx.projectBase);
+        if (available.length === 0) {
+          console.log(
+            dim(
+              "  no skills — add one at ./.pagu/skills/<name>/ (project)",
+            ),
+          );
+          console.log(dim("  or ~/.config/pagu/skills/<name>/ (global)"));
+          return true;
+        }
+        const activeNames = new Set(
+          ctx.activeSkillScripts.map((s) => s.name),
+        );
+        const picked = await selectFromList(available, {
+          multi: true,
+          label: (s) => `${s.name}  (${s.scope})`,
+          selected: (s) => activeNames.has(s.name),
+          header: dim("  skills — space to toggle, enter to apply:"),
+        });
+        if (picked === null) {
+          for (const s of available) {
+            const mark = activeNames.has(s.name) ? "*" : " ";
+            console.log(dim(`  ${mark} ${s.name.padEnd(16)} (${s.scope})`));
+          }
+          console.log(dim("  apply a group: /skills <name> [name…]"));
+          return true;
+        }
+        names = picked.map((s) => s.name);
+      }
+      const r = await ctx.setSkills(names);
+      console.log(dim(`  ${r.ok ? "→ skills:" : "✗"} ${r.message}`));
+      if (r.ok) {
         console.log(dim(`    reads    ${ctx.readPaths.join(", ")}`));
       }
       return true;

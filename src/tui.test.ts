@@ -101,6 +101,11 @@ const ARGS_WITH_ADVISOR = {
   "/advisor": ["off", "ollama", "openrouter", "openai", "anthropic"],
 };
 
+Deno.test("completeCommand: /skills is in command list", () => {
+  const names = ["/skills", "/roles", "/exit"];
+  assertEquals(completeCommand("/ski", names).line, "/skills");
+});
+
 Deno.test("completeCommand: /advisor completes from /adv prefix", () => {
   assertEquals(completeCommand("/adv", NAMES_WITH_ADVISOR), {
     line: "/advisor",

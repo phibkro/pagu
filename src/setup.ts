@@ -17,6 +17,7 @@ import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "./runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
 import { loadRoles, type Role } from "./roles.ts";
+import { loadSkills, type Skill, type SkillScript } from "./skills.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
 import {
   latestSession,
@@ -54,6 +55,8 @@ export interface RunOpts {
   repo: boolean;
   /** `--tui`: force the interactive REPL (the entrypoint reads this). */
   tui: boolean;
+  /** `--skill <name>` names, in compose order. */
+  skills: string[];
 }
 
 /** The CLI surface as a cliffy Command — the single source of the flag set,
@@ -111,6 +114,11 @@ function makeCommand() {
       "Repo mode: read+write the git repo and auto-approve within it.",
     )
     .option("--tui", "Force the interactive REPL.")
+    .option(
+      "--skill <name:string>",
+      "Apply a skill (repeatable; folds after roles).",
+      { collect: true },
+    )
     .option("--advisor", "Enable the advisory reviewer at the approval gate.")
     .option(
       "--advisor-provider <preset:string>",
@@ -161,6 +169,7 @@ export async function parseArgs(
     noSandbox: !options.sandbox, // cliffy: --no-sandbox → sandbox === false
     repo: options.repo ?? false,
     tui: options.tui ?? false,
+    skills: options.skill ?? [],
   };
 }
 
@@ -246,6 +255,8 @@ export async function buildContext(
   let liveProvider: ProviderConfig;
   let liveHost: string;
   let liveAdvisorConfig: ProviderConfig | undefined;
+  let liveSkillScripts: SkillScript[] = [];
+  let liveSkills: Skill[] = [];
   let readPaths: string[];
   let envelope: Envelope;
   let denyFlags: string[];
@@ -258,10 +269,15 @@ export async function buildContext(
   // win, permission grants union, deny wins. Roles also contribute prose,
   // folded after the base AGENTS/CLAUDE instructions. Async because the
   // envelope reads .gitignore.
-  const applyRoles = async (roleList: Role[]): Promise<void> => {
+  const applyRoles = async (
+    roleList: Role[],
+    skillList: Skill[],
+  ): Promise<void> => {
+    liveSkills = skillList;
     const effective = composeLayers([
       opts.base,
       ...roleList.map((r) => r.layer),
+      ...skillList.map((s) => s.layer),
       opts.cli,
     ]);
     cfg.provider = effective.provider ?? DEFAULTS.provider;
@@ -309,7 +325,13 @@ export async function buildContext(
     }
 
     const roleWrites = effective.write ?? [];
-    readPaths = [...cfg.allow, ...(repo ? [repo] : [])].map((p) => resolve(p));
+    const skillFiles = skillList.flatMap((s) => s.files).map((f) =>
+      resolve(projectBase, f)
+    );
+    liveSkillScripts = skillList.flatMap((s) => s.scripts);
+    readPaths = [...cfg.allow, ...(repo ? [repo] : []), ...skillFiles].map((
+      p,
+    ) => resolve(p));
     const writePaths = [...roleWrites, ...(repo ? [repo] : [])].map((p) =>
       resolve(p)
     );
@@ -324,7 +346,11 @@ export async function buildContext(
       .filter((p) => p.flag === "write")
       .map((p) => formatFlag(p, "deny"));
 
-    agentsText = [agents, ...roleList.map((r) => r.prose)]
+    agentsText = [
+      agents,
+      ...roleList.map((r) => r.prose),
+      ...skillList.map((s) => s.prose),
+    ]
       .filter((s) => s.length > 0)
       .join("\n\n");
 
@@ -345,10 +371,19 @@ export async function buildContext(
     ].join(" ");
 
     activeRoles = roleList.map((r) => r.name);
+
+    if (liveSkillScripts.length > 0) {
+      const names = skillList.map((s) => s.name).join(", ");
+      capabilities +=
+        ` Pre-approved skill scripts available (auto-run verbatim when you propose them exactly): ${names}.`;
+    }
   };
 
-  // Initial fold: the --role names (loadRoles fails loud on a bad name).
-  await applyRoles(await loadRoles(opts.roles, projectBase));
+  // Initial fold: --role and --skill names (both fail loud on a bad name).
+  await applyRoles(
+    await loadRoles(opts.roles, projectBase),
+    await loadSkills(opts.skills, projectBase),
+  );
 
   // Switch provider/model at runtime (the TUI's /provider, /model). Mutates
   // cfg directly so a preset switch resets the wire settings (which a layer
@@ -394,10 +429,31 @@ export async function buildContext(
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : String(e) };
     }
-    await applyRoles(loaded);
+    await applyRoles(loaded, liveSkills);
     return {
       ok: true,
       message: activeRoles.length ? activeRoles.join(", ") : "(none)",
+    };
+  };
+
+  const setSkills = async (
+    names: string[],
+  ): Promise<{ ok: boolean; message: string }> => {
+    let loaded: Skill[];
+    try {
+      loaded = await loadSkills(names, projectBase);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+    await applyRoles(
+      await loadRoles(activeRoles, projectBase),
+      loaded,
+    );
+    return {
+      ok: true,
+      message: liveSkills.length
+        ? liveSkills.map((s) => s.name).join(", ")
+        : "(none)",
     };
   };
 
@@ -512,6 +568,10 @@ export async function buildContext(
     get denyFlags() {
       return denyFlags;
     },
+    get activeSkillScripts() {
+      return liveSkillScripts;
+    },
+    setSkills,
     get advisorConfig() {
       return liveAdvisorConfig;
     },

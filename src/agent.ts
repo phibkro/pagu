@@ -11,6 +11,7 @@ import {
 import { shouldAutoApprove } from "./permissions/policy.ts";
 import { formatAdvisory, runAdvisor } from "./advisor.ts";
 import { buildReview, formatReview } from "./review.ts";
+import { matchesSkillScript, type SkillScript } from "./skills.ts";
 import type { SandboxKind } from "./runner/sandbox.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
@@ -64,6 +65,12 @@ export interface AgentContext {
   repo?: string;
   envelope: Envelope;
   denyFlags: string[];
+  /** Pre-approved scripts from active skills. A proposed script whose body
+   *  matches exactly and whose discovered perms are within the script's
+   *  declared permission ceiling auto-approves without a human prompt. */
+  activeSkillScripts: SkillScript[];
+  /** Replace the active skill group at runtime (the TUI's /skills). */
+  setSkills: (names: string[]) => Promise<{ ok: boolean; message: string }>;
   /** Advisory reviewer config — present = enabled, absent = disabled.
    * Falls back to no advisor when undefined; use a copy of ctx.provider to
    * enable with the default provider. */
@@ -243,14 +250,19 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
       // Review: auto within envelope, else hand to the frontend's approver
       // (a simple yes/no; the perms it would run with are always shown).
       let approved: boolean;
-      if (
-        shouldAutoApprove(
-          discovered.map(parsePermission),
-          ctx.envelope,
-          !!ctx.repo,
-        )
-      ) {
+      const discoveredPerms = discovered.map(parsePermission);
+      const matchedScript = matchesSkillScript(
+        script.body,
+        discoveredPerms,
+        ctx.activeSkillScripts,
+      );
+      if (shouldAutoApprove(discoveredPerms, ctx.envelope, !!ctx.repo)) {
         ctx.ui.status("auto-approved (within session envelope)");
+        approved = true;
+      } else if (matchedScript) {
+        ctx.ui.status(
+          `auto-approved (skill script: ${matchedScript.name})`,
+        );
         approved = true;
       } else {
         const review = buildReview({

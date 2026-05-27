@@ -79,6 +79,11 @@ Deno.test("parseArgs: --advisor-provider and --advisor-model map to cli", async 
   assertEquals(o.cli.advisorModel, "claude-sonnet-4-5");
 });
 
+Deno.test("parseArgs: --skill flag collects into skills array", async () => {
+  const o = await parseArgs(DEFAULTS, ["--skill", "git", "--skill", "testing"]);
+  assertEquals(o.skills, ["git", "testing"]);
+});
+
 Deno.test("parseArgs: defaults when no flags are given", async () => {
   const o = await parseArgs(DEFAULTS, []);
   assertEquals(o.task, "");
@@ -91,4 +96,5 @@ Deno.test("parseArgs: defaults when no flags are given", async () => {
   assertEquals(o.tui, false);
   assertEquals(o.logPath, undefined);
   assertEquals(o.session, undefined);
+  assertEquals(o.skills, []);
 });
