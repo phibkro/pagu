@@ -81,6 +81,9 @@ export interface AgentContext {
   repo?: string;
   envelope: Envelope;
   denyFlags: string[];
+  /** Absolute paths of gitignored files — the agent's read tool refuses
+   * these to prevent surfacing secrets to the model (CF3). */
+  gitignored: string[];
   /** Explicit command policy entries (from allowed-tasks config + inferred). */
   commandEntries: CommandEntry[];
   /** Discovered project tasks (for the run_task tool listing). */
@@ -174,6 +177,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
       name: ss.name,
       description: ss.description,
     })),
+    gitignored: ctx.gitignored,
     allowedTasks: [
       // Discovered tasks that have a matching policy entry
       ...ctx.discoveredTasks.filter((t) =>

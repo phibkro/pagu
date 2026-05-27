@@ -264,6 +264,7 @@ export async function buildContext(
   let liveSkillScripts: SkillScript[] = [];
   let liveSkills: Skill[] = [];
   let liveCommandEntries: CommandEntry[] = [];
+  let liveGitignored: string[] = [];
   const liveDiscoveredTasks: DiscoveredTask[] = await discoverTasks(
     projectBase,
   );
@@ -357,10 +358,16 @@ export async function buildContext(
       repo,
     });
     // deny-WRITE only at runtime (Deno --deny-read of a child breaks readDir
-    // of its parent); deny-read stays in the envelope for auto-approve gating.
+    // of its parent); deny-read stays in the envelope for auto-approve gating
+    // and is enforced at the application layer in the respond phase (handleRead).
     denyFlags = (envelope.deny ?? [])
       .filter((p) => p.flag === "write")
       .map((p) => formatFlag(p, "deny"));
+    liveGitignored = (envelope.deny ?? [])
+      .filter((p): p is { flag: "read"; scope: string } =>
+        p.flag === "read" && (p as { scope?: string }).scope !== undefined
+      )
+      .map((p) => p.scope);
 
     agentsText = [
       agents,
@@ -613,6 +620,9 @@ export async function buildContext(
     },
     get commandEntries() {
       return liveCommandEntries;
+    },
+    get gitignored() {
+      return liveGitignored;
     },
     discoveredTasks: liveDiscoveredTasks,
     get activeSkillScripts() {

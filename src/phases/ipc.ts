@@ -21,6 +21,10 @@ export interface PhaseInput {
   allowedTasks?: Array<
     { program: string; args: string[]; description: string }
   >;
+  /** Gitignored paths the agent must not read. Deno --deny-read breaks
+   * readDir of the parent, so we enforce this at the application layer
+   * in respond.ts instead of via a Deno flag. Absolute paths. */
+  gitignored?: string[];
 }
 
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */

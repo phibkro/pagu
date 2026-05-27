@@ -52,6 +52,15 @@ const out: Entry[] = [];
 
 const skillScripts = input.skillScripts ?? [];
 const allowedTasks = input.allowedTasks ?? [];
+const gitignored = input.gitignored ?? [];
+
+/** True if path is gitignored (exact match or nested under a gitignored dir). */
+function isGitignored(filePath: string): boolean {
+  const abs = filePath.startsWith("/") ? filePath : `${Deno.cwd()}/${filePath}`;
+  return gitignored.some(
+    (g) => abs === g || abs.startsWith(g + "/"),
+  );
+}
 const tools = [
   readToolDef,
   writeToolDef,
@@ -123,15 +132,24 @@ async function converse(): Promise<void> {
     for (const call of readCalls) {
       const path = String(call.args.path ?? "");
       try {
-        const obs = await handleRead(call.args);
-        onToken(`\n· ${obs.source}\n`); // e.g. "· ls src" / "· read README.md"
-        out.push(obs);
-        messages.push(
-          {
-            role: "tool",
-            content: `[${obs.source}]\n${obs.content}`,
-          } as ChatMessage,
-        );
+        if (isGitignored(path)) {
+          onToken(`\n· read ${path} (gitignored — access denied)\n`);
+          const msg =
+            `read denied: ${path} is gitignored. Reading gitignored files ` +
+            `is not permitted — they may contain secrets.`;
+          out.push({ kind: "observation", source: "error", content: msg });
+          messages.push({ role: "tool", content: msg });
+        } else {
+          const obs = await handleRead(call.args);
+          onToken(`\n· ${obs.source}\n`);
+          out.push(obs);
+          messages.push(
+            {
+              role: "tool",
+              content: `[${obs.source}]\n${obs.content}`,
+            } as ChatMessage,
+          );
+        }
       } catch (err) {
         onToken(`\n· read ${path} (denied)\n`);
         const msg = `read failed: ${
