@@ -188,10 +188,97 @@ matters is that each inference chain documents its staleness strategy, and that
 security-critical derived values (skill bodies, permission ceilings) are
 re-validated as close to use as practical.
 
-**Where this pattern lives in the codebase.** The inference functions tend to
-cluster with the types they produce: `gitignoreDenies` with the `Permission`
-type in `src/permissions/`, `discoverTasks` paired with `CommandEntry` in
-`src/command-policy.ts` (they are the most tightly coupled pair currently at the
-root — they change together whenever the task policy model changes). Noticing
-which files you always open together to understand a piece of behavior is the
-right signal for whether co-location is warranted.
+**Where this pattern lives in the codebase.** The inference functions cluster
+with the types they produce: `gitignoreDenies` with the `Permission` type in
+`src/permissions/`, `discoverTasks` and `matchesPolicy` together in `src/tasks/`
+(they change together whenever the task policy model changes).
+
+## Source layout and architectural principles
+
+The `src/` directory expresses the architecture directly through its structure.
+Four principles shaped it; understanding them lets you navigate and extend
+without surprises.
+
+### 1. Hexagonal architecture (Ports and Adapters)
+
+The system has three concentric zones:
+
+**Core** — pure domain types and rules, no I/O:
+
+- `log/` — the event store format (types, parse, serialize)
+- `permissions/` — the permission model (envelope, policy, gitignore)
+
+**Application** — capability modules + orchestration:
+
+- `read.ts`, `write/`, `skills/`, `tasks/` — the four capability modules (see
+  below)
+- `config/` — session configuration (roles, config merge, setup)
+- `agent.ts` — the main orchestrator; receives a turn's output, dispatches to
+  capabilities, drives the loop
+
+**Adapters** — everything that talks to the outside world:
+
+- `frontends/` (primary adapters, drive the core): `cli.ts`, `tui.ts`
+- `providers/` (secondary, model API), `runner/` (secondary, OS execution),
+  `phases/` (secondary, respond subprocess)
+
+The invariant: adapters depend on the core; the core never imports from
+adapters. Adding a new frontend (ACP, web UI) means adding a file to
+`frontends/` that implements `UI` and `Approver` — the core is untouched.
+
+### 2. Coupling-based co-location
+
+Folders group files that **change together**, not files that share a label. The
+coupling reveals the name: `tasks/` exists because `discovery.ts`, `policy.ts`,
+and `tool.ts` answer the same question ("what project tasks can the agent run,
+with what permissions?") and always change together. The folder name is not a
+category — it's the responsibility.
+
+Single-file modules are fine when the module is small enough that a folder would
+add friction without adding clarity (`read.ts`, `agent.ts`).
+
+### 3. Deep modules with progressive disclosure
+
+Each multi-file module exposes a public interface via `index.ts`. Callers import
+from the folder:
+
+```typescript
+import { runAdvisor } from "./write/index.ts"; // don't need to know it's in advisor.ts
+import { matchesPolicy } from "./tasks/index.ts"; // don't need to know it's in policy.ts
+```
+
+The `index.ts` barrel is the module's API surface — the minimum a caller needs
+to understand to use it. Implementation files (`advisor.ts`, `policy.ts`, etc.)
+are only opened when modifying internals. This is **progressive disclosure**: an
+agent reading the codebase can understand the public interface from the barrel,
+then drill into the implementation only when necessary. The same principle that
+makes a good library makes a good codebase for agents.
+
+### 4. Functional core, imperative shell
+
+Pure functions (no I/O) are separated from effectful ones within each module.
+Pagu files begin with a `// pure: X; effects: Y` comment naming the split. The
+pure core is always tested directly (unit tests, no mocks). The effectful shell
+is tested against real systems where possible (real Deno subprocesses, real HTTP
+servers).
+
+This matters for agents working in the codebase: pure functions can be reasoned
+about locally; effectful ones require understanding their I/O context.
+
+### Why this architecture suits agentic development
+
+An agent working on pagu reads `index.ts` barrels first — they name the public
+API concisely. To add a new capability, the agent looks at an existing
+capability folder (`skills/`, `tasks/`) and follows the same pattern: a types
+file, a tool definition, an index.ts that exports the interface. The hexagonal
+zones tell the agent where a new file belongs without requiring a full system
+read. The coupling-based naming means the agent can predict what else will need
+to change when it touches a file ("if I'm in `tasks/`, I probably need to update
+`policy.ts`, `discovery.ts`, and `tool.ts`").
+
+The deeper point: this architecture minimizes **hidden dependencies** (a
+Cognitive Dimensions term — the number of things a contributor must know that
+aren't visible in the file they're reading). The barrel files make dependencies
+explicit. The hexagonal zones make the direction of dependencies explicit. The
+capability folders make co-change relationships explicit. An agent with a fresh
+context window can orient itself from the directory tree alone.
