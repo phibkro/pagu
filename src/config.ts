@@ -70,8 +70,9 @@ export function resolveProvider(
 
 export interface Loaded {
   config: PaguConfig;
-  /** Merged AGENTS.md instructions (the cross-tool standard): global
-   * (~/.config/pagu/AGENTS.md) then project (./AGENTS.md). "" if none. */
+  /** Merged agent instructions: AGENTS.md (the cross-tool standard) at
+   * global then project scope, with a Claude Code CLAUDE.md fallback per
+   * scope. "" if none. */
   agents: string;
 }
 
@@ -81,6 +82,16 @@ async function readIfPresent(path: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/** First present (non-empty) file from a fallback list — AGENTS.md (the
+ * cross-tool standard) preferred, CLAUDE.md as the Claude Code fallback. */
+export async function firstPresent(...paths: string[]): Promise<string> {
+  for (const p of paths) {
+    const s = await readIfPresent(p);
+    if (s) return s;
+  }
+  return "";
 }
 
 /** Merge a parsed config object onto a base, ignoring unknown/ill-typed
@@ -139,12 +150,18 @@ export async function loadConfig(): Promise<Loaded> {
     config = mergeConfig(config, parsed);
   }
 
-  // AGENTS.md — the cross-tool standard (also read by Codex, Cursor, …).
-  // Global notes first, then the project-local file (shared with other
-  // agents), merged. config.json stays the home for structured settings.
+  // Agent instructions: the cross-tool AGENTS.md standard (also read by
+  // Codex, Cursor, …), with a Claude Code CLAUDE.md *fallback* per scope —
+  // so Claude Code users need no duplication, but AGENTS.md wins when both
+  // exist. Global scope first, then project, merged. Prose only: we never
+  // read .claude/ settings (execution-model config that doesn't map here).
+  const home = Deno.env.get("HOME") ?? ".";
   const parts = [
-    await readIfPresent(join(dir, "AGENTS.md")),
-    await readIfPresent("AGENTS.md"),
+    await firstPresent(
+      join(dir, "AGENTS.md"),
+      join(home, ".claude", "CLAUDE.md"),
+    ),
+    await firstPresent("AGENTS.md", "CLAUDE.md"),
   ].filter((s) => s.length > 0);
 
   return { config, agents: parts.join("\n\n") };

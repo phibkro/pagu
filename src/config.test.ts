@@ -1,5 +1,29 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { DEFAULTS, mergeConfig, resolveProvider } from "./config.ts";
+import { join } from "@std/path";
+import {
+  DEFAULTS,
+  firstPresent,
+  mergeConfig,
+  resolveProvider,
+} from "./config.ts";
+
+Deno.test("firstPresent: AGENTS.md preferred, CLAUDE.md is the fallback", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const agents = join(dir, "AGENTS.md");
+    const claude = join(dir, "CLAUDE.md");
+    await Deno.writeTextFile(claude, "claude instructions");
+    // Only CLAUDE.md present → fall back to it.
+    assertEquals(await firstPresent(agents, claude), "claude instructions");
+    // AGENTS.md present → it wins.
+    await Deno.writeTextFile(agents, "agents instructions");
+    assertEquals(await firstPresent(agents, claude), "agents instructions");
+    // Neither present → empty.
+    assertEquals(await firstPresent(join(dir, "x"), join(dir, "y")), "");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
 
 Deno.test("empty/garbage parsed yields the base unchanged", () => {
   assertEquals(mergeConfig(DEFAULTS, {}), DEFAULTS);

@@ -142,7 +142,10 @@ rest use the OpenAI format. Override a preset with `baseURL` / `apiKeyEnv` /
 the cross-tool standard (also read by Codex, Cursor, Copilot, …), so one file
 guides pagu and your other agents. pagu merges a **global**
 `~/.config/pagu/AGENTS.md` (machine notes) with a **project-local**
-`./AGENTS.md` (this repo). For example:
+`./AGENTS.md` (this repo). If you use Claude Code, pagu **falls back** to
+`~/.claude/CLAUDE.md` / `./CLAUDE.md` when the corresponding `AGENTS.md` is
+absent — so no duplication (only the prose; pagu never reads `.claude/`
+settings). For example:
 
 ```markdown
 I'm on NixOS with bash. Projects live under ~/work. Prefer ripgrep over grep.
