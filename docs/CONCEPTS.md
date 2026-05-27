@@ -110,14 +110,3 @@ is a **lawful merge**.
 > Status: **roles** are designed here, not yet built — see `CONTEXT.md` →
 > Roadmap (backlog #2). The base-role behaviour (AGENTS.md / CLAUDE.md fallback,
 > global + project, prose-append) already exists and is the seed of this model.
-
-## The wider metaphor catalogue (inspiration)
-
-Computing concepts borrowed from lived experience, when reaching for a name:
-folders & documents, trash/recycle bin, desktop, windows, clipboard
-(cut/copy/paste), tabs, bookmarks, menus, pages, notebooks, mail / inbox /
-envelope / send, address (URL), library, cart/basket, streams / pipes / channels
-(plumbing), threads (weaving), keys / locks / tokens, **sandbox** (a child's
-safe play area), branch / fork / trunk / tree, cloud, handshake, heartbeat,
-daemon / agent / assistant, garbage collection. Reach for one that transfers the
-right intuition — and refuse it if it would lie about behaviour.
