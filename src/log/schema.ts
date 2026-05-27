@@ -21,7 +21,9 @@ export interface Message {
   text: string;
 }
 
-/** What a read (Observe phase) returned. `source` is e.g. "fs:./photos". */
+/** What a read returned. `source` records the command that ran — e.g.
+ * "read ./notes.md" or "ls ./photos" — so the log audits actions, not just
+ * their output. ("error" for a failed read.) */
 export interface Observation {
   kind: "observation";
   source: string;

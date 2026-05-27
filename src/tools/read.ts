@@ -33,13 +33,13 @@ export async function handleRead(
     names.sort();
     return {
       kind: "observation",
-      source: `fs:${path}`,
+      source: `ls ${path}`,
       content: names.join("\n"),
     };
   }
   return {
     kind: "observation",
-    source: `fs:${path}`,
+    source: `read ${path}`,
     content: await Deno.readTextFile(path),
   };
 }
