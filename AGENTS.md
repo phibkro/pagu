@@ -68,48 +68,50 @@ the blast radius statically enumerable._
 
 ## Architecture map (where things live)
 
-Security-critical pure cores (unit-tested — change with care + tests first):
+Each multi-file module exposes its public surface via an `index.ts` barrel;
+callers import from the module root, not from internal files.
+
+Pure domain core (unit-tested — change with care + tests first):
 
 - `src/log/` — `pagu:*` block parse/serialize (the event store format).
-- `src/permissions/envelope.ts` — `covers`/`within`/`withinEnvelope` (the pure
-  containment check); `gitignore.ts` — deny derivation via `git ls-files`;
-  `policy.ts` — a run's permission policy: `buildEnvelope` (read/write grants +
+- `src/permissions/` — `envelope.ts`: `covers`/`within`/`withinEnvelope` (the
+  pure containment check); `gitignore.ts`: deny derivation via `git ls-files`;
+  `policy.ts`: a run's permission policy: `buildEnvelope` (read/write grants +
   gitignore denies) and `shouldAutoApprove` (the auto-approve gate).
-- `src/runner/run.ts` — scoped `deno run`; `classify.ts` — cage result → ok /
-  needs-perms (discovery) / bug; `sandbox.ts` — **OS sandbox tier** that wraps
-  the run (bubblewrap on Linux, `sandbox-exec` on macOS) as defense-in-depth
-  beneath the Deno floor: denies network + confines writes (so an `--allow-run`
-  subprocess, which Deno does NOT bound, is still contained). Pure
-  `wrapForSandbox` builds the wrapper argv; `detectSandbox` picks the tier
-  (`none` when unavailable — no regression). Applies to both the cage and the
-  real run.
-- `src/review.ts` — pure module adjacent to the approval gate: risk tier badge,
+
+Capability modules — application layer (also pure/tested; neither holds an exec
+path):
+
+- `src/read.ts` — `read` tool: inspect files/dirs, no side effects. Always
+  allowed; no approval needed.
+- `src/write/` — `write.ts`: author arbitrary scripts (**human gate** at every
+  proposal); `review.ts`: pure approval-gate utilities — risk tier badge,
   envelope permission diff, LCS-based iteration diff, `--allow-run` target
-  check. `src/advisor.ts` — optional pre-approval add-on; sends
+  check; `advisor.ts`: optional pre-approval add-on — sends
   `{task, script, perms}` to a configurable model, returns structured
-  `[advisory]` flags. Fails open. Both are pure and tested; neither holds an
-  exec path.
-- `src/skills.ts` — skill loader: discovers `.pagu/skills/<name>/` directories,
-  reads `SKILL.md` (frontmatter + instructions, agentskills.io spec — requires
-  `name` and `description` fields matching directory name) and `scripts/*.ts`
-  files. Denotation:
-  `(prose, ConfigLayer, files: string[], scripts:
-  SkillScript[])` — extends
+  `[advisory]` flags, fails open.
+- `src/skills/` — `skill.ts`: skill loader — discovers `.pagu/skills/<name>/`
+  directories, reads `SKILL.md` (frontmatter + instructions, agentskills.io spec
+  — requires `name` and `description` fields matching directory name) and
+  `scripts/*.ts` files. Denotation:
+  `(prose, ConfigLayer, files: string[],
+  scripts: SkillScript[])` — extends
   roles by the same composition law. Skills fold into `AgentContext` at startup.
-- `src/command-policy.ts` — parses `allowed-tasks` config into `CommandEntry`
+  `tool.ts`: `invoke_skill` tool — agent names a skill script by
+  enum-constrained name; orchestrator resolves the verbatim body from
+  `ctx.activeSkillScripts` (agent never copies content); cage validates within
+  the declared ceiling; auto-approved on match.
+- `src/tasks/` — `policy.ts`: parses `allowed-tasks` config into `CommandEntry`
   objects (deny by default; only listed tasks may run via `run_task`).
-  `src/discovery.ts` — scans `deno.json`, `package.json`, `Justfile` at startup
-  to surface available tasks for enum completion. `inferred-perms.json`
+  `discovery.ts`: scans `deno.json`, `package.json`, `Justfile` at startup to
+  surface available tasks for enum completion. `inferred-perms.json`
   (`.pagu/inferred-perms.json`, gitignored) is the permission lockfile written
   by the first cage run and read by subsequent runs — analogous to a
   type-inference cache; delete it when a task's permission requirements change.
-- `src/tools/invoke-skill.ts` — `invoke_skill` tool: agent names a skill script
-  by enum-constrained name; orchestrator resolves the verbatim body from
-  `ctx.activeSkillScripts` (agent never copies content); cage validates within
-  the declared ceiling; auto-approved on match. `src/tools/run-task.ts` —
-  `run_task` tool: agent passes an exact command string (enum-constrained to the
-  policy); first run discovers permissions via cage and writes lockfile; second
-  run cages against stored ceiling; auto-approved within ceiling.
+  `tool.ts`: `run_task` tool — agent passes an exact command string
+  (enum-constrained to the policy); first run discovers permissions via cage and
+  writes lockfile; second run cages against stored ceiling; auto-approved within
+  ceiling.
 
 ### The capability ladder
 
@@ -128,24 +130,31 @@ New tools and features must not hand the agent a path outside this ladder.
 the cage still validates permissions, and the orchestrator verifies the script
 body matches verbatim pre-approved content before any execution.
 
-The loop and its frontends:
+Orchestrator:
 
 - `src/agent.ts` — **the I/O-agnostic core**: `runTask(ctx, task)` +
   `AgentContext`/`Approver`/`UI`. The one seam between core and frontends.
-- `src/setup.ts` — `parseArgs` (flags via `@cliffy/command`: typed flags,
-  generated `--help`/usage, `pagu completions <shell>`) + `buildContext`, which
-  folds `defaults ⋄ config.json ⋄ roles ⋄ flags` and exposes runtime
-  `setProvider`/`setRoles` (the TUI's `/provider`, `/model`, `/roles`). Shared
-  by frontends.
-- `src/cli.ts` — one-shot frontend (stdin approver). `src/tui.ts` — REPL
-  frontend (colored, multi-turn; slash commands + arrow-key pickers via
-  `src/select.ts`). They differ _only_ in UI + Approver.
 
-Provider + phases + config:
+Primary adapters (frontends):
 
-- `src/provider/chat.ts` — `chat()` **dispatcher** (OpenAI Chat Completions,
+- `src/frontends/cli.ts` — one-shot frontend (stdin approver).
+  `src/frontends/tui.ts` — REPL frontend (colored, multi-turn; slash commands +
+  arrow-key pickers via `src/frontends/select.ts`). They differ _only_ in UI +
+  Approver.
+
+Secondary adapters:
+
+- `src/providers/chat.ts` — `chat()` **dispatcher** (OpenAI Chat Completions,
   default) → `anthropic.ts` (native Messages API) by `format`. Add providers
   here, behind `chat()`.
+- `src/runner/` — `run.ts`: scoped `deno run`; `classify.ts`: cage result → ok /
+  needs-perms (discovery) / bug; `sandbox.ts`: **OS sandbox tier** that wraps
+  the run (bubblewrap on Linux, `sandbox-exec` on macOS) as defense-in-depth
+  beneath the Deno floor: denies network + confines writes (so an `--allow-run`
+  subprocess, which Deno does NOT bound, is still contained). Pure
+  `wrapForSandbox` builds the wrapper argv; `detectSandbox` picks the tier
+  (`none` when unavailable — no regression). Applies to both the cage and the
+  real run.
 - `src/phases/respond.ts` — the single phase entrypoint: converses, calls `read`
   to inspect files, and proposes a script with `write` only when an action is
   needed (read stdin, call the model, emit events); `spawn.ts`, `messages.ts`,
@@ -155,27 +164,35 @@ Provider + phases + config:
   `{entries}` JSON. The side-channel carries no capability — the security
   boundary is unchanged. Only the model's text streams; exfil-gated run output
   never does.
-- `src/config.ts` — provider presets, instruction load (AGENTS.md, CLAUDE.md
-  fallback per scope, prose only), and the **`ConfigLayer` monoid**
+
+Configuration deep module (`buildContext` is the public interface):
+
+- `src/config/config.ts` — provider presets, instruction load (AGENTS.md,
+  CLAUDE.md fallback per scope, prose only), and the **`ConfigLayer` monoid**
   (`mergeLayer`/`composeLayers`/`toLayer`) that roles + flags fold through.
-  `src/repo.ts` — git-repo detect + per-repo memory (the run's permission policy
-  lives in `permissions/policy.ts`).
-- `src/roles.ts` — composable config+instruction bundles (markdown +
+- `src/config/repo.ts` — git-repo detect + per-repo memory (the run's permission
+  policy lives in `src/permissions/policy.ts`).
+- `src/config/roles.ts` — composable config+instruction bundles (markdown +
   frontmatter): discovery (project shadows global), load, `listRoles`. Folds via
   the `config.ts` monoid; fail-loud on a missing `--role`.
-- `src/select.ts` — interactive list picker (pure `reduce`/`frame`/`intentOf`
-  model + a `@cliffy/keypress` loop) behind the TUI's `/roles` and `/open`.
-- `src/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
+- `src/config/setup.ts` — `parseArgs` (flags via `@cliffy/command`: typed flags,
+  generated `--help`/usage, `pagu completions <shell>`) + `buildContext`, which
+  folds `defaults ⋄ config.json ⋄ roles ⋄ flags` and exposes runtime
+  `setProvider`/`setRoles` (the TUI's `/provider`, `/model`, `/roles`). Shared
+  by frontends.
+- `src/config/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
   `@std/dotenv`) so keys like `ANTHROPIC_API_KEY` need no manual export.
-- `src/sessions.ts` — the **session store** (a session = one saved conversation
-  thread you reopen): per-project `.pagu/sessions/<id>.log.md` (id = immutable
-  ISO timestamp). Log entries are the source of truth; a YAML **frontmatter**
-  header holds metadata (optional `name`, `created`) — last-modified comes from
-  the filesystem mtime, not stored. Title = `name` ?? first user message.
-  `buildContext` resolves which session a run uses;
-  `AgentContext.switchSession`/ `rename` let the TUI change and name sessions
+- `src/config/sessions.ts` — the **session store** (a session = one saved
+  conversation thread you reopen): per-project `.pagu/sessions/<id>.log.md` (id
+  = immutable ISO timestamp). Log entries are the source of truth; a YAML
+  **frontmatter** header holds metadata (optional `name`, `created`) —
+  last-modified comes from the filesystem mtime, not stored. Title = `name` ??
+  first user message. `buildContext` resolves which session a run uses;
+  `AgentContext.switchSession`/`rename` let the TUI change and name sessions
   mid-REPL (mutate the log array in place + repoint persist). (Capability scope
-  is a separate concept — see `permissions/policy.ts`.)
+  is a separate concept — see `src/permissions/policy.ts`.)
+- `src/config/frontmatter.ts` — shared YAML frontmatter parse/serialize used by
+  roles, skills, and sessions.
 
 ## Feedback loops
 

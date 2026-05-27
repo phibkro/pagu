@@ -1,29 +1,27 @@
 // imperative shell: orchestrates effects; the decisions it calls are pure
 import { join, resolve } from "@std/path";
 import { spawnPhase } from "./phases/spawn.ts";
-import { runScript } from "./runner/run.ts";
-import { classifyRun } from "./runner/classify.ts";
+import { classifyRun, runScript, type SandboxKind } from "./runner/index.ts";
 import {
   type Envelope,
   formatFlag,
   parsePermission,
   withinEnvelope,
-} from "./permissions/envelope.ts";
-import { shouldAutoApprove } from "./permissions/policy.ts";
-import { formatAdvisory, runAdvisor } from "./write/advisor.ts";
-import { buildReview, formatReview } from "./write/review.ts";
-import { matchesSkillScript, type SkillScript } from "./skills/skill.ts";
+} from "./permissions/index.ts";
+import { shouldAutoApprove } from "./permissions/index.ts";
+import { formatAdvisory, runAdvisor } from "./write/index.ts";
+import { buildReview, formatReview } from "./write/index.ts";
+import { matchesSkillScript, type SkillScript } from "./skills/index.ts";
 import {
   type CommandEntry,
   filterStaleInferred,
   matchesPolicy,
   storeInferred,
-} from "./tasks/policy.ts";
-import type { DiscoveredTask } from "./tasks/policy.ts";
-import type { SandboxKind } from "./runner/sandbox.ts";
-import type { Entry } from "./log/schema.ts";
-import type { ProviderConfig } from "./providers/chat.ts";
-import type { SessionMeta } from "./config/sessions.ts";
+} from "./tasks/index.ts";
+import type { DiscoveredTask } from "./tasks/index.ts";
+import type { Entry } from "./log/index.ts";
+import type { ProviderConfig } from "./providers/index.ts";
+import type { SessionMeta } from "./config/index.ts";
 
 /**
  * The I/O-agnostic core loop. Flags, config, and a TUI are all just
