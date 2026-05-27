@@ -4,7 +4,7 @@ import { parseLog } from "./log/parse.ts";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";
 import { type PaguConfig, resolveProvider } from "./config.ts";
-import { formatFlag } from "./perms/envelope.ts";
+import { formatFlag } from "./permissions/envelope.ts";
 import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import type { AgentContext, Approver, UI } from "./agent.ts";

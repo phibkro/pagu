@@ -7,7 +7,7 @@ import {
   type Envelope,
   formatFlag,
   parsePermission,
-} from "./perms/envelope.ts";
+} from "./permissions/envelope.ts";
 import { shouldAutoApprove } from "./session.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";

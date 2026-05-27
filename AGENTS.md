@@ -46,14 +46,18 @@ the blast radius statically enumerable._
   the same settings; the core (`agent.ts`) is I/O-agnostic.
 - **Iterate-to-stable, then codify.** Ship the simplest correct thing, let the
   next constraint surface, verify live, commit small.
+- **Clarity over brevity; readability over code-writing velocity; security over
+  utility.** When these trade off, optimize in that order — and surface the
+  tradeoff. (Hence: `permissions/` not `perms/`, `// effects:` markers, the
+  pure/shell split — chosen for the next reader, not for typing speed.)
 
 ## Architecture map (where things live)
 
 Security-critical pure cores (unit-tested — change with care + tests first):
 
 - `src/log/` — `pagu:*` block parse/serialize (the event store format).
-- `src/perms/envelope.ts` — `covers`/`within`/`withinEnvelope` (auto-approve
-  gate); `gitignore.ts` — deny derivation via `git ls-files`.
+- `src/permissions/envelope.ts` — `covers`/`within`/`withinEnvelope`
+  (auto-approve gate); `gitignore.ts` — deny derivation via `git ls-files`.
 - `src/runner/run.ts` — sandboxed `deno run`; `classify.ts` — cage result → ok /
   needs-perms (discovery) / bug.
 

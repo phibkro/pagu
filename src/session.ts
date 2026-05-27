@@ -3,8 +3,8 @@ import {
   type Envelope,
   type Permission,
   withinEnvelope,
-} from "./perms/envelope.ts";
-import { gitignoreDenies } from "./perms/gitignore.ts";
+} from "./permissions/envelope.ts";
+import { gitignoreDenies } from "./permissions/gitignore.ts";
 
 /**
  * Session capability envelope. `read` paths the agent + scripts may read;
