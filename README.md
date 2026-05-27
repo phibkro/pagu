@@ -61,7 +61,8 @@ Flags:
 - `--allow <path>` (repeatable) — read-allowlist for the Observe phase (defaults
   to `.`).
 - `--model <name>` — model id (default `qwen3.5:9b`).
-- `--provider <preset>` — `ollama` (default), `openrouter`, or `openai`.
+- `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or
+  `anthropic`.
 - `--base-url <url>` — override the API root for a custom OpenAI-compatible
   endpoint.
 - `--log <file>` — conversation log path (default `pagu.log.md`).
