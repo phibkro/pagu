@@ -73,6 +73,13 @@ const COMMANDS: Record<string, string> = {
 };
 const COMMAND_NAMES = Object.keys(COMMANDS);
 
+/** Enumerable first-argument options per command (for autocomplete). Models
+ * are deliberately absent — listing them would need network. */
+const ARG_OPTIONS: Record<string, string[]> = {
+  "/provider": Object.keys(PRESETS),
+  "/history": ["all"],
+};
+
 /** Rough token estimate (~4 chars/token) of the conversation so far, for
  * the context-size readout. Cheap and good enough to gauge growth. */
 export function estimateTokens(log: Entry[]): number {
@@ -98,19 +105,43 @@ function longestCommonPrefix(xs: string[]): string {
   return p;
 }
 
+/** Prefix-complete a token against options: unique → fill fully; ambiguous
+ * → fill the common prefix and return the candidates to display. */
+function completeToken(
+  token: string,
+  options: string[],
+): { value: string; candidates: string[] } {
+  const matches = options.filter((c) => c.startsWith(token));
+  if (matches.length <= 1) {
+    return { value: matches[0] ?? token, candidates: [] };
+  }
+  return { value: longestCommonPrefix(matches), candidates: matches };
+}
+
 /**
- * Pure Tab-completion for slash commands. Returns the (possibly extended)
- * line and, when the prefix is still ambiguous, the candidates to display.
- * Only completes a bare `/word` (no spaces) — args aren't completed.
+ * Pure Tab-completion. With no space, completes the slash-command name.
+ * With `<command> <arg>`, completes the first argument against that
+ * command's known options (e.g. `/provider` → preset names); commands
+ * without an option set, and anything past the first arg, are left alone.
+ * Returns the (possibly extended) line + any candidates still to choose.
  */
 export function completeCommand(
   line: string,
   names: string[] = COMMAND_NAMES,
+  argOptions: Record<string, string[]> = ARG_OPTIONS,
 ): { line: string; candidates: string[] } {
-  if (!line.startsWith("/") || /\s/.test(line)) return { line, candidates: [] };
-  const matches = names.filter((c) => c.startsWith(line));
-  if (matches.length <= 1) return { line: matches[0] ?? line, candidates: [] };
-  return { line: longestCommonPrefix(matches), candidates: matches };
+  if (!/\s/.test(line)) {
+    if (!line.startsWith("/")) return { line, candidates: [] };
+    const r = completeToken(line, names);
+    return { line: r.value, candidates: r.candidates };
+  }
+  const m = /^(\/\S+)(\s+)(\S*)$/.exec(line); // command + first arg only
+  if (!m) return { line, candidates: [] };
+  const [, cmd, gap, arg] = m;
+  const opts = argOptions[cmd];
+  if (!opts) return { line, candidates: [] };
+  const r = completeToken(arg, opts);
+  return { line: cmd + gap + r.value, candidates: r.candidates };
 }
 
 /**

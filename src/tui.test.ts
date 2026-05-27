@@ -54,3 +54,41 @@ Deno.test("completeCommand: no match leaves the line unchanged", () => {
     candidates: [],
   });
 });
+
+const ARGS = {
+  "/provider": ["ollama", "openrouter", "openai", "anthropic"],
+  "/history": ["all"],
+};
+
+Deno.test("completeCommand: completes a command's argument (unique)", () => {
+  assertEquals(completeCommand("/provider a", NAMES, ARGS), {
+    line: "/provider anthropic",
+    candidates: [],
+  });
+});
+
+Deno.test("completeCommand: ambiguous argument fills common prefix + lists", () => {
+  assertEquals(completeCommand("/provider o", NAMES, ARGS), {
+    line: "/provider o", // ollama / openrouter / openai share only "o"
+    candidates: ["ollama", "openrouter", "openai"],
+  });
+  assertEquals(completeCommand("/provider op", NAMES, ARGS), {
+    line: "/provider open", // openrouter / openai share "open"
+    candidates: ["openrouter", "openai"],
+  });
+});
+
+Deno.test("completeCommand: a trailing space lists all options", () => {
+  assertEquals(completeCommand("/provider ", NAMES, ARGS), {
+    line: "/provider ",
+    candidates: ["ollama", "openrouter", "openai", "anthropic"],
+  });
+});
+
+Deno.test("completeCommand: args with no option set are left alone", () => {
+  // /model is free-text (models aren't enumerable without network).
+  assertEquals(completeCommand("/model gpt-4o", NAMES, ARGS), {
+    line: "/model gpt-4o",
+    candidates: [],
+  });
+});
