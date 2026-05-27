@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "jsr:@std/assert@^1";
 import { chat } from "./ollama.ts";
 
 // Hand-rolled HTTP mock (the aimock pattern) — no dependency. Run with:

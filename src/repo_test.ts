@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "jsr:@std/assert@^1";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 
 // Run with: deno test --allow-run --allow-read --allow-write --allow-env

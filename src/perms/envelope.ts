@@ -1,4 +1,4 @@
-import { normalize } from "@std/path";
+import { normalize } from "jsr:@std/path@^1";
 
 /**
  * Permission model — the security-critical core that decides whether a

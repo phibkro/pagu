@@ -1,4 +1,4 @@
-import { fromFileUrl, resolve } from "@std/path";
+import { fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { parseLog } from "./log/parse.ts";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";

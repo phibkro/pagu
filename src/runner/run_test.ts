@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
 import { runScript } from "./run.ts";
 
 // These tests spawn real `deno` subprocesses, so run the suite with:

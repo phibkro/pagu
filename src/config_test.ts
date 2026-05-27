@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "jsr:@std/assert@^1";
 import { DEFAULTS, mergeConfig } from "./config.ts";
 
 Deno.test("empty/garbage parsed yields the base unchanged", () => {
