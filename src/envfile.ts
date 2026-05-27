@@ -1,5 +1,5 @@
 // effects: fs (.env detection, consent memory, loading into the process env)
-import { resolve } from "jsr:@std/path@^1";
+import { join, resolve } from "jsr:@std/path@^1";
 import { parse as parseEnv } from "jsr:@std/dotenv@^0.225";
 import { configDirFromEnv } from "./config.ts";
 
@@ -25,7 +25,7 @@ type EnvPrefs = Record<string, "load" | "skip">;
 async function loadEnvPrefs(): Promise<EnvPrefs> {
   try {
     const p = JSON.parse(
-      await Deno.readTextFile(`${configDirFromEnv()}/envfiles.json`),
+      await Deno.readTextFile(join(configDirFromEnv(), "envfiles.json")),
     );
     return p && typeof p === "object" ? p as EnvPrefs : {};
   } catch {
@@ -39,7 +39,7 @@ async function saveEnvPref(path: string, load: boolean): Promise<void> {
   const dir = configDirFromEnv();
   await Deno.mkdir(dir, { recursive: true });
   await Deno.writeTextFile(
-    `${dir}/envfiles.json`,
+    join(dir, "envfiles.json"),
     JSON.stringify(prefs, null, 2) + "\n",
   );
 }

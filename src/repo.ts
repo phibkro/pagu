@@ -1,4 +1,5 @@
 // effects: git + config-dir fs
+import { join } from "jsr:@std/path@^1";
 import { configDirFromEnv } from "./config.ts";
 
 /**
@@ -27,7 +28,7 @@ export type RepoPrefs = Record<string, "enabled" | "disabled">;
 export async function loadRepoPrefs(): Promise<RepoPrefs> {
   try {
     const parsed = JSON.parse(
-      await Deno.readTextFile(`${configDirFromEnv()}/repos.json`),
+      await Deno.readTextFile(join(configDirFromEnv(), "repos.json")),
     );
     return parsed && typeof parsed === "object" ? parsed as RepoPrefs : {};
   } catch {
@@ -44,7 +45,7 @@ export async function saveRepoPref(
   const dir = configDirFromEnv();
   await Deno.mkdir(dir, { recursive: true });
   await Deno.writeTextFile(
-    `${dir}/repos.json`,
+    join(dir, "repos.json"),
     JSON.stringify(prefs, null, 2) + "\n",
   );
 }

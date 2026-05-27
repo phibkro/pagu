@@ -7,6 +7,7 @@
  * Hand-rolled (no SDK) to stay minimal and offline-capable. BYO key via
  * the Authorization header; omit for local providers.
  */
+import { TextLineStream } from "jsr:@std/streams@^1";
 import { chatAnthropic } from "./anthropic.ts";
 
 export type Role = "system" | "user" | "assistant" | "tool";
@@ -186,38 +187,35 @@ async function parseStream(
 ): Promise<ChatResponse> {
   let content = "";
   const calls = new Map<number, { name: string; args: string }>();
-  let buf = "";
 
-  for await (
-    const chunk of body.pipeThrough(new TextDecoderStream())
-  ) {
-    buf += chunk;
-    let nl: number;
-    while ((nl = buf.indexOf("\n")) !== -1) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line.startsWith("data:")) continue;
-      const payload = line.slice(5).trim();
-      if (payload === "" || payload === "[DONE]") continue;
-      let choice: StreamChoice;
-      try {
-        choice = (JSON.parse(payload).choices?.[0] ?? {}) as StreamChoice;
-      } catch {
-        continue; // tolerate keep-alive / malformed lines
-      }
-      const delta = choice.delta;
-      if (!delta) continue;
-      if (typeof delta.content === "string" && delta.content) {
-        content += delta.content;
-        onToken(delta.content);
-      }
-      for (const tc of delta.tool_calls ?? []) {
-        const idx = tc.index ?? 0;
-        const cur = calls.get(idx) ?? { name: "", args: "" };
-        if (tc.function?.name) cur.name = tc.function.name;
-        if (tc.function?.arguments) cur.args += tc.function.arguments;
-        calls.set(idx, cur);
-      }
+  // TextLineStream handles the cross-chunk line buffering; we only parse
+  // SSE semantics (the `data:` prefix and the `[DONE]` sentinel) on top.
+  const lines = body
+    .pipeThrough(new TextDecoderStream())
+    .pipeThrough(new TextLineStream());
+  for await (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (payload === "" || payload === "[DONE]") continue;
+    let choice: StreamChoice;
+    try {
+      choice = (JSON.parse(payload).choices?.[0] ?? {}) as StreamChoice;
+    } catch {
+      continue; // tolerate keep-alive / malformed lines
+    }
+    const delta = choice.delta;
+    if (!delta) continue;
+    if (typeof delta.content === "string" && delta.content) {
+      content += delta.content;
+      onToken(delta.content);
+    }
+    for (const tc of delta.tool_calls ?? []) {
+      const idx = tc.index ?? 0;
+      const cur = calls.get(idx) ?? { name: "", args: "" };
+      if (tc.function?.name) cur.name = tc.function.name;
+      if (tc.function?.arguments) cur.args += tc.function.arguments;
+      calls.set(idx, cur);
     }
   }
   return { content, toolCalls: toToolCalls([...calls.values()]) };

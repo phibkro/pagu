@@ -7,6 +7,8 @@
  *
  * Location: `$XDG_CONFIG_HOME/pagu/` or `$HOME/.config/pagu/`.
  */
+import { join } from "jsr:@std/path@^1";
+
 export interface PaguConfig {
   /** Provider preset name (see PRESETS) or "custom" with an explicit baseURL. */
   provider: string;
@@ -104,8 +106,8 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
 
 /** Pure: compute the config dir from given env values. */
 export function configDir(xdgConfigHome?: string, home?: string): string {
-  if (xdgConfigHome) return `${xdgConfigHome}/pagu`;
-  return `${home ?? "."}/.config/pagu`;
+  if (xdgConfigHome) return join(xdgConfigHome, "pagu");
+  return join(home ?? ".", ".config", "pagu");
 }
 
 /** Effect: read the config dir from the environment. */
@@ -115,11 +117,12 @@ export function configDirFromEnv(): string {
 
 export async function loadConfig(): Promise<Loaded> {
   const dir = configDirFromEnv();
+  const cfgPath = join(dir, "config.json");
   let config = { ...DEFAULTS };
 
   let raw: string | null = null;
   try {
-    raw = await Deno.readTextFile(`${dir}/config.json`);
+    raw = await Deno.readTextFile(cfgPath);
   } catch {
     // absent — use defaults
   }
@@ -130,7 +133,7 @@ export async function loadConfig(): Promise<Loaded> {
     } catch (e) {
       // fail loud: a present-but-broken config is a mistake, not a default
       throw new Error(
-        `invalid ${dir}/config.json: ${e instanceof Error ? e.message : e}`,
+        `invalid ${cfgPath}: ${e instanceof Error ? e.message : e}`,
       );
     }
     config = mergeConfig(config, parsed);
@@ -140,7 +143,7 @@ export async function loadConfig(): Promise<Loaded> {
   // Global notes first, then the project-local file (shared with other
   // agents), merged. config.json stays the home for structured settings.
   const parts = [
-    await readIfPresent(`${dir}/AGENTS.md`),
+    await readIfPresent(join(dir, "AGENTS.md")),
     await readIfPresent("AGENTS.md"),
   ].filter((s) => s.length > 0);
 

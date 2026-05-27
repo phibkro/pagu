@@ -1,5 +1,5 @@
 // imperative shell: orchestrates effects; the decisions it calls are pure
-import { resolve } from "jsr:@std/path@^1";
+import { join, resolve } from "jsr:@std/path@^1";
 import { spawnPhase } from "./phases/spawn.ts";
 import { runScript } from "./runner/run.ts";
 import { classifyRun } from "./runner/classify.ts";
@@ -112,7 +112,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
   const stream = ctx.ui.stream;
   const respond = () =>
     spawnPhase({
-      entry: `${ctx.phaseDir}respond.ts`,
+      entry: join(ctx.phaseDir, "respond.ts"),
       flags: [
         `--allow-net=${ctx.providerHost}`,
         ...ctx.readPaths.map((p) => `--allow-read=${p}`),
