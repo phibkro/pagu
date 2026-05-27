@@ -71,7 +71,9 @@ conversation log across turns (multi-turn context).
 each an `<id>.log.md` with a small YAML frontmatter header (name, created). Each
 launch starts a **new** conversation by default; `--continue` resumes the latest
 and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
-`/open <n>`, `/fork`, and `/rename <name>` manage them live.
+`/open <n>`, `/fork`, and `/rename <name>` manage them live; `/history [n|all]`
+recalls past messages and `/clear` deletes the active conversation (after a
+confirm).
 
 Flags:
 

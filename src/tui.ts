@@ -64,8 +64,9 @@ const COMMANDS: Record<string, string> = {
   "/open": "open conversation N from /sessions (e.g. /open 2)",
   "/fork": "branch this conversation into a new one",
   "/rename": "name the active conversation (e.g. /rename refactor)",
+  "/history": "show recent messages (/history [n|all], default 3)",
   "/log": "show the active conversation's path + size",
-  "/clear": "forget the active conversation (clears its log)",
+  "/clear": "delete the active conversation (asks first)",
   "/exit": "quit",
 };
 const COMMAND_NAMES = Object.keys(COMMANDS);
@@ -312,16 +313,44 @@ async function handleCommand(
       console.log(dim(`  renamed to: ${name}`));
       return true;
     }
+    case "/history": {
+      const msgs = ctx.log.filter(
+        (e): e is Extract<Entry, { kind: "message" }> => e.kind === "message",
+      );
+      if (msgs.length === 0) {
+        console.log(dim("  (no messages yet)"));
+        return true;
+      }
+      const arg = line.split(/\s+/)[1];
+      const n = arg === "all" ? msgs.length : (Number(arg) || 3);
+      for (const m of msgs.slice(-n)) {
+        const who = m.role === "user" ? cyan("you›") : bold("pagu›");
+        console.log(`\n${who} ${m.text}`);
+      }
+      return true;
+    }
     case "/log":
       console.log(
         dim(`  ${ctx.currentLogPath()}  (${ctx.log.length} entries)`),
       );
       return true;
-    case "/clear":
-      ctx.log.length = 0;
-      ctx.persist();
-      console.log(dim("  conversation cleared"));
+    case "/clear": {
+      const ans = await readLine(bold("delete this conversation? [y/N]: "));
+      if (ans?.trim().toLowerCase() !== "y") {
+        console.log(dim("  kept"));
+        return true;
+      }
+      try {
+        Deno.removeSync(ctx.currentLogPath());
+      } catch { /* not persisted yet — nothing to delete */ }
+      ctx.switchSession(
+        sessionPath(ctx.sessionBase, newSessionId(new Date())),
+        [],
+        { created: new Date().toISOString() },
+      );
+      console.log(dim("  deleted — started a fresh conversation"));
       return true;
+    }
     case "/exit":
       return false;
     default:
