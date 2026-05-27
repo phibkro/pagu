@@ -243,6 +243,12 @@ portable tier-1 floor around it (no regression).
   amplification.
 - **Runner perms cap an approved-but-buggy script**; **harness phase perms cap a
   buggy/compromised harness**.
+- **Advisory reviewer** (`src/advisor.ts`) is a pre-screening _control action_
+  that enriches human information at review — not a second approver and not in
+  the critical path. It fails open; the human gate remains the sole security
+  boundary. Structured `[advisory]` flags are presented alongside the review aid
+  output to assist the human reviewer, not to make approval decisions
+  autonomously.
 - When approved scripts need egress, a credential-injecting proxy (e.g. Claw
   Patrol) can mediate so the script never sees raw secrets.
 
@@ -338,6 +344,25 @@ portable tier-1 floor around it (no regression).
   frontmatter folds as a `ConfigLayer` monoid and whose body appends as prose.
   `--role <name>` (repeatable) and the TUI `/roles` picker. See _Roles — decided
   behavior_ below.
+- **Structured review aid** (`src/review.ts`) — pure module with four static
+  analyses at the human approval gate: risk tier badge (read-only / local-write
+  / EXTERNAL-NET), permission diff against envelope, LCS-based iteration diff
+  when cage revised the script, and `--allow-run` target check. Replaces the
+  flat script+perms dump.
+- **Deno denial format pin** — two integration tests in `classify.test.ts` that
+  run real Deno subprocesses and assert `classifyRun` returns `needs-perms` with
+  the exact path. Fails at CI if Deno changes its denial message wording.
+- **Advisory reviewer** (`src/advisor.ts`) — optional pre-approval add-on. Sends
+  `{task, script, perms}` (not the full log) to a configurable model, returns
+  structured flag strings labeled `[advisory]`. Fails open on any error. Enabled
+  via `--advisor` flag, `advisor: true` in config, or TUI `/advisor` command
+  (toggle/configure with preset + model; tab-completes). Separate
+  `advisorProvider`/`advisorModel` config fields allow a different model from
+  the proposer.
+- **Illegal state elimination** — three redundant derived fields removed:
+  `autoEnabled` (was `!!repo`), `autoReturn` (was `!grantsNet(ranWith)`), and
+  scoped `Permission { flag: "all" }` (now a discriminated union; `all` is never
+  scoped).
 
 ### Roles — decided behavior (shipped; intended, surfaced — not bugs)
 

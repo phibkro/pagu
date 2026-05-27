@@ -83,6 +83,12 @@ Security-critical pure cores (unit-tested — change with care + tests first):
   `wrapForSandbox` builds the wrapper argv; `detectSandbox` picks the tier
   (`none` when unavailable — no regression). Applies to both the cage and the
   real run.
+- `src/review.ts` — pure module adjacent to the approval gate: risk tier badge,
+  envelope permission diff, LCS-based iteration diff, `--allow-run` target
+  check. `src/advisor.ts` — optional pre-approval add-on; sends
+  `{task, script, perms}` to a configurable model, returns structured
+  `[advisory]` flags. Fails open. Both are pure and tested; neither holds an
+  exec path.
 
 The loop and its frontends:
 
