@@ -110,7 +110,16 @@ function makeCommand() {
       "--repo",
       "Repo mode: read+write the git repo and auto-approve within it.",
     )
-    .option("--tui", "Force the interactive REPL.");
+    .option("--tui", "Force the interactive REPL.")
+    .option("--advisor", "Enable the advisory reviewer at the approval gate.")
+    .option(
+      "--advisor-provider <preset:string>",
+      "Provider preset for the advisor (falls back to main provider).",
+    )
+    .option(
+      "--advisor-model <model:string>",
+      "Model for the advisor (falls back to main model).",
+    );
 }
 
 /** The command with the `completions` subcommand attached, for the entrypoint
@@ -137,6 +146,9 @@ export async function parseArgs(
   if (options.baseUrl) cli.baseURL = options.baseUrl;
   if (options.allow) cli.allow = options.allow;
   if (options.write) cli.write = options.write;
+  if (options.advisor) cli.advisor = true;
+  if (options.advisorProvider) cli.advisorProvider = options.advisorProvider;
+  if (options.advisorModel) cli.advisorModel = options.advisorModel;
   return {
     base,
     cli,
@@ -233,6 +245,7 @@ export async function buildContext(
   const cfg: PaguConfig = { ...DEFAULTS, allow: ["."] };
   let liveProvider: ProviderConfig;
   let liveHost: string;
+  let liveAdvisorConfig: ProviderConfig | undefined;
   let readPaths: string[];
   let envelope: Envelope;
   let denyFlags: string[];
@@ -274,6 +287,26 @@ export async function buildContext(
       format: prov.format,
     };
     liveHost = new URL(prov.baseURL).host;
+
+    if (effective.advisorProvider) {
+      const ap = resolveProvider({
+        ...cfg,
+        provider: effective.advisorProvider,
+        model: effective.advisorModel ?? cfg.model,
+      });
+      liveAdvisorConfig = {
+        model: effective.advisorModel ?? cfg.model,
+        baseURL: ap.baseURL,
+        apiKey: ap.apiKeyEnv ? Deno.env.get(ap.apiKeyEnv) : undefined,
+        format: ap.format,
+      };
+    } else if (effective.advisorModel) {
+      liveAdvisorConfig = { ...liveProvider, model: effective.advisorModel };
+    } else if (effective.advisor) {
+      liveAdvisorConfig = { ...liveProvider }; // enabled, same provider as main
+    } else {
+      liveAdvisorConfig = undefined;
+    }
 
     const roleWrites = effective.write ?? [];
     readPaths = [...cfg.allow, ...(repo ? [repo] : [])].map((p) => resolve(p));
@@ -368,6 +401,52 @@ export async function buildContext(
     };
   };
 
+  // Toggle/configure the advisory reviewer at runtime (the TUI's /advisor).
+  // advisorConfig being present is the single "enabled" signal — no separate
+  // boolean. enabled:false explicitly disables; bare call toggles.
+  const setAdvisor = (
+    change: { enabled?: boolean; provider?: string; model?: string },
+  ): { ok: boolean; message: string } => {
+    if (change.enabled === false) {
+      liveAdvisorConfig = undefined;
+      return { ok: true, message: "advisor off" };
+    }
+    if (change.provider || change.model) {
+      const base = change.provider
+        ? { ...cfg, provider: change.provider }
+        : cfg;
+      try {
+        const ap = resolveProvider({
+          ...base,
+          model: change.model ?? liveAdvisorConfig?.model ?? cfg.model,
+        });
+        liveAdvisorConfig = {
+          model: change.model ?? liveAdvisorConfig?.model ?? cfg.model,
+          baseURL: ap.baseURL,
+          apiKey: ap.apiKeyEnv ? Deno.env.get(ap.apiKeyEnv) : undefined,
+          format: ap.format,
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          message: e instanceof Error ? e.message : String(e),
+        };
+      }
+      const prov = change.provider ?? cfg.provider;
+      return {
+        ok: true,
+        message: `advisor on · ${prov} · ${liveAdvisorConfig.model}`,
+      };
+    }
+    // Bare toggle: off→on (copy main provider), on→off.
+    if (liveAdvisorConfig) {
+      liveAdvisorConfig = undefined;
+      return { ok: true, message: "advisor off" };
+    }
+    liveAdvisorConfig = { ...liveProvider };
+    return { ok: true, message: `advisor on · ${cfg.provider} · ${cfg.model}` };
+  };
+
   // Resolve which conversation log this run uses. Explicit --log bypasses
   // the store; otherwise sessions live per-project under .pagu/sessions/:
   // --session opens one, --continue resumes the latest, default = new.
@@ -433,7 +512,10 @@ export async function buildContext(
     get denyFlags() {
       return denyFlags;
     },
-    autoEnabled: repo !== undefined,
+    get advisorConfig() {
+      return liveAdvisorConfig;
+    },
+    setAdvisor,
     get capabilities() {
       return capabilities;
     },

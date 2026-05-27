@@ -9,6 +9,8 @@ import {
   parsePermission,
 } from "./permissions/envelope.ts";
 import { shouldAutoApprove } from "./permissions/policy.ts";
+import { formatAdvisory, runAdvisor } from "./advisor.ts";
+import { buildReview, formatReview } from "./review.ts";
 import type { SandboxKind } from "./runner/sandbox.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
@@ -62,7 +64,14 @@ export interface AgentContext {
   repo?: string;
   envelope: Envelope;
   denyFlags: string[];
-  autoEnabled: boolean;
+  /** Advisory reviewer config — present = enabled, absent = disabled.
+   * Falls back to no advisor when undefined; use a copy of ctx.provider to
+   * enable with the default provider. */
+  advisorConfig?: ProviderConfig;
+  /** Toggle advisor on/off and optionally reconfigure its provider/model. */
+  setAdvisor: (
+    change: { enabled?: boolean; provider?: string; model?: string },
+  ) => { ok: boolean; message: string };
   /** A description of what authored scripts can actually do (read/write
    * scope), injected into the agent's prompt so it knows its real reach. */
   capabilities: string;
@@ -172,6 +181,8 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
       let script = produced.findLast(isScript);
       if (!script) return; // pure chat turn — no action needed, done.
 
+      const initialBody = script.body; // captured for diff if cage revises it
+
       // Cage self-test: no net, real reads in scope, writes only to scratch.
       let discovered: string[] = [];
       for (let attempt = 1; attempt <= MAX_FIX; attempt++) {
@@ -236,16 +247,30 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
         shouldAutoApprove(
           discovered.map(parsePermission),
           ctx.envelope,
-          ctx.autoEnabled,
+          !!ctx.repo,
         )
       ) {
         ctx.ui.status("auto-approved (within session envelope)");
         approved = true;
       } else {
-        ctx.ui.show(
-          `\n--- proposed ${script.id} (${script.lang}) ---\n${script.body}\n`,
-        );
-        ctx.ui.show(`will run with: ${perms.join(" ") || "(no perms)"}`);
+        const review = buildReview({
+          perms,
+          envelope: ctx.envelope,
+          body: script.body,
+          prevBody: script.body !== initialBody ? initialBody : undefined,
+        });
+        ctx.ui.show(formatReview(review, script.id, script.lang, script.body));
+        if (ctx.advisorConfig) {
+          const advisory = formatAdvisory(
+            await runAdvisor({
+              task,
+              script: script.body,
+              perms,
+              provider: ctx.advisorConfig,
+            }),
+          );
+          if (advisory) ctx.ui.show(advisory);
+        }
         approved = await ctx.approve(script, perms);
       }
 
@@ -291,7 +316,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
       });
       ctx.persist();
       ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
-      if (!result.autoReturn) {
+      if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
         ctx.ui.show(
           "\n[net was granted — output would NOT auto-return to the agent]",
         );

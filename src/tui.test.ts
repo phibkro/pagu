@@ -92,3 +92,29 @@ Deno.test("completeCommand: args with no option set are left alone", () => {
     candidates: [],
   });
 });
+
+// --- /advisor command ---
+
+const NAMES_WITH_ADVISOR = [...NAMES, "/advisor"];
+const ARGS_WITH_ADVISOR = {
+  ...ARGS,
+  "/advisor": ["off", "ollama", "openrouter", "openai", "anthropic"],
+};
+
+Deno.test("completeCommand: /advisor completes from /adv prefix", () => {
+  assertEquals(completeCommand("/adv", NAMES_WITH_ADVISOR), {
+    line: "/advisor",
+    candidates: [],
+  });
+});
+
+Deno.test("completeCommand: /advisor off disables, preset enables+configures", () => {
+  assertEquals(
+    completeCommand("/advisor of", NAMES_WITH_ADVISOR, ARGS_WITH_ADVISOR),
+    { line: "/advisor off", candidates: [] },
+  );
+  assertEquals(
+    completeCommand("/advisor op", NAMES_WITH_ADVISOR, ARGS_WITH_ADVISOR),
+    { line: "/advisor open", candidates: ["openrouter", "openai"] },
+  );
+});

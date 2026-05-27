@@ -64,6 +64,8 @@ const COMMANDS: Record<string, string> = {
   "/help": "show this",
   "/provider": "list providers, or switch (e.g. /provider openai)",
   "/model": "set the model (e.g. /model anthropic/claude-sonnet-4.5)",
+  "/advisor":
+    "toggle advisory reviewer, or configure (e.g. /advisor openrouter claude-sonnet-4-5)",
   "/roles": "pick roles, or apply a group (e.g. /roles dev rust)",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
@@ -81,6 +83,7 @@ const COMMAND_NAMES = Object.keys(COMMANDS);
  * are deliberately absent — listing them would need network. */
 const ARG_OPTIONS: Record<string, string[]> = {
   "/provider": Object.keys(PRESETS),
+  "/advisor": ["off", ...Object.keys(PRESETS)],
   "/history": ["all"],
 };
 
@@ -321,6 +324,20 @@ async function handleCommand(
       }
       const r = ctx.setProvider({ model: name });
       console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
+      return true;
+    }
+    case "/advisor": {
+      const parts = line.split(/\s+/).slice(1);
+      if (parts[0] === "off") {
+        const r = ctx.setAdvisor({ enabled: false });
+        console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
+      } else if (parts.length === 0) {
+        const r = ctx.setAdvisor({});
+        console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
+      } else {
+        const r = ctx.setAdvisor({ provider: parts[0], model: parts[1] });
+        console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
+      }
       return true;
     }
     case "/roles": {

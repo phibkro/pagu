@@ -63,6 +63,22 @@ Deno.test("parseArgs: session/log/boolean flags map through", async () => {
   assertEquals(o.tui, true);
 });
 
+Deno.test("parseArgs: --advisor flag maps to cli.advisor", async () => {
+  const o = await parseArgs(DEFAULTS, ["--advisor"]);
+  assertEquals(o.cli.advisor, true);
+});
+
+Deno.test("parseArgs: --advisor-provider and --advisor-model map to cli", async () => {
+  const o = await parseArgs(DEFAULTS, [
+    "--advisor-provider",
+    "openrouter",
+    "--advisor-model",
+    "claude-sonnet-4-5",
+  ]);
+  assertEquals(o.cli.advisorProvider, "openrouter");
+  assertEquals(o.cli.advisorModel, "claude-sonnet-4-5");
+});
+
 Deno.test("parseArgs: defaults when no flags are given", async () => {
   const o = await parseArgs(DEFAULTS, []);
   assertEquals(o.task, "");

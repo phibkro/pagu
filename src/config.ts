@@ -20,6 +20,12 @@ export interface PaguConfig {
   /** Wire format override; presets set this (anthropic uses its own API). */
   format?: "openai" | "anthropic";
   allow: string[];
+  /** When true, run the advisory reviewer before the human approval prompt. */
+  advisor?: boolean;
+  /** Provider preset for the advisor (falls back to the main provider). */
+  advisorProvider?: string;
+  /** Model for the advisor (falls back to the main model). */
+  advisorModel?: string;
 }
 
 /**
@@ -37,6 +43,9 @@ export interface ConfigLayer {
   format?: "openai" | "anthropic";
   allow?: string[];
   write?: string[];
+  advisor?: boolean;
+  advisorProvider?: string;
+  advisorModel?: string;
 }
 
 /** Provider presets. Most speak OpenAI Chat Completions; anthropic uses its
@@ -128,6 +137,11 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
     if (Array.isArray(p.allow) && p.allow.every((x) => typeof x === "string")) {
       out.allow = p.allow as string[];
     }
+    if (typeof p.advisor === "boolean") out.advisor = p.advisor;
+    if (typeof p.advisorProvider === "string") {
+      out.advisorProvider = p.advisorProvider;
+    }
+    if (typeof p.advisorModel === "string") out.advisorModel = p.advisorModel;
   }
   return out;
 }
@@ -167,6 +181,12 @@ export function mergeLayer(a: ConfigLayer, b: ConfigLayer): ConfigLayer {
   if (allow !== undefined) out.allow = allow;
   const write = unionLists(a.write, b.write);
   if (write !== undefined) out.write = write;
+  const advisor = b.advisor ?? a.advisor;
+  if (advisor !== undefined) out.advisor = advisor;
+  const advisorProvider = b.advisorProvider ?? a.advisorProvider;
+  if (advisorProvider !== undefined) out.advisorProvider = advisorProvider;
+  const advisorModel = b.advisorModel ?? a.advisorModel;
+  if (advisorModel !== undefined) out.advisorModel = advisorModel;
   return out;
 }
 
@@ -191,6 +211,11 @@ export function toLayer(data: Record<string, unknown>): ConfigLayer {
   }
   if (isStringArray(data.allow)) l.allow = data.allow;
   if (isStringArray(data.write)) l.write = data.write;
+  if (typeof data.advisor === "boolean") l.advisor = data.advisor;
+  if (typeof data.advisorProvider === "string") {
+    l.advisorProvider = data.advisorProvider;
+  }
+  if (typeof data.advisorModel === "string") l.advisorModel = data.advisorModel;
   return l;
 }
 
