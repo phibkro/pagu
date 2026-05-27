@@ -1,7 +1,9 @@
 # Runtime conversation logs + session store (per-user data, not source).
+# Note: .pagu/roles/ is intentionally tracked (project roles are shared
+# conventions); only the per-user session store + logs are ignored.
 pagu.log.md
 *.log.md
-.pagu/
+.pagu/sessions/
 .env
 # Local Claude Code config; .claude/CLAUDE.md is a symlink → AGENTS.md so
 # Claude agents in this repo inherit our operating manual.

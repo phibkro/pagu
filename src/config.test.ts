@@ -1,11 +1,74 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { join } from "@std/path";
 import {
+  composeLayers,
+  type ConfigLayer,
   DEFAULTS,
   firstPresent,
   mergeConfig,
+  mergeLayer,
   resolveProvider,
 } from "./config.ts";
+
+// --- the role-composition monoid (pure; property-checked) ---
+
+/** Compare layers up to grant-set-equality (list order/repeats don't matter). */
+function normalize(l: ConfigLayer): ConfigLayer {
+  const n = { ...l };
+  if (n.allow) n.allow = [...new Set(n.allow)].sort();
+  if (n.write) n.write = [...new Set(n.write)].sort();
+  return n;
+}
+const eqLayer = (a: ConfigLayer, b: ConfigLayer) =>
+  assertEquals(normalize(a), normalize(b));
+
+function randLayer(): ConfigLayer {
+  const r = Math.random;
+  const opt = <T>(v: T): T | undefined => (r() < 0.6 ? v : undefined);
+  const subset = (xs: string[]) => xs.filter(() => r() < 0.5);
+  const l: ConfigLayer = {};
+  const p = opt(["ollama", "openai", "anthropic"][Math.floor(r() * 3)]);
+  if (p) l.provider = p;
+  const m = opt(["a", "b", "c"][Math.floor(r() * 3)]);
+  if (m) l.model = m;
+  if (r() < 0.7) l.allow = subset(["/x", "/y", "/z"]);
+  if (r() < 0.5) l.write = subset(["/w", "/v"]);
+  return l;
+}
+
+Deno.test("mergeLayer monoid: identity (left and right)", () => {
+  for (let i = 0; i < 200; i++) {
+    const x = randLayer();
+    eqLayer(mergeLayer({}, x), x);
+    eqLayer(mergeLayer(x, {}), x);
+  }
+  assertEquals(mergeLayer({}, {}), {}); // identity ⋄ identity = identity
+});
+
+Deno.test("mergeLayer monoid: associativity", () => {
+  for (let i = 0; i < 300; i++) {
+    const a = randLayer(), b = randLayer(), c = randLayer();
+    eqLayer(mergeLayer(mergeLayer(a, b), c), mergeLayer(a, mergeLayer(b, c)));
+  }
+});
+
+Deno.test("mergeLayer: scalars last-win, grants union (order-independent set)", () => {
+  assertEquals(
+    mergeLayer({ provider: "ollama", model: "a" }, { provider: "openai" }),
+    { provider: "openai", model: "a" },
+  );
+  // union, deduped, first-seen order
+  assertEquals(mergeLayer({ allow: ["/x"] }, { allow: ["/y", "/x"] }).allow, [
+    "/x",
+    "/y",
+  ]);
+  // composing a base + two role layers folds to the union
+  assertEquals(
+    composeLayers([{ allow: ["/a"] }, { allow: ["/b"] }, { allow: ["/a"] }])
+      .allow,
+    ["/a", "/b"],
+  );
+});
 
 Deno.test("firstPresent: AGENTS.md preferred, CLAUDE.md is the fallback", async () => {
   const dir = await Deno.makeTempDir();

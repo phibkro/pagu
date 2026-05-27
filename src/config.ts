@@ -22,6 +22,23 @@ export interface PaguConfig {
   allow: string[];
 }
 
+/**
+ * A composable config layer — the unit roles compose into. Every field is
+ * optional; the empty layer `{}` is the identity. Merge law (see
+ * `docs/CONCEPTS.md`): scalars right-bias (last layer wins), list grants
+ * (`allow`, `write`) set-union. A full `PaguConfig` is a layer with the
+ * required fields filled in.
+ */
+export interface ConfigLayer {
+  provider?: string;
+  model?: string;
+  baseURL?: string;
+  apiKeyEnv?: string;
+  format?: "openai" | "anthropic";
+  allow?: string[];
+  write?: string[];
+}
+
 /** Provider presets. Most speak OpenAI Chat Completions; anthropic uses its
  * native Messages API (different wire format). */
 export const PRESETS: Record<
@@ -113,6 +130,49 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
     }
   }
   return out;
+}
+
+/** Order-preserving union of optional string lists; `undefined` only when
+ * both are absent (so `{}` stays the identity). Grants are a set — order and
+ * repeats don't matter — but we keep first-seen order for readable output. */
+function unionLists(a?: string[], b?: string[]): string[] | undefined {
+  if (a === undefined && b === undefined) return undefined;
+  const out: string[] = [];
+  for (const x of [...(a ?? []), ...(b ?? [])]) {
+    if (!out.includes(x)) out.push(x);
+  }
+  return out;
+}
+
+/**
+ * Merge two config layers — the role-composition combinator. A **monoid**:
+ * associative, with identity `{}`. Scalars take the right (later) layer when
+ * it sets them (last-write-wins); list grants union. So composing roles
+ * stacks scope and later roles win scalars — and because grants union as
+ * sets, the resulting permission set doesn't depend on layer order.
+ */
+export function mergeLayer(a: ConfigLayer, b: ConfigLayer): ConfigLayer {
+  const out: ConfigLayer = {};
+  const provider = b.provider ?? a.provider;
+  if (provider !== undefined) out.provider = provider;
+  const model = b.model ?? a.model;
+  if (model !== undefined) out.model = model;
+  const baseURL = b.baseURL ?? a.baseURL;
+  if (baseURL !== undefined) out.baseURL = baseURL;
+  const apiKeyEnv = b.apiKeyEnv ?? a.apiKeyEnv;
+  if (apiKeyEnv !== undefined) out.apiKeyEnv = apiKeyEnv;
+  const format = b.format ?? a.format;
+  if (format !== undefined) out.format = format;
+  const allow = unionLists(a.allow, b.allow);
+  if (allow !== undefined) out.allow = allow;
+  const write = unionLists(a.write, b.write);
+  if (write !== undefined) out.write = write;
+  return out;
+}
+
+/** Fold layers left-to-right onto the identity — base first, roles in order. */
+export function composeLayers(layers: ConfigLayer[]): ConfigLayer {
+  return layers.reduce(mergeLayer, {});
 }
 
 /** Pure: compute the config dir from given env values. */

@@ -130,6 +130,11 @@ Provider + phases + config:
   ```
 - The **cage self-test** is the product's own feedback loop: a proposal's bugs
   feed back to the model (bounded) before a human sees it.
+- **Test the pure core by law; test the effectful surface against the real
+  thing.** Pure cores (the merge monoid, envelope, classify, log codec) get
+  unit/property tests — correct by construction. The effectful surface (IO,
+  runner, providers) is where errors hide, so exercise the _real system_ — real
+  `deno` subprocesses, a real local HTTP server — over isolated mocks.
 - **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
   trailer
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
