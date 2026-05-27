@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
   buildExplicitEntries,
   type CommandEntry,
+  filterStaleInferred,
   loadInferred,
   matchesPolicy,
   saveInferred,
@@ -78,6 +79,65 @@ Deno.test("loadInferred: returns [] when file absent", async () => {
   const tmp = await Deno.makeTempDir({ prefix: "pagu-policy-" });
   assertEquals(await loadInferred(tmp), []);
   await Deno.remove(tmp, { recursive: true });
+});
+
+// --- filterStaleInferred ---
+
+Deno.test("filterStaleInferred: entry without sourceFile is kept", async () => {
+  const e: CommandEntry = {
+    program: "deno",
+    args: ["task", "lint"],
+    permissions: ["allow-run=deno"],
+    source: "inferred",
+    inferredAt: new Date(0).toISOString(),
+  };
+  assertEquals(await filterStaleInferred([e]), [e]);
+});
+
+Deno.test("filterStaleInferred: entry with fresh sourceFile is kept", async () => {
+  const tmp = await Deno.makeTempDir({ prefix: "pagu-stale-" });
+  const file = `${tmp}/deno.json`;
+  await Deno.writeTextFile(file, "{}");
+  // inferredAt is well in the future — file is "older"
+  const e: CommandEntry = {
+    program: "deno",
+    args: ["task", "lint"],
+    permissions: ["allow-run=deno"],
+    source: "inferred",
+    inferredAt: new Date(Date.now() + 60_000).toISOString(),
+    sourceFile: file,
+  };
+  assertEquals(await filterStaleInferred([e]), [e]);
+  await Deno.remove(tmp, { recursive: true });
+});
+
+Deno.test("filterStaleInferred: entry with stale sourceFile is dropped", async () => {
+  const tmp = await Deno.makeTempDir({ prefix: "pagu-stale-" });
+  const file = `${tmp}/deno.json`;
+  await Deno.writeTextFile(file, "{}");
+  // inferredAt is in the past — file is "newer"
+  const e: CommandEntry = {
+    program: "deno",
+    args: ["task", "lint"],
+    permissions: ["allow-run=deno"],
+    source: "inferred",
+    inferredAt: new Date(0).toISOString(),
+    sourceFile: file,
+  };
+  assertEquals(await filterStaleInferred([e]), []);
+  await Deno.remove(tmp, { recursive: true });
+});
+
+Deno.test("filterStaleInferred: explicit entries are always kept", async () => {
+  const e: CommandEntry = {
+    program: "deno",
+    args: ["task", "lint"],
+    permissions: [],
+    source: "explicit",
+    inferredAt: new Date(0).toISOString(),
+    sourceFile: "/nonexistent/path",
+  };
+  assertEquals(await filterStaleInferred([e]), [e]);
 });
 
 Deno.test("loadInferred / saveInferred round-trip", async () => {

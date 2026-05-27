@@ -18,12 +18,46 @@ export interface CommandEntry {
   source: "explicit" | "inferred";
   /** ISO timestamp set when permissions were cage-inferred. */
   inferredAt?: string;
+  /** Absolute path to the file that defines this task. Used to detect
+   * staleness: if the file is newer than inferredAt, re-discover. */
+  sourceFile?: string;
 }
 
 export interface DiscoveredTask {
   program: string;
   args: string[];
   description: string;
+  /** Absolute path to the file that defines this task (e.g. deno.json).
+   * Used for staleness checks: when this file changes, the inferred
+   * permission ceiling for the task is re-discovered on next cage run. */
+  sourceFile: string;
+}
+
+/**
+ * Filter inferred entries whose source file has been modified since the
+ * permissions were inferred. Stale entries are discarded — the cage will
+ * re-discover on the next run_task invocation and store a fresh ceiling.
+ */
+export async function filterStaleInferred(
+  entries: CommandEntry[],
+): Promise<CommandEntry[]> {
+  const results: CommandEntry[] = [];
+  for (const e of entries) {
+    if (e.source === "explicit" || !e.sourceFile || !e.inferredAt) {
+      results.push(e);
+      continue;
+    }
+    try {
+      const stat = await Deno.stat(e.sourceFile);
+      const fileMs = stat.mtime?.getTime() ?? 0;
+      const inferredMs = new Date(e.inferredAt).getTime();
+      if (fileMs <= inferredMs) results.push(e); // still fresh
+      // else: stale — drop it, will re-infer on next run
+    } catch {
+      results.push(e); // file gone? keep entry, fail later
+    }
+  }
+  return results;
 }
 
 /** Pure: find a policy entry matching this exact program + args. */

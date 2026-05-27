@@ -12,24 +12,31 @@ roadmap (the project's single source of truth).
 ## How it works
 
 You **chat** with pagu. It answers normally and reads allowlisted files (via a
-`read` tool) when that helps. Only when finishing the task actually requires
-changing the system does it switch into **action mode** and propose a script —
-otherwise it just replies. Each turn runs as a **separate `deno` process**
-launched with only that turn's permissions (`--allow-net=<model>`,
-`--allow-read=<allowlist>` — never write or run).
+`read` tool) when that helps. When a task requires changing the system, the
+agent uses one of four tools — a **capability ladder** from lowest to highest
+trust:
 
-When an action _is_ needed, the proposed script goes through:
+| Tool           | What it does                                     | Approval                                     |
+| -------------- | ------------------------------------------------ | -------------------------------------------- |
+| `read`         | Inspect files / directories                      | None (read-only)                             |
+| `write`        | Author an arbitrary Deno script                  | Human y/n every time                         |
+| `invoke_skill` | Run a pre-authored skill script verbatim         | Auto (within declared permission ceiling)    |
+| `run_task`     | Run a named project task (e.g. `deno task lint`) | Auto (ceiling inferred on first run, cached) |
 
-1. **Cage self-test** — run in a no-net, scratch-only sandbox to catch bugs (fed
-   back to the model to fix) and discover the permissions it needs.
-2. **Review** — you see the script and the exact permissions it will run with,
-   and answer **y/n** (auto-approved in `--repo` mode within the repo envelope).
-3. **Run** — a separate `deno run --no-prompt <granted flags>` executes it;
-   output auto-returns to the conversation only if no network was granted, so
-   pagu can see the result and continue or wrap up.
+Deny by default: `invoke_skill` and `run_task` only fire for pre-approved
+procedures. Everything else goes through `write` + full human review.
 
-The model has no execute capability at any point; the human gate sits between
-proposal and run.
+Each turn runs as a **separate `deno` process** launched with only that turn's
+permissions — never write or run.
+
+When a script is proposed via `write`, it goes through:
+
+1. **Cage self-test** — run in a no-net, scratch-only sandbox to catch bugs and
+   discover the permissions it needs.
+2. **Review** — you see the script, its risk tier, and the exact permissions it
+   will run with; answer **y/n** (auto-approved in `--repo` mode within the repo
+   envelope, or when it matches a skill or task ceiling).
+3. **Run** — a separate `deno run --no-prompt <granted flags>` executes it.
 
 ## Requirements
 
@@ -51,16 +58,7 @@ Run this **from the repo root** (so `deno.json` is found):
 deno task install
 ```
 
-That wraps the full `deno install --global --force --config deno.json …` (see
-`deno.json` → tasks). The **`--config deno.json` is required**: pagu's imports
-resolve through that file's import map, and `deno install --global` otherwise
-ignores `deno.json` (it would fail with `Import "@std/…" not a dependency`) —
-which is why it's baked into the task. Then make sure **`~/.deno/bin` is on your
-`PATH`** (deno prints this on install) so `pagu` is runnable — e.g. add
-`export PATH="$HOME/.deno/bin:$PATH"` to your shell rc.
-
-The orchestrator needs run/read/write; each phase subprocess still gets only its
-own scoped permissions regardless of what the orchestrator holds.
+Then make sure **`~/.deno/bin` is on your `PATH`**.
 
 ## Usage
 
@@ -69,52 +67,118 @@ pagu "count the .txt files in ./photos and write the total to count.txt" \
   --allow ./photos
 ```
 
-Bare **`pagu`** in a terminal (or `pagu --tui`) launches an interactive REPL —
-type tasks one after another, with the same security model and a shared
-conversation log across turns (multi-turn context).
+Bare **`pagu`** in a terminal (or `pagu --tui`) launches an interactive REPL.
 
-**Conversations** are stored per-project under `./.pagu/sessions/` (gitignored),
-each an `<id>.log.md` with a small YAML frontmatter header (name, created). Each
-launch starts a **new** conversation by default; `--continue` resumes the latest
-and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
+**Conversations** are stored per-project under `./.pagu/sessions/` (gitignored).
+Each launch starts a **new** conversation by default; `--continue` resumes the
+latest and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
 `/open <n>`, `/fork`, and `/rename <name>` manage them live; `/history [n|all]`
 recalls past messages and `/clear` deletes the active conversation (after a
 confirm). Switch model/provider mid-session with `/model <name>` and
-`/provider <name>` (`/provider` alone lists them). `/roles` lists available
-roles; `/roles <name> [name…]` applies a group at runtime, re-deriving the
-config, permissions, and instructions (most-recent action wins between this and
-`/provider`).
+`/provider <name>`.
 
-Flags (run `pagu --help` for the generated list; for shell completions,
+Flags (run `pagu --help` for the full list; for shell completions,
 `source <(pagu completions bash)` — also `zsh`/`fish`):
 
-- `--allow <path>` (repeatable) — read-allowlist the agent may inspect (defaults
-  to `.`).
-- `--role <name>` (repeatable) — apply a role: a markdown bundle of config
-  (frontmatter) and instructions (body) from `./.pagu/roles/<name>.md` (project,
-  shared) or `~/.config/pagu/roles/<name>.md` (global). Roles fold in order
-  between config and flags (`defaults ⋄ config.json ⋄ roles ⋄ flags`); flags
-  win. An unknown name fails loud.
+- `--allow <path>` (repeatable) — read-allowlist the agent may inspect.
+- `--role <name>` (repeatable) — apply a role: a markdown bundle of config and
+  instructions from `./.pagu/roles/<name>.md` (project) or
+  `~/.config/pagu/roles/<name>.md` (global). Roles fold between config and
+  flags.
+- `--skill <name>` (repeatable) — apply a skill: a capability bundle from
+  `./.pagu/skills/<name>/` or `~/.config/pagu/skills/<name>/`. Skills extend
+  roles with reference files and pre-approved scripts (see **Skills** below).
 - `--model <name>` — model id (default `qwen3.5:9b`).
 - `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or
   `anthropic`.
 - `--base-url <url>` — override the API root for a custom OpenAI-compatible
   endpoint.
-- `--session <id>` — open a specific stored conversation (see
-  `--list-sessions`).
-- `--continue` — resume the most recent conversation instead of starting new.
-- `--list-sessions` — print this project's saved conversations and exit.
-- `--log <file>` — use an explicit log file, bypassing the session store.
+- `--repo` — **repo mode**: grant read+write to the current git repo,
+  auto-approve scripts confined to it, and auto-allow all discovered project
+  tasks (`deno.json`, `package.json`, `Justfile`) via `run_task`.
 - `--write <dir>` (repeatable) — directories scripts may write to.
-- `--no-sandbox` — disable the OS sandbox tier (the Deno-permission floor still
-  applies to every run).
-- `--repo` — **repo mode**: grant read+write to the current git repo and
-  **auto-approve** scripts confined to it (no per-script prompt). Safe because
-  git is your undo buffer, the runner has no network, and `.gitignore`'d paths
-  are denied write. "Safe computer use" for a codebase.
+- `--no-sandbox` — disable the OS sandbox tier (Deno-permission floor applies).
+- `--advisor` — enable the advisory reviewer: sends `{task, script, perms}` to a
+  model before the approval prompt and shows structured `[advisory]` flags.
+  Fails open. Use `--advisor-provider` / `--advisor-model` for a separate model.
+- `--session <id>` — open a specific stored conversation.
+- `--continue` — resume the most recent conversation.
+- `--list-sessions` — print saved conversations and exit.
+- `--log <file>` — use an explicit log file, bypassing the session store.
 
-At the review prompt, pagu prints the script and the exact permissions it will
-run with; answer **`y`** to approve and run, anything else to reject.
+TUI slash commands: `/roles`, `/skills`, `/provider`, `/model`, `/advisor`,
+`/sessions`, `/new`, `/open`, `/fork`, `/rename`, `/history`, `/log`, `/clear`,
+`/exit`. All tab-complete.
+
+## Skills
+
+A **skill** is a directory containing `SKILL.md` (frontmatter + instructions)
+and optionally a `scripts/` subdirectory with pre-approved Deno `.ts` scripts.
+Skills follow the [agentskills.io](https://agentskills.io) format.
+
+```
+.pagu/skills/run-tests/
+├── SKILL.md            # required: name, description frontmatter + instructions
+└── scripts/
+    └── run-tests.ts    # pre-approved script — runs verbatim via invoke_skill
+```
+
+`SKILL.md` frontmatter (pagu-specific extensions beyond the spec):
+
+```yaml
+---
+name: run-tests
+description: Run the test suite. Use when asked to run tests or verify things work.
+files:
+  - deno.json # added to the agent's read allowlist
+scripts:
+  - name: run-tests
+    description: Run the full test suite via deno task test
+    permissions:
+      - allow-run=deno
+      - allow-read=.
+      - allow-write=.
+      - allow-env
+      - allow-net
+---
+Instructions for the agent...
+```
+
+Use `--skill <name>` or `/skills` in the TUI to apply skills. Project skills
+(`.pagu/skills/`) shadow global ones (`~/.config/pagu/skills/`).
+
+When the agent calls `invoke_skill`, the orchestrator resolves the script body
+from the skill (agent never copies it), cages it, validates discovered
+permissions against the declared ceiling, and auto-approves.
+
+## Project tasks (`run_task`)
+
+pagu discovers named tasks from your project's task runners (`deno.json`,
+`package.json`, `Justfile`) and can run allowed ones without a human prompt.
+
+**Opt-in via `allowed-tasks` in config or a role:**
+
+```json
+{ "allowed-tasks": ["deno task lint", "deno task test", "deno task ci"] }
+```
+
+Or in a role's frontmatter:
+
+```yaml
+---
+allowedTasks:
+  - deno task lint
+  - deno task test
+---
+```
+
+**Or just use `--repo`**: repo mode auto-allows all discovered project tasks.
+
+On the **first invocation** of a task, pagu cages it with minimal permissions,
+discovers what it actually needs, and stores the ceiling in
+`.pagu/inferred-perms.json` (gitignored). Subsequent runs validate against the
+stored ceiling. If you modify `deno.json` or `package.json`, stale entries are
+automatically discarded and re-inferred.
 
 ## Config (optional)
 
@@ -127,48 +191,35 @@ Zero-config works. To customize, drop files in `~/.config/pagu/` (or
 {
   "provider": "openrouter",
   "model": "anthropic/claude-sonnet-4.5",
-  "allow": ["/home/me/work", "/home/me/notes"]
+  "allow": ["/home/me/work", "/home/me/notes"],
+  "allowedTasks": ["deno task lint", "deno task test"],
+  "advisor": true,
+  "advisorProvider": "openrouter",
+  "advisorModel": "anthropic/claude-haiku-4-5"
 }
 ```
 
 `provider` is a preset (`ollama` / `openrouter` / `openai` / `anthropic`); each
-knows its base URL and which **env var** holds the API key
-(`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) — so secrets never
-live in the config file. `anthropic` uses Anthropic's native Messages API; the
-rest use the OpenAI format. Override a preset with `baseURL` / `apiKeyEnv` /
-`format` for any other endpoint. Default is local `ollama` (no key, private).
+knows its base URL and which **env var** holds the API key. Secrets never live
+in the config file.
 
 > **Anthropic note:** the `anthropic` preset uses an **API key**
-> (pay-as-you-go). Your Claude **Pro/Max subscription cannot be used** —
-> Anthropic prohibits subscription OAuth in third-party tools. Use an API key,
-> or reach Claude via `openrouter`.
+> (pay-as-you-go). Your Claude Pro/Max subscription cannot be used — use an API
+> key, or reach Claude via `openrouter`.
 
 > **Privacy:** with a **cloud** provider, the agent's _observations_ (file
-> contents it reads) are sent to that provider. The sandboxed runner blocks
-> _script_ exfiltration, but the agent's reads always go to whichever model you
-> point at. **Local Ollama keeps everything on your machine.**
+> contents it reads) are sent to that provider. Local Ollama keeps everything on
+> your machine.
 
-`AGENTS.md` — free-form agent instructions, injected into the prompts. This is
-the cross-tool standard (also read by Codex, Cursor, Copilot, …), so one file
-guides pagu and your other agents. pagu merges a **global**
-`~/.config/pagu/AGENTS.md` (machine notes) with a **project-local**
-`./AGENTS.md` (this repo). If you use Claude Code, pagu **falls back** to
-`~/.claude/CLAUDE.md` / `./CLAUDE.md` when the corresponding `AGENTS.md` is
-absent — so no duplication (only the prose; pagu never reads `.claude/`
-settings). For example:
+`AGENTS.md` — free-form agent instructions, injected into the prompts. The
+cross-tool standard (also read by Codex, Cursor, Copilot, …). pagu merges a
+global `~/.config/pagu/AGENTS.md` with a project-local `./AGENTS.md`, with a
+Claude Code `CLAUDE.md` fallback.
 
-```markdown
-I'm on NixOS with bash. Projects live under ~/work. Prefer ripgrep over grep.
-Don't touch ~/.ssh or anything under /etc.
-```
-
-A malformed `config.json` is a hard error (it won't silently fall back).
-
-**API keys / `.env`:** pagu reads keys from the process environment (e.g.
-`ANTHROPIC_API_KEY`), so `export` them or use your shell's env. As a
-convenience, if a `.env` sits in the working directory, pagu offers **once per
-folder (remembered)** to load it into the environment — gated by a prompt
-because sourcing cwd env is a small trust decision. Gitignore your `.env`.
+**API keys / `.env`:** pagu reads keys from the process environment. If a `.env`
+sits in the working directory, pagu offers once per folder to load it — gated by
+a prompt because sourcing cwd env is a small trust decision. Gitignore your
+`.env`.
 
 ## Tests
 
@@ -179,17 +230,19 @@ deno task ci     # full gate: fmt-check + lint + check + test
 
 ## Status
 
-Working: **chat-or-act** loop (converse, act only when needed) → **cage
-self-test** (self-correct + permission discovery) → y/n approve → sandboxed run,
-with results fed back for multi-step turns; **repo mode** auto-approve; **CLI +
-TUI** frontends (the TUI **streams** replies live with a progress spinner and
-slash commands); **per-project conversation sessions** (list / new / open /
-fork, `--continue`); **OS sandbox tier** (bubblewrap / sandbox-exec — denies
-network and confines writes beneath the Deno floor); providers **Ollama /
-OpenRouter / OpenAI / Anthropic**; **roles** (composable config+instruction
-bundles via `--role` / `/roles`); AGENTS.md + config; `pagu --help` and shell
-`completions` (cliffy). See `AGENTS.md` for how to work in the repo.
+Working: **chat-or-act** loop → **cage self-test** (self-correct + permission
+discovery) → structured review (risk tier, envelope diff, iteration diff) → y/n
+approve → sandboxed run → result fed back; **repo mode** auto-approve; **CLI +
+TUI** frontends (streaming, slash commands); **per-project conversation
+sessions**; **OS sandbox tier** (bubblewrap / sandbox-exec); providers **Ollama
+/ OpenRouter / OpenAI / Anthropic**; **roles** + **skills** (composable
+config+instruction+capability bundles); **invoke_skill** (pre-authored verbatim
+scripts, auto-approved within ceiling); **run_task** (named project tasks,
+permissions inferred and cached on first run, stale on source-file change);
+**repo mode auto-discover** (all project tasks available without explicit
+config); **advisory reviewer** (`--advisor` / `/advisor`, fails open);
+AGENTS.md + config; `pagu --help` and shell completions.
 
-Deferred (see `CONTEXT.md`): OS-layer **read** isolation (writes + network are
-done; reads still rely on the Deno floor), Landlock, `.gitignore`
-read-protection.
+Deferred (see `CONTEXT.md`): OS-layer read isolation (writes + network are done;
+reads still rely on the Deno floor), Landlock, `.gitignore` read-protection, ACP
+frontend.

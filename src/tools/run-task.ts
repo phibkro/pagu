@@ -1,7 +1,8 @@
 // pure
 import type { ToolDef } from "../provider/chat.ts";
 import type { CommandInvocationEntry } from "../log/schema.ts";
-import type { DiscoveredTask } from "../command-policy.ts";
+/** Subset of DiscoveredTask sufficient for the tool listing. */
+type TaskListing = { program: string; args: string[]; description: string };
 
 /**
  * The `run_task` tool. The agent passes the exact command string; the
@@ -11,7 +12,7 @@ import type { DiscoveredTask } from "../command-policy.ts";
  * Single-string interface matches the listed commands exactly — no
  * separate program/args split for the model to get wrong.
  */
-export function runTaskToolDef(tasks: DiscoveredTask[]): ToolDef {
+export function runTaskToolDef(tasks: TaskListing[]): ToolDef {
   const cmds = tasks.map((t) => `${t.program} ${t.args.join(" ")}`);
   const list = cmds.length > 0
     ? ` Available commands: ${cmds.map((c) => `\`${c}\``).join(", ")}.`

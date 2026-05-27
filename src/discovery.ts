@@ -1,15 +1,17 @@
 // effects: reads project task-runner config files
-import { join } from "@std/path";
+import { join, resolve } from "@std/path";
 import type { DiscoveredTask } from "./command-policy.ts";
 
 /**
  * Scan the project for runnable named tasks across common task runners.
  * Returns a list of invocations the agent could use via run_task.
+ * Each task includes sourceFile — the config file that defines it — so
+ * the orchestrator can detect when inferred permissions go stale.
  *
  * Supported:
- *   deno.json  → `deno task <name>`
- *   package.json → `npm run <name>`
- *   Justfile   → `just <target>`
+ *   deno.json / deno.jsonc → `deno task <name>`
+ *   package.json           → `npm run <name>`
+ *   Justfile               → `just <target>`
  */
 export async function discoverTasks(
   projectBase: string,
@@ -28,9 +30,9 @@ async function discoverDenoTasks(
   out: DiscoveredTask[],
 ): Promise<void> {
   for (const name of ["deno.json", "deno.jsonc"]) {
+    const filePath = resolve(join(projectBase, name));
     try {
-      const text = await Deno.readTextFile(join(projectBase, name));
-      // Strip JSON comments for deno.jsonc
+      const text = await Deno.readTextFile(filePath);
       const stripped = text.replace(/\/\/[^\n]*/g, "");
       const data = JSON.parse(stripped);
       if (data?.tasks && typeof data.tasks === "object") {
@@ -39,10 +41,11 @@ async function discoverDenoTasks(
             program: "deno",
             args: ["task", taskName],
             description: typeof cmd === "string" ? cmd : taskName,
+            sourceFile: filePath,
           });
         }
       }
-      return; // deno.json found — skip deno.jsonc
+      return;
     } catch {
       // file absent or unparseable — try next
     }
@@ -53,8 +56,9 @@ async function discoverNpmScripts(
   projectBase: string,
   out: DiscoveredTask[],
 ): Promise<void> {
+  const filePath = resolve(join(projectBase, "package.json"));
   try {
-    const text = await Deno.readTextFile(join(projectBase, "package.json"));
+    const text = await Deno.readTextFile(filePath);
     const data = JSON.parse(text);
     if (data?.scripts && typeof data.scripts === "object") {
       for (const [scriptName, cmd] of Object.entries(data.scripts)) {
@@ -62,6 +66,7 @@ async function discoverNpmScripts(
           program: "npm",
           args: ["run", scriptName],
           description: typeof cmd === "string" ? cmd : scriptName,
+          sourceFile: filePath,
         });
       }
     }
@@ -75,10 +80,9 @@ async function discoverJustTargets(
   out: DiscoveredTask[],
 ): Promise<void> {
   for (const name of ["Justfile", "justfile", ".justfile"]) {
+    const filePath = resolve(join(projectBase, name));
     try {
-      const text = await Deno.readTextFile(join(projectBase, name));
-      // Target lines: lines that start with an identifier followed by ':'
-      // (and not a recipe body or comment)
+      const text = await Deno.readTextFile(filePath);
       for (const line of text.split("\n")) {
         const m = /^([a-zA-Z0-9_-]+)\s*:/.exec(line);
         if (m) {
@@ -86,10 +90,11 @@ async function discoverJustTargets(
             program: "just",
             args: [m[1]],
             description: m[1],
+            sourceFile: filePath,
           });
         }
       }
-      return; // first Justfile found wins
+      return;
     } catch {
       // absent — try next
     }

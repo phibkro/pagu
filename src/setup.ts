@@ -388,7 +388,30 @@ export async function buildContext(
 
     activeRoles = roleList.map((r) => r.name);
 
-    liveCommandEntries = buildExplicitEntries(effective.allowedTasks ?? []);
+    const explicitEntries = buildExplicitEntries(effective.allowedTasks ?? []);
+    if (repo) {
+      // In repo mode, auto-allow all discovered project tasks. You've already
+      // opted into broad trust; running the project's own named tasks is
+      // consistent with that. Permissions are cage-inferred on first run.
+      const discoveredEntries = liveDiscoveredTasks
+        .filter((t) =>
+          !explicitEntries.some(
+            (e) =>
+              e.program === t.program &&
+              e.args.length === t.args.length &&
+              e.args.every((a, i) => a === t.args[i]),
+          )
+        )
+        .map((t) => ({
+          program: t.program,
+          args: t.args,
+          permissions: [] as string[],
+          source: "explicit" as const,
+        }));
+      liveCommandEntries = [...explicitEntries, ...discoveredEntries];
+    } else {
+      liveCommandEntries = explicitEntries;
+    }
 
     if (liveSkillScripts.length > 0) {
       const scriptLines = liveSkillScripts

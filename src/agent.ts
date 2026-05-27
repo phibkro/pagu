@@ -15,6 +15,7 @@ import { buildReview, formatReview } from "./review.ts";
 import { matchesSkillScript, type SkillScript } from "./skills.ts";
 import {
   type CommandEntry,
+  filterStaleInferred,
   matchesPolicy,
   storeInferred,
 } from "./command-policy.ts";
@@ -366,7 +367,8 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
           ...await (async () => {
             try {
               const { loadInferred } = await import("./command-policy.ts");
-              return await loadInferred(ctx.projectBase);
+              const raw = await loadInferred(ctx.projectBase);
+              return await filterStaleInferred(raw); // drop stale ceilings
             } catch {
               return [];
             }
@@ -465,7 +467,14 @@ Deno.exit(r.code);
               return;
             }
           } else {
-            // First run: infer and store the ceiling
+            // First run: infer and store the ceiling, including sourceFile
+            // so future runs can detect staleness when deno.json etc. change.
+            const sourceFile = ctx.discoveredTasks.find(
+              (t) =>
+                t.program === cmdInvoke.program &&
+                t.args.length === cmdInvoke.args.length &&
+                t.args.every((a, i) => a === cmdInvoke.args[i]),
+            )?.sourceFile;
             await storeInferred(ctx.projectBase, {
               program: cmdInvoke.program,
               args: cmdInvoke.args,
@@ -474,6 +483,7 @@ Deno.exit(r.code);
               ),
               source: "inferred",
               inferredAt: new Date().toISOString(),
+              sourceFile,
             });
           }
           cmdPerms = [
