@@ -324,13 +324,20 @@ in is fair game — remove what doesn't earn its keep.
 
 1. **Config interop — CLAUDE.md fallback.** _Done._ Read `CLAUDE.md` per scope
    when `AGENTS.md` is absent; prose only, never `.claude/` settings.
-2. **Profiles — compositional configuration.** Named, domain-specific config
-   bundles (provider/model, allowlist, write/envelope policy, instructions) that
-   **compose** across project + environment rather than merely nest. Model a
-   profile as a _partial config value_ and composition as the combinator —
-   generalize `mergeConfig` into an associative merge with an identity (a
-   monoid), and hierarchy/inheritance falls out for free. Fit: extends today's
-   global+project layering. Risk: low–med. **Likely first** — underpins flags.
+2. **Roles — compositional configuration.** Named, composable bundles of config
+   - instructions; an agent **carries** several at once (a "profile" = the
+     resolved whole). A role is a **markdown file**: prose body + YAML
+     frontmatter — composing roles concatenates the prose (monoid) and merges
+     the frontmatter (the config merge law: scalars last-wins, grants union,
+     deny-wins lattice; see `docs/CONCEPTS.md`). `AGENTS.md` is the always-on
+     base role; named roles fold on top via `mergeConfig` generalized to an
+     associative merge (monoid), so hierarchy falls out of order. Scopes: global
+     `~/.config/pagu/roles/` (any project) + project `./.pagu/roles/`.
+     Selection: explicit/ordered first (`--role`, TUI `/roles`); context
+     auto-activation later (sugar). Fit: extends today's global+project
+     layering. Risk: low–med. **Likely first** — underpins flags. _Open:_
+     project roles committed (shared) vs local — lean committed (carve
+     `.pagu/sessions/` out of the gitignore, track `.pagu/roles/`).
 3. **Composable extensibility — plugins / extensions / feature flags.** Add
    capability without forking the core, but an extension must **not** create an
    agent exec path (invariant #1) — so extensions are pure/effect-scoped units
