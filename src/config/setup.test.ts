@@ -94,6 +94,7 @@ Deno.test("parseArgs: defaults when no flags are given", async () => {
   assertEquals(o.noSandbox, false); // sandbox on by default
   assertEquals(o.repo, false);
   assertEquals(o.tui, false);
+  assertEquals(o.acp, false);
   assertEquals(o.logPath, undefined);
   assertEquals(o.session, undefined);
   assertEquals(o.skills, []);

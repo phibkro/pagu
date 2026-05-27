@@ -63,6 +63,8 @@ export interface RunOpts {
   tui: boolean;
   /** `--skill <name>` names, in compose order. */
   skills: string[];
+  /** `--acp`: run as an ACP agent over stdio (the entrypoint reads this). */
+  acp: boolean;
 }
 
 /** The CLI surface as a cliffy Command — the single source of the flag set,
@@ -120,6 +122,7 @@ function makeCommand() {
       "Repo mode: read+write the git repo and auto-approve within it.",
     )
     .option("--tui", "Force the interactive REPL.")
+    .option("--acp", "Run as an ACP agent over stdio (for editor clients).")
     .option(
       "--skill <name:string>",
       "Apply a skill (repeatable; folds after roles).",
@@ -175,6 +178,7 @@ export async function parseArgs(
     noSandbox: !options.sandbox, // cliffy: --no-sandbox → sandbox === false
     repo: options.repo ?? false,
     tui: options.tui ?? false,
+    acp: options.acp ?? false,
     skills: options.skill ?? [],
   };
 }

@@ -10,6 +10,7 @@
   "fmt": { "lineWidth": 80 },
   "lint": { "rules": { "tags": ["recommended"] } },
   "imports": {
+    "@agentclientprotocol/sdk": "npm:@agentclientprotocol/sdk@^0.22",
     "@cliffy/command": "jsr:@cliffy/command@^1.1.0",
     "@cliffy/command/completions": "jsr:@cliffy/command@^1.1.0/completions",
     "@cliffy/keypress": "jsr:@cliffy/keypress@^1.1.0",

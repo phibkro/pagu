@@ -43,6 +43,13 @@ if (opts.listSessions) {
   Deno.exit(0);
 }
 
+// --acp: run as an ACP agent over stdio (editor clients drive pagu). stdin/
+// stdout become the JSON-RPC channel, so this must precede any TTY/task logic.
+if (opts.acp) {
+  await (await import("./acp.ts")).acpMain(opts, agents);
+  Deno.exit(0);
+}
+
 // No task on a terminal (or --tui) → interactive REPL.
 if (opts.tui || (!opts.task && Deno.stdin.isTerminal())) {
   await (await import("./tui.ts")).tuiMain();

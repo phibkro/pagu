@@ -18,7 +18,9 @@
     "jsr:@std/semver@^1.0.8": "1.0.8",
     "jsr:@std/streams@1": "1.1.1",
     "jsr:@std/text@^1.0.17": "1.0.19",
-    "jsr:@std/yaml@^1.0.5": "1.1.1"
+    "jsr:@std/yaml@^1.0.5": "1.1.1",
+    "npm:@agentclientprotocol/sdk@*": "0.22.1_zod@4.4.3",
+    "npm:@agentclientprotocol/sdk@0.22": "0.22.1_zod@4.4.3"
   },
   "jsr": {
     "@cliffy/command@1.1.0": {
@@ -104,6 +106,17 @@
       "integrity": "a57665ecf3d17b926380593a56625d8a10cc7281802f1e993b5ebc94a48e71f8"
     }
   },
+  "npm": {
+    "@agentclientprotocol/sdk@0.22.1_zod@4.4.3": {
+      "integrity": "sha512-DfqXtl/8gO9NImq094MTaCXEU2vkhh6v7q/kT+9UjZxUqj8hYaya2OjLVIqn16MzNHcXEpShTR2RIauLSYeDQQ==",
+      "dependencies": [
+        "zod"
+      ]
+    },
+    "zod@4.4.3": {
+      "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="
+    }
+  },
   "workspace": {
     "dependencies": [
       "jsr:@cliffy/command@^1.1.0",
@@ -112,7 +125,8 @@
       "jsr:@std/dotenv@0.225",
       "jsr:@std/front-matter@1",
       "jsr:@std/path@1",
-      "jsr:@std/streams@1"
+      "jsr:@std/streams@1",
+      "npm:@agentclientprotocol/sdk@0.22"
     ]
   }
 }
