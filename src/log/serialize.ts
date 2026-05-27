@@ -1,3 +1,4 @@
+// pure
 import type { Entry } from "./schema.ts";
 
 /** Render attrs as `k=v`, quoting values that contain whitespace. */

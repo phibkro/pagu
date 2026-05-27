@@ -1,3 +1,4 @@
+// effects: network (model HTTP) — dispatcher
 /**
  * Provider client — the OpenAI **Chat Completions** wire format
  * (`POST {baseURL}/chat/completions`), the lingua franca that covers

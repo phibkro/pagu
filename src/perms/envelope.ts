@@ -1,3 +1,4 @@
+// pure
 import { normalize } from "jsr:@std/path@^1";
 
 /**

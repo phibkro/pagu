@@ -1,4 +1,5 @@
-import { configDir } from "./config.ts";
+// effects: git + config-dir fs
+import { configDirFromEnv } from "./config.ts";
 
 /**
  * Repo detection + a per-repo "use repo mode?" memory, so launching pagu
@@ -26,7 +27,7 @@ export type RepoPrefs = Record<string, "enabled" | "disabled">;
 export async function loadRepoPrefs(): Promise<RepoPrefs> {
   try {
     const parsed = JSON.parse(
-      await Deno.readTextFile(`${configDir()}/repos.json`),
+      await Deno.readTextFile(`${configDirFromEnv()}/repos.json`),
     );
     return parsed && typeof parsed === "object" ? parsed as RepoPrefs : {};
   } catch {
@@ -40,7 +41,7 @@ export async function saveRepoPref(
 ): Promise<void> {
   const prefs = await loadRepoPrefs();
   prefs[repo] = enabled ? "enabled" : "disabled";
-  const dir = configDir();
+  const dir = configDirFromEnv();
   await Deno.mkdir(dir, { recursive: true });
   await Deno.writeTextFile(
     `${dir}/repos.json`,

@@ -1,7 +1,8 @@
+// effects: phase entrypoint (stdin -> model -> stdout)
 import { chat } from "../provider/chat.ts";
 import { handleWrite, writeToolDef } from "../tools/write.ts";
-import { logToMessages } from "./messages.ts";
-import { readInput, withAgents, writeOutput } from "./ipc.ts";
+import { logToMessages, withAgents } from "./messages.ts";
+import { readInput, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
 
 // Author phase entrypoint. Launched with `--allow-net=<ollama>` ONLY —

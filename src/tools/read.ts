@@ -1,3 +1,4 @@
+// effects: filesystem reads
 import type { ToolDef } from "../provider/chat.ts";
 import type { Observation } from "../log/schema.ts";
 

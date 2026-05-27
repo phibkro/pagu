@@ -1,3 +1,4 @@
+// effects: spawns deno subprocesses
 /**
  * The runner — a SEPARATE process from the agent. Given an approved
  * script and the human-granted permission set, it runs the script via

@@ -1,3 +1,4 @@
+// pure
 import type { Entry } from "./schema.ts";
 
 /** Matches a tilde-fenced `~~~pagu:<kind> attrs\n<body>\n~~~` block. */

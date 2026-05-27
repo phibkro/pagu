@@ -1,3 +1,4 @@
+// pure
 import type { ChatMessage } from "../provider/chat.ts";
 import type { Entry } from "../log/schema.ts";
 
@@ -35,4 +36,11 @@ export function logToMessages(log: Entry[], system: string): ChatMessage[] {
     }
   }
   return msgs;
+}
+
+/** Compose a phase's system prompt with the AGENTS.md instructions. */
+export function withAgents(system: string, agents?: string): string {
+  return agents
+    ? `${system}\n\nAgent instructions (AGENTS.md):\n${agents}`
+    : system;
 }

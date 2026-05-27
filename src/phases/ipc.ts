@@ -1,3 +1,4 @@
+// effects: stdio (stdin/stdout)
 import type { Entry } from "../log/schema.ts";
 import type { ProviderConfig } from "../provider/chat.ts";
 
@@ -10,13 +11,6 @@ export interface PhaseInput {
   /** Merged AGENTS.md instructions (global + project), injected into the
    * phase's system prompt. Empty if none configured. */
   agents?: string;
-}
-
-/** Compose a phase's system prompt with the AGENTS.md instructions. */
-export function withAgents(system: string, agents?: string): string {
-  return agents
-    ? `${system}\n\nAgent instructions (AGENTS.md):\n${agents}`
-    : system;
 }
 
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */

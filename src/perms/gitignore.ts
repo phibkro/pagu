@@ -1,3 +1,4 @@
+// effects: spawns git
 import { resolve } from "jsr:@std/path@^1";
 import type { Permission } from "./envelope.ts";
 

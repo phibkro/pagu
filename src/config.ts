@@ -1,3 +1,4 @@
+// pure: mergeConfig/resolveProvider/configDir; effects: loadConfig, configDirFromEnv
 /**
  * pagu config — intentionally minimal. Structured settings live in
  * `config.json`; the free-form "about my environment" prompt lives in
@@ -101,14 +102,19 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
   return out;
 }
 
-export function configDir(): string {
-  const xdg = Deno.env.get("XDG_CONFIG_HOME");
-  if (xdg) return `${xdg}/pagu`;
-  return `${Deno.env.get("HOME") ?? "."}/.config/pagu`;
+/** Pure: compute the config dir from given env values. */
+export function configDir(xdgConfigHome?: string, home?: string): string {
+  if (xdgConfigHome) return `${xdgConfigHome}/pagu`;
+  return `${home ?? "."}/.config/pagu`;
+}
+
+/** Effect: read the config dir from the environment. */
+export function configDirFromEnv(): string {
+  return configDir(Deno.env.get("XDG_CONFIG_HOME"), Deno.env.get("HOME"));
 }
 
 export async function loadConfig(): Promise<Loaded> {
-  const dir = configDir();
+  const dir = configDirFromEnv();
   let config = { ...DEFAULTS };
 
   let raw: string | null = null;

@@ -1,3 +1,4 @@
+// effects: config/env/fs (buildContext); pure: applyArgs
 import { fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { parseLog } from "./log/parse.ts";
 import { serializeLog } from "./log/serialize.ts";

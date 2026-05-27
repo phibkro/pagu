@@ -1,3 +1,4 @@
+// pure: event-log types
 /**
  * A pagu conversation log is an ordered, append-only sequence of Entries,
  * serialized as tilde-fenced markdown blocks (`~~~pagu:<kind> attrs`).

@@ -1,3 +1,4 @@
+// effects: terminal frontend (one-shot)
 import { loadConfig } from "./config.ts";
 import { applyArgs, buildContext, readLine } from "./setup.ts";
 import { type Approver, runTask, type UI } from "./agent.ts";

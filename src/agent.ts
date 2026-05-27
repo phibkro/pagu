@@ -1,3 +1,4 @@
+// imperative shell: orchestrates effects; the decisions it calls are pure
 import { resolve } from "jsr:@std/path@^1";
 import { spawnPhase } from "./phases/spawn.ts";
 import { runScript } from "./runner/run.ts";

@@ -1,3 +1,4 @@
+// pure: shouldAutoApprove; effect: buildEnvelope (git)
 import {
   type Envelope,
   type Permission,

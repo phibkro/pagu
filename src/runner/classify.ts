@@ -1,3 +1,4 @@
+// pure
 /**
  * Classify a cage self-test run. The cage grants only read-allowlist +
  * scratch-write and no net, so any *permission* denial reveals a real

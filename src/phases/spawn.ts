@@ -1,3 +1,4 @@
+// effects: spawns phase subprocesses
 import type { Entry } from "../log/schema.ts";
 import type { PhaseInput } from "./ipc.ts";
 

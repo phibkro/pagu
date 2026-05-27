@@ -1,3 +1,4 @@
+// effects: network (model HTTP)
 import type {
   ChatMessage,
   ChatResponse,
