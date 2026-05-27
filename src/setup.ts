@@ -2,12 +2,19 @@
 import { dirname, fromFileUrl, resolve } from "@std/path";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";
-import { type PaguConfig, resolveProvider } from "./config.ts";
+import {
+  composeLayers,
+  type ConfigLayer,
+  DEFAULTS,
+  type PaguConfig,
+  resolveProvider,
+} from "./config.ts";
 import { formatFlag } from "./permissions/envelope.ts";
 import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "./runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
+import { loadRoles } from "./roles.ts";
 import {
   latestSession,
   loadSession,
@@ -24,7 +31,12 @@ import type { AgentContext, Approver, UI } from "./agent.ts";
  */
 
 export interface RunOpts {
-  config: PaguConfig;
+  /** defaults ⋄ config.json (the base config layer, unchanged by flags). */
+  base: PaguConfig;
+  /** CLI flag overrides as a layer — folded last, so flags win. */
+  cli: ConfigLayer;
+  /** `--role <name>` names, in compose order. */
+  roles: string[];
   task: string;
   /** Explicit `--log <file>`: bypasses the session store entirely. */
   logPath?: string;
@@ -37,18 +49,17 @@ export interface RunOpts {
   /** `--no-sandbox`: disable the OS sandbox tier (Deno floor still applies). */
   noSandbox: boolean;
   repo: boolean;
-  write: string[];
 }
 
 export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
-  const config: PaguConfig = { ...base, allow: [...base.allow] };
+  const cli: ConfigLayer = {}; // flag overrides; folded last (win)
+  const roles: string[] = [];
   let logPath: string | undefined;
   let session: string | undefined;
   let cont = false;
   let listSessions = false;
   let noSandbox = false;
   let repo = false;
-  const write: string[] = [];
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -57,18 +68,20 @@ export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
     else if (a === "--continue") cont = true;
     else if (a === "--list-sessions") listSessions = true;
     else if (a === "--no-sandbox") noSandbox = true;
-    else if (a === "--model") config.model = argv[++i];
-    else if (a === "--provider") config.provider = argv[++i];
-    else if (a === "--base-url") config.baseURL = argv[++i];
-    else if (a === "--allow") config.allow.push(argv[++i]);
-    else if (a === "--write") write.push(argv[++i]);
+    else if (a === "--role") roles.push(argv[++i]);
+    else if (a === "--model") cli.model = argv[++i];
+    else if (a === "--provider") cli.provider = argv[++i];
+    else if (a === "--base-url") cli.baseURL = argv[++i];
+    else if (a === "--allow") (cli.allow ??= []).push(argv[++i]);
+    else if (a === "--write") (cli.write ??= []).push(argv[++i]);
     else if (a === "--repo") repo = true;
     else if (a === "--tui") { /* handled by the entrypoint */ }
     else positional.push(a);
   }
-  if (config.allow.length === 0) config.allow.push(".");
   return {
-    config,
+    base,
+    cli,
+    roles,
     task: positional.join(" "),
     logPath,
     session,
@@ -76,7 +89,6 @@ export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
     listSessions,
     noSandbox,
     repo,
-    write,
   };
 }
 
@@ -108,7 +120,6 @@ export async function buildContext(
   ui: UI,
   approve: Approver,
 ): Promise<AgentContext> {
-  const cfg = opts.config;
   const phaseDir = fromFileUrl(new URL("./phases/", import.meta.url));
 
   // Offer to load a cwd .env first, so its keys are visible to the provider
@@ -117,6 +128,34 @@ export async function buildContext(
   if (loadedEnv.length > 0) {
     console.error(`· loaded .env (${loadedEnv.join(", ")})`);
   }
+
+  // Project dir (git root, else cwd) — roles + sessions live here.
+  const repoRoot = await gitRoot(Deno.cwd());
+  const projectBase = repoRoot ?? Deno.cwd();
+
+  // Effective config = defaults ⋄ config.json (opts.base) ⋄ selected roles
+  // (in --role order) ⋄ CLI flags. Roles also contribute prose, folded after
+  // the base AGENTS/CLAUDE instructions. loadRoles fails loud on a bad name.
+  const roles = await loadRoles(opts.roles, projectBase);
+  const effective = composeLayers([
+    opts.base,
+    ...roles.map((r) => r.layer),
+    opts.cli,
+  ]);
+  const cfg: PaguConfig = {
+    provider: effective.provider ?? DEFAULTS.provider,
+    model: effective.model ?? DEFAULTS.model,
+    baseURL: effective.baseURL,
+    apiKeyEnv: effective.apiKeyEnv,
+    format: effective.format,
+    allow: effective.allow && effective.allow.length > 0
+      ? effective.allow
+      : ["."],
+  };
+  const roleWrites = effective.write ?? [];
+  const agentsText = [agents, ...roles.map((r) => r.prose)]
+    .filter((s) => s.length > 0)
+    .join("\n\n");
 
   const { baseURL, apiKeyEnv, format } = resolveProvider(cfg);
   const apiKey = apiKeyEnv ? Deno.env.get(apiKeyEnv) : undefined;
@@ -158,7 +197,6 @@ export async function buildContext(
   };
 
   // Repo mode: explicit --repo, or auto-detect + offer (remembered per repo).
-  const repoRoot = await gitRoot(Deno.cwd());
   let repoMode = opts.repo;
   if (!repoMode && repoRoot) {
     const prefs = await loadRepoPrefs();
@@ -185,7 +223,7 @@ export async function buildContext(
   const readPaths = [...cfg.allow, ...(repo ? [repo] : [])].map((p) =>
     resolve(p)
   );
-  const writePaths = [...opts.write, ...(repo ? [repo] : [])].map((p) =>
+  const writePaths = [...roleWrites, ...(repo ? [repo] : [])].map((p) =>
     resolve(p)
   );
   const envelope = await buildEnvelope({
@@ -269,8 +307,9 @@ export async function buildContext(
       return liveHost;
     },
     setProvider,
+    providerName: () => cfg.provider,
     phaseDir,
-    agents,
+    agents: agentsText,
     readPaths,
     repo,
     envelope,

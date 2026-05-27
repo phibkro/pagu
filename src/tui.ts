@@ -242,7 +242,7 @@ export async function tuiMain(): Promise<void> {
   // Session header: what you're talking to and the active scope.
   console.log(bold("pagu") + dim(" — chat, or ask for an action"));
   console.log(
-    dim(`  provider  ${opts.config.provider} · ${ctx.provider.model}`),
+    dim(`  provider  ${ctx.providerName()} · ${ctx.provider.model}`),
   );
   console.log(
     dim(`  reads     ${ctx.readPaths.join(", ")}`) +

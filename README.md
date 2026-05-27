@@ -86,6 +86,11 @@ Flags:
 
 - `--allow <path>` (repeatable) — read-allowlist the agent may inspect (defaults
   to `.`).
+- `--role <name>` (repeatable) — apply a role: a markdown bundle of config
+  (frontmatter) and instructions (body) from `./.pagu/roles/<name>.md` (project,
+  shared) or `~/.config/pagu/roles/<name>.md` (global). Roles fold in order
+  between config and flags (`defaults ⋄ config.json ⋄ roles ⋄ flags`); flags
+  win. An unknown name fails loud.
 - `--model <name>` — model id (default `qwen3.5:9b`).
 - `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or
   `anthropic`.

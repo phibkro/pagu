@@ -47,6 +47,8 @@ export interface AgentContext {
   setProvider: (
     change: { provider?: string; model?: string; baseURL?: string },
   ) => { ok: boolean; message: string };
+  /** The active provider preset name (reflects roles/flags + /provider). */
+  providerName: () => string;
   phaseDir: string;
   agents: string;
   readPaths: string[];
