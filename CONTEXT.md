@@ -11,6 +11,12 @@
 > how-we-work; **`docs/CONCEPTS.md`** is the mental-models reference. The
 > **Roadmap** at the bottom tracks shipped / open / backlog.
 
+**Map** (sections below): _What & why_ — One-liner · Why it exists ·
+Goals/non-goals. _The model_ — Core principle · System map · Phase FSM · State
+model. _Security_ — Approval model · Output gating · Security tiers · Threat
+model. _Project_ — Tech & UX · Build & packaging · **Roadmap** (Shipped · Roles
+decided-behavior · Open · Idea backlog, with the **Next up** pointer).
+
 ## One-liner
 
 A local, cross-platform agent you use like a terminal — but the model **can
