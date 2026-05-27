@@ -329,9 +329,15 @@ export async function buildContext(
       resolve(projectBase, f)
     );
     liveSkillScripts = skillList.flatMap((s) => s.scripts);
-    readPaths = [...cfg.allow, ...(repo ? [repo] : []), ...skillFiles].map((
-      p,
-    ) => resolve(p));
+    // Skill script files must be readable so the agent can read them and
+    // propose them verbatim. Add each script's path directly.
+    const skillScriptPaths = liveSkillScripts.map((ss) => ss.path);
+    readPaths = [
+      ...cfg.allow,
+      ...(repo ? [repo] : []),
+      ...skillFiles,
+      ...skillScriptPaths,
+    ].map((p) => resolve(p));
     const writePaths = [...roleWrites, ...(repo ? [repo] : [])].map((p) =>
       resolve(p)
     );
@@ -373,9 +379,13 @@ export async function buildContext(
     activeRoles = roleList.map((r) => r.name);
 
     if (liveSkillScripts.length > 0) {
-      const names = skillList.map((s) => s.name).join(", ");
+      const scriptLines = liveSkillScripts
+        .map((ss) =>
+          `  - ${ss.name}: ${ss.description} (read from: ${ss.path})`
+        )
+        .join("\n");
       capabilities +=
-        ` Pre-approved skill scripts available (auto-run verbatim when you propose them exactly): ${names}.`;
+        ` Pre-approved skill scripts — read each file first, then propose its exact contents verbatim using the write tool. They auto-approve when the body matches exactly.\n${scriptLines}`;
     }
   };
 
