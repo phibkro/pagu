@@ -151,7 +151,7 @@ A malformed `config.json` is a hard error (it won't silently fall back).
 ## Tests
 
 ```sh
-deno test --allow-run --allow-read --allow-write --allow-net
+deno test --allow-run --allow-read --allow-write --allow-net --allow-env
 ```
 
 ## Status
