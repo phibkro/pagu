@@ -21,22 +21,21 @@ import type { ProviderConfig } from "./provider/chat.ts";
 type ScriptEntry = Extract<Entry, { kind: "script" }>;
 const isScript = (e: Entry): e is ScriptEntry => e.kind === "script";
 
-export interface Decision {
-  verdict: "approve" | "reject";
-  perms: string[];
-}
-
 /** The one I/O seam for the human review gate (stdin / TUI prompt). Only
- * called when a proposal is NOT auto-approvable. */
+ * called when a proposal is NOT auto-approvable. The perms it would run
+ * with are already shown by the core; the approver answers yes/no. */
 export type Approver = (
   script: ScriptEntry,
-  suggested: string[],
-) => Promise<Decision>;
+  perms: string[],
+) => Promise<boolean>;
 
-/** Output sink: `status` for transient progress, `show` for results. */
+/** Output sink: `status` for transient progress, `show` for results. An
+ * optional `stream` consumes model tokens live; if present, the core lets
+ * the stream render the assistant's text instead of re-printing it. */
 export interface UI {
   status(msg: string): void;
   show(msg: string): void;
+  stream?(chunk: string): void;
 }
 
 export interface AgentContext {
@@ -65,171 +64,184 @@ function absolutizePerm(flagStr: string, base: string): string {
 }
 
 const MAX_FIX = 3;
+const MAX_TURNS = 6;
 
-/** Run one task end-to-end: observe → author → cage self-test → review →
- * run. Appends events to ctx.log (persisted as it goes). */
+/**
+ * Run one task as a conversation. Each turn spawns the `respond` phase,
+ * which either replies in text (a chat turn — we show it and stop) or
+ * proposes a script (we cage-test → review → run, then loop so the model
+ * sees the result and can continue or wrap up). Appends events to ctx.log
+ * (persisted as it goes).
+ */
 export async function runTask(ctx: AgentContext, task: string): Promise<void> {
   const input = () => ({
     log: ctx.log,
     provider: ctx.provider,
     agents: ctx.agents,
   });
-  const author = () =>
+  const stream = ctx.ui.stream;
+  const respond = () =>
     spawnPhase({
-      entry: `${ctx.phaseDir}author.ts`,
-      flags: [`--allow-net=${ctx.providerHost}`],
-      input: input(),
-    });
-
-  ctx.log.push({ kind: "message", role: "user", text: task });
-  ctx.persist();
-
-  // Observe
-  ctx.ui.status("observing…");
-  ctx.log.push(
-    ...await spawnPhase({
-      entry: `${ctx.phaseDir}observe.ts`,
+      entry: `${ctx.phaseDir}respond.ts`,
       flags: [
         `--allow-net=${ctx.providerHost}`,
         ...ctx.readPaths.map((p) => `--allow-read=${p}`),
       ],
       input: input(),
-    }),
-  );
-  ctx.persist();
-
-  // Author
-  ctx.ui.status("authoring…");
-  let authored = await author();
-  ctx.log.push(...authored);
-  ctx.persist();
-  let script = authored.findLast(isScript);
-  if (!script) {
-    const msg = authored.find((e) => e.kind === "message");
-    ctx.ui.show(
-      msg && msg.kind === "message" ? msg.text : "(no script proposed)",
+      onStderr: stream ? (c) => stream(c) : undefined,
+    });
+  // If the assistant's text streamed live, terminate the line instead of
+  // re-printing the message entry; otherwise show it as a block.
+  const showReply = (entries: Entry[]) => {
+    const msgs = entries.filter(
+      (e): e is Extract<Entry, { kind: "message" }> =>
+        e.kind === "message" && e.role === "assistant",
     );
-    return;
-  }
+    if (msgs.length === 0) return;
+    if (stream) stream("\n");
+    else for (const m of msgs) ctx.ui.show(m.text);
+  };
 
-  // Cage self-test: no net, real reads in scope, writes only to scratch.
-  let discovered: string[] = [];
-  for (let attempt = 1; attempt <= MAX_FIX; attempt++) {
-    const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
+  ctx.log.push({ kind: "message", role: "user", text: task });
+  ctx.persist();
+
+  for (let turn = 1; turn <= MAX_TURNS; turn++) {
+    ctx.ui.status(turn === 1 ? "thinking…" : "continuing…");
+    const produced = await respond();
+    ctx.log.push(...produced);
+    ctx.persist();
+
+    // Show any chat text the model emitted this turn (it may precede a
+    // proposed script as an explanation, or stand alone as the reply).
+    showReply(produced);
+
+    let script = produced.findLast(isScript);
+    if (!script) return; // pure chat turn — no action needed, done.
+
+    // Cage self-test: no net, real reads in scope, writes only to scratch.
+    let discovered: string[] = [];
+    for (let attempt = 1; attempt <= MAX_FIX; attempt++) {
+      const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
+      const file = `${scratch}/${script.id}.ts`;
+      await Deno.writeTextFile(file, script.body);
+      ctx.ui.status(`self-testing in cage (attempt ${attempt})…`);
+      const r = await runScript({
+        scriptPath: file,
+        perms: [
+          ...ctx.readPaths.map((p) => `allow-read=${p}`),
+          `allow-write=${scratch}`,
+          ...ctx.denyFlags,
+        ],
+        cwd: ctx.repo ?? scratch,
+      });
+      await Deno.remove(scratch, { recursive: true });
+
+      const cls = classifyRun(r.exit, r.stderr);
+      if (cls.kind === "ok") break;
+      if (cls.kind === "needs-perms") {
+        discovered = cls.perms;
+        break;
+      }
+      if (attempt === MAX_FIX) {
+        ctx.ui.status("self-test still failing; presenting last attempt.");
+        break;
+      }
+      ctx.log.push({
+        kind: "message",
+        role: "user",
+        text: `Sandbox self-test of ${script.id} failed:\n${
+          cls.error || "(no output; possibly timed out)"
+        }\nFix the script and propose it again with the write tool.`,
+      });
+      ctx.persist();
+      ctx.ui.status("fixing…");
+      const fixed = await respond();
+      ctx.log.push(...fixed);
+      ctx.persist();
+      showReply(fixed);
+      const next = fixed.findLast(isScript);
+      if (!next) break;
+      script = next;
+    }
+
+    // Deno reports denied paths as the script referenced them (often
+    // relative); resolve to absolute to match the absolute envelope.
+    discovered = discovered.map((s) =>
+      absolutizePerm(s, ctx.repo ?? Deno.cwd())
+    );
+    const perms = [
+      ...ctx.readPaths.map((p) => `allow-read=${p}`),
+      ...discovered,
+    ];
+
+    // Review: auto within envelope, else hand to the frontend's approver
+    // (a simple yes/no; the perms it would run with are always shown).
+    let approved: boolean;
+    if (
+      shouldAutoApprove(
+        discovered.map(parsePermission),
+        ctx.envelope,
+        ctx.autoEnabled,
+      )
+    ) {
+      ctx.ui.status("auto-approved (within session envelope)");
+      approved = true;
+    } else {
+      ctx.ui.show(
+        `\n--- proposed ${script.id} (${script.lang}) ---\n${script.body}\n`,
+      );
+      ctx.ui.show(`will run with: ${perms.join(" ") || "(no perms)"}`);
+      approved = await ctx.approve(script, perms);
+    }
+
+    if (!approved) {
+      ctx.log.push({
+        kind: "decision",
+        script: script.id,
+        verdict: "reject",
+        rationale: "rejected at review",
+      });
+      ctx.persist();
+      ctx.ui.show("rejected.");
+      return;
+    }
+    ctx.log.push({
+      kind: "decision",
+      script: script.id,
+      verdict: "approve",
+      rationale: `approved with: ${perms.join(" ") || "(no perms)"}`,
+    });
+    ctx.persist();
+
+    // Run: real effects, scoped to granted perms + session denies.
+    ctx.ui.status("running…");
+    const scratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
     const file = `${scratch}/${script.id}.ts`;
     await Deno.writeTextFile(file, script.body);
-    ctx.ui.status(`self-testing in cage (attempt ${attempt})…`);
-    const r = await runScript({
+    const result = await runScript({
       scriptPath: file,
-      perms: [
-        ...ctx.readPaths.map((p) => `allow-read=${p}`),
-        `allow-write=${scratch}`,
-        ...ctx.denyFlags,
-      ],
+      perms: [...perms, ...ctx.denyFlags],
       cwd: ctx.repo ?? scratch,
     });
     await Deno.remove(scratch, { recursive: true });
 
-    const cls = classifyRun(r.exit, r.stderr);
-    if (cls.kind === "ok") break;
-    if (cls.kind === "needs-perms") {
-      discovered = cls.perms;
-      break;
-    }
-    if (attempt === MAX_FIX) {
-      ctx.ui.status("self-test still failing; presenting last attempt.");
-      break;
-    }
+    const output = result.stdout || result.stderr;
     ctx.log.push({
-      kind: "message",
-      role: "user",
-      text: `Sandbox self-test of ${script.id} failed:\n${
-        cls.error || "(no output; possibly timed out)"
-      }\nFix the script and propose it again with the write tool.`,
-    });
-    ctx.persist();
-    ctx.ui.status("fixing…");
-    authored = await author();
-    ctx.log.push(...authored);
-    ctx.persist();
-    const next = authored.findLast(isScript);
-    if (!next) break;
-    script = next;
-  }
-
-  // Deno reports denied paths as the script referenced them (often
-  // relative); resolve to absolute to match the absolute envelope.
-  discovered = discovered.map((s) => absolutizePerm(s, ctx.repo ?? Deno.cwd()));
-  const suggested = [
-    ...ctx.readPaths.map((p) => `allow-read=${p}`),
-    ...discovered,
-  ];
-
-  // Review: auto within envelope, else hand to the frontend's approver.
-  let decision: Decision;
-  if (
-    shouldAutoApprove(
-      discovered.map(parsePermission),
-      ctx.envelope,
-      ctx.autoEnabled,
-    )
-  ) {
-    ctx.ui.status("auto-approved (within session envelope)");
-    decision = { verdict: "approve", perms: suggested };
-  } else {
-    ctx.ui.show(
-      `\n--- proposed ${script.id} (${script.lang}) ---\n${script.body}\n`,
-    );
-    if (suggested.length > 0) {
-      ctx.ui.show(`suggested perms (from sandbox): ${suggested.join(" ")}`);
-    }
-    decision = await ctx.approve(script, suggested);
-  }
-
-  if (decision.verdict === "reject") {
-    ctx.log.push({
-      kind: "decision",
+      kind: "result",
       script: script.id,
-      verdict: "reject",
-      rationale: "rejected at review",
+      exit: result.exit,
+      ranWith: result.ranWith,
+      output,
     });
     ctx.persist();
-    ctx.ui.show("rejected.");
-    return;
-  }
-  ctx.log.push({
-    kind: "decision",
-    script: script.id,
-    verdict: "approve",
-    rationale: `approved with: ${decision.perms.join(" ") || "(no perms)"}`,
-  });
-  ctx.persist();
-
-  // Run: real effects, scoped to granted perms + session denies.
-  ctx.ui.status("running…");
-  const scratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
-  const file = `${scratch}/${script.id}.ts`;
-  await Deno.writeTextFile(file, script.body);
-  const result = await runScript({
-    scriptPath: file,
-    perms: [...decision.perms, ...ctx.denyFlags],
-    cwd: ctx.repo ?? scratch,
-  });
-  await Deno.remove(scratch, { recursive: true });
-
-  const output = result.stdout || result.stderr;
-  ctx.log.push({
-    kind: "result",
-    script: script.id,
-    exit: result.exit,
-    ranWith: result.ranWith,
-    output,
-  });
-  ctx.persist();
-  ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
-  if (!result.autoReturn) {
-    ctx.ui.show(
-      "\n[net was granted — output would NOT auto-return to the agent]",
-    );
+    ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
+    if (!result.autoReturn) {
+      ctx.ui.show(
+        "\n[net was granted — output would NOT auto-return to the agent]",
+      );
+      return; // can't safely feed exfil-capable output back to the model.
+    }
+    // Loop: re-invoke respond so the model sees the result and either
+    // wraps up (chat reply) or proposes a follow-up script.
   }
 }

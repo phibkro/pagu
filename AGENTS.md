@@ -16,11 +16,13 @@ the blast radius statically enumerable._
 
 ## Invariants (do not break these)
 
-1. **The agent has no real-effect execute capability.** Phases (Observe, Author)
-   run as separate `deno` processes with scoped perms; neither can write real
-   files or reach the net beyond the model. Real effects happen only in the
-   **runner**, triggered by approval. New tools/features must not hand the agent
-   an execute path.
+1. **The agent has no real-effect execute capability.** Each conversational turn
+   (the `respond` phase) runs as a separate `deno` process with scoped perms
+   (`--allow-net=<model>`, `--allow-read=<allowlist>`) — it can read allowlisted
+   files and talk to the model, nothing else; it cannot write real files or
+   reach the net beyond the model. Real effects happen only in the **runner**,
+   triggered by approval. New tools/features must not hand the agent an execute
+   path.
 2. **The runner's Deno permissions are the security boundary**, not our code.
    Anything that runs untrusted (the cage self-test, the runner) gets
    exactly-scoped `--allow-*` flags.
@@ -74,8 +76,15 @@ Provider + phases + config:
 - `src/provider/chat.ts` — `chat()` **dispatcher** (OpenAI Chat Completions,
   default) → `anthropic.ts` (native Messages API) by `format`. Add providers
   here, behind `chat()`.
-- `src/phases/{observe,author}.ts` — phase entrypoints (read stdin, call the
-  model, emit events); `spawn.ts`, `messages.ts`, `ipc.ts` support them.
+- `src/phases/respond.ts` — the single phase entrypoint: converses, calls `read`
+  to inspect files, and proposes a script with `write` only when an action is
+  needed (read stdin, call the model, emit events); `spawn.ts`, `messages.ts`,
+  `ipc.ts` support it. **Streaming:** the phase writes model tokens to its
+  **stderr** as a live display side-channel (`spawn.ts` forwards them to the
+  `UI.stream` sink); its **stdout** stays reserved for the structured
+  `{entries}` JSON. The side-channel carries no capability — the security
+  boundary is unchanged. Only the model's text streams; exfil-gated run output
+  never does.
 - `src/{config,repo,session}.ts` — config presets + AGENTS.md load; git-repo
   detect + per-repo memory; envelope building + auto-approve policy.
 
@@ -94,7 +103,7 @@ Provider + phases + config:
   cd "$R" && pagu 'count the .txt files and write the number to count.txt' --repo </dev/null
   ```
 - The **cage self-test** is the product's own feedback loop: a proposal's bugs
-  feed back to Author (bounded) before a human sees it.
+  feed back to the model (bounded) before a human sees it.
 - **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
   trailer
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.

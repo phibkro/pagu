@@ -33,16 +33,10 @@ const ui: UI = {
   status: (m) => console.error(`· ${m}`),
   show: (m) => console.log(m),
 };
-const approve: Approver = async (_script, suggested) => {
-  const ans = await readLine(
-    "Approve? 'y' to grant the suggested perms, or type perms " +
-      "(e.g. 'allow-read=. allow-write=./out'), blank for none, 'n' to reject: ",
-  );
-  if (ans === null || ans === "n") return { verdict: "reject", perms: [] };
-  return {
-    verdict: "approve",
-    perms: ans === "y" ? suggested : ans === "" ? [] : ans.split(/\s+/),
-  };
+// Perms are already shown by the core; this is a plain yes/no gate.
+const approve: Approver = async (_script, _perms) => {
+  const ans = await readLine("Approve and run? [y/N]: ");
+  return ans?.trim().toLowerCase() === "y";
 };
 
 const ctx = await buildContext(opts, agents, ui, approve);

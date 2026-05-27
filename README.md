@@ -10,17 +10,22 @@ See [`DESIGN.md`](./DESIGN.md) for the full rationale and threat model.
 
 ## How it works
 
-A small capability-phased loop, each phase a **separate `deno` process**
-launched with only that phase's permissions:
+You **chat** with pagu. It answers normally and reads allowlisted files (via a
+`read` tool) when that helps. Only when finishing the task actually requires
+changing the system does it switch into **action mode** and propose a script —
+otherwise it just replies. Each turn runs as a **separate `deno` process**
+launched with only that turn's permissions (`--allow-net=<model>`,
+`--allow-read=<allowlist>` — never write or run).
 
-1. **Observe** — reads allowlisted files (`--allow-read=<allowlist>`,
-   `--allow-net=<model>`) to gather context.
-2. **Author** — proposes one Deno-TypeScript script via the `write` tool
-   (`--allow-net=<model>` only — _zero_ filesystem access).
-3. **Review** — you read the script and grant the exact permissions it may run
-   with.
-4. **Run** — a separate `deno run --no-prompt <granted flags>` executes the
-   approved script; output auto-returns only if no network was granted.
+When an action _is_ needed, the proposed script goes through:
+
+1. **Cage self-test** — run in a no-net, scratch-only sandbox to catch bugs (fed
+   back to the model to fix) and discover the permissions it needs.
+2. **Review** — you see the script and the exact permissions it will run with,
+   and answer **y/n** (auto-approved in `--repo` mode within the repo envelope).
+3. **Run** — a separate `deno run --no-prompt <granted flags>` executes it;
+   output auto-returns to the conversation only if no network was granted, so
+   pagu can see the result and continue or wrap up.
 
 The model has no execute capability at any point; the human gate sits between
 proposal and run.
@@ -64,7 +69,7 @@ conversation log across turns (multi-turn context).
 
 Flags:
 
-- `--allow <path>` (repeatable) — read-allowlist for the Observe phase (defaults
+- `--allow <path>` (repeatable) — read-allowlist the agent may inspect (defaults
   to `.`).
 - `--model <name>` — model id (default `qwen3.5:9b`).
 - `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or
@@ -78,9 +83,8 @@ Flags:
   git is your undo buffer, the runner has no network, and `.gitignore`'d paths
   are denied write. "Safe computer use" for a codebase.
 
-At the review prompt, enter the permissions to grant the script (e.g.
-`allow-read=./photos allow-write=./count.txt`), blank for none, or `n` to
-reject.
+At the review prompt, pagu prints the script and the exact permissions it will
+run with; answer **`y`** to approve and run, anything else to reject.
 
 ## Config (optional)
 
@@ -135,10 +139,12 @@ deno test --allow-run --allow-read --allow-write --allow-net
 
 ## Status
 
-Working: observe → author → **cage self-test** (self-correct + permission
-discovery) → approve → sandboxed run; **repo mode** auto-approve; **CLI + TUI**
-frontends; providers **Ollama / OpenRouter / OpenAI / Anthropic**; AGENTS.md +
-config. See `AGENTS.md` for how to work in the repo.
+Working: **chat-or-act** loop (converse, act only when needed) → **cage
+self-test** (self-correct + permission discovery) → y/n approve → sandboxed run,
+with results fed back for multi-step turns; **repo mode** auto-approve; **CLI +
+TUI** frontends (the TUI **streams** replies live with a progress spinner and
+slash commands); providers **Ollama / OpenRouter / OpenAI / Anthropic**;
+AGENTS.md + config. See `AGENTS.md` for how to work in the repo.
 
 Deferred (see `DESIGN.md`): session store + resume + conversation forking,
 `.gitignore` read-protection, OS-level sandbox tiers beyond Deno permissions.
