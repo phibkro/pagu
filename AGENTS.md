@@ -46,6 +46,12 @@ the blast radius statically enumerable._
   `pagu:*` fenced blocks; append-only; the single source of truth.
 - **One state, many interfaces.** Flags, config, and the TUI are interfaces onto
   the same settings; the core (`agent.ts`) is I/O-agnostic.
+- **Functional, compositional core.** Programs are composed procedures, not
+  networks of independent actors (until/unless multi-agent). **Composition over
+  inheritance/hierarchy** — hierarchy emerges from composing values, so prefer
+  combinators over class trees; lean on category-theory / algebraic thinking for
+  abstractions that are safe _and_ powerful (lawful, composable units). The
+  forward backlog in `docs/ideas.md` is designed through this lens.
 - **Iterate-to-stable, then codify.** Ship the simplest correct thing, let the
   next constraint surface, verify live, commit small.
 - **Clarity over brevity; readability over code-writing velocity; security over
@@ -91,9 +97,10 @@ Provider + phases + config:
   `{entries}` JSON. The side-channel carries no capability — the security
   boundary is unchanged. Only the model's text streams; exfil-gated run output
   never does.
-- `src/{config,repo,session}.ts` — config presets + AGENTS.md load; git-repo
-  detect + per-repo memory; envelope building + auto-approve policy.
-  `src/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
+- `src/{config,repo,session}.ts` — config presets and instruction load
+  (AGENTS.md, with a CLAUDE.md fallback per scope, prose only); git-repo detect
+  and per-repo memory; envelope building and auto-approve policy.
+- `src/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
   `@std/dotenv`) so keys like `ANTHROPIC_API_KEY` need no manual export.
 - `src/conversations.ts` — the conversation-session store: per-project
   `.pagu/sessions/<id>.log.md` (id = immutable ISO timestamp). Log entries are

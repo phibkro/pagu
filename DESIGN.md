@@ -309,3 +309,6 @@ portable tier-1 floor around it (no regression).
 - **A credential-injecting egress proxy** so net-granted scripts never see raw
   secrets.
 - GUI / computer-use.
+
+Speculative / paradigm-level explorations (profiles, composable extensibility,
+ACP, composable agent loops) live in [`docs/ideas.md`](./docs/ideas.md).
