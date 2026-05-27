@@ -16,6 +16,11 @@ Deno.test("parsePermission: scoped and unscoped", () => {
   assertThrows(() => parsePermission("allow-bogus=x"));
 });
 
+Deno.test("parsePermission: allow-all drops any scope (illegal in Deno)", () => {
+  assertEquals(parsePermission("allow-all"), { flag: "all" });
+  assertEquals(parsePermission("allow-all=/foo"), { flag: "all" });
+});
+
 Deno.test("read path containment", () => {
   const env = parsePermission("allow-read=./scratch");
   assertEquals(

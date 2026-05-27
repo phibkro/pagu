@@ -18,11 +18,13 @@ export type PermFlag =
   | "import"
   | "all";
 
-export interface Permission {
-  flag: PermFlag;
-  /** Scope (path / host / command / var). Absent = unscoped (covers all). */
-  scope?: string;
-}
+/**
+ * `all` is never scoped in Deno (`--allow-all` takes no argument), so the
+ * two variants are kept separate to make that illegal state unrepresentable.
+ */
+export type Permission =
+  | { flag: Exclude<PermFlag, "all">; scope?: string }
+  | { flag: "all" };
 
 export type PermissionSet = Permission[];
 
@@ -46,6 +48,7 @@ export function parsePermission(s: string): Permission {
     throw new Error(`unrecognized permission: ${JSON.stringify(s)}`);
   }
   const flag = m[1] as PermFlag;
+  if (flag === "all") return { flag }; // all is never scoped
   const scope = m[2];
   return scope === undefined || scope === "" ? { flag } : { flag, scope };
 }
@@ -57,6 +60,7 @@ export function formatFlag(
   mode: "allow" | "deny" = "allow",
 ): string {
   const base = `${mode}-${p.flag}`;
+  if (p.flag === "all") return base;
   return p.scope === undefined ? base : `${base}=${p.scope}`;
 }
 

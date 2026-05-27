@@ -4,7 +4,7 @@ import { runScript } from "./run.ts";
 // These tests spawn real `deno` subprocesses, so run the suite with:
 //   deno test --allow-run --allow-read --allow-write
 
-Deno.test("runs approved script within granted read scope; autoReturn (no net)", async () => {
+Deno.test("runs approved script within granted read scope; no net in ranWith", async () => {
   const dir = await Deno.makeTempDir();
   try {
     await Deno.writeTextFile(`${dir}/in.txt`, "hello");
@@ -19,8 +19,8 @@ Deno.test("runs approved script within granted read scope; autoReturn (no net)",
     });
     assertEquals(r.exit, 0);
     assertEquals(r.stdout.trim(), "5");
-    assertEquals(r.autoReturn, true);
     assertEquals(r.ranWith, ["--no-prompt", `--allow-read=${dir}`]);
+    assertEquals(r.ranWith.some((f) => /--allow-(net|all)\b/.test(f)), false);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
@@ -45,7 +45,7 @@ Deno.test("denies access outside the granted scope (nonzero exit)", async () => 
   }
 });
 
-Deno.test("granting net disables autoReturn", async () => {
+Deno.test("granting net appears in ranWith", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const script = `${dir}/s.ts`;
@@ -54,7 +54,7 @@ Deno.test("granting net disables autoReturn", async () => {
       scriptPath: script,
       perms: ["allow-net=example.com"],
     });
-    assertEquals(r.autoReturn, false);
+    assertEquals(r.ranWith.some((f) => /--allow-(net|all)\b/.test(f)), true);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

@@ -24,12 +24,6 @@ export interface RunResult {
   ranWith: string[];
   /** Which OS sandbox wrapped the run (or "none" — Deno floor only). */
   sandbox: SandboxKind;
-  /**
-   * Whether the output is safe to auto-return into the agent's context.
-   * True iff the runner granted no network (so output can't have phoned
-   * home); net-granted runs require a human glance first.
-   */
-  autoReturn: boolean;
 }
 
 /** `allow-read=./x` -> `--allow-read=./x` (idempotent on a leading `--`). */
@@ -82,7 +76,6 @@ export async function runScript(opts: {
     stderr: dec.decode(stderr),
     ranWith,
     sandbox: kind,
-    autoReturn: !grantsNet(opts.perms),
   };
 }
 

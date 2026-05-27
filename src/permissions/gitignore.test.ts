@@ -25,7 +25,9 @@ Deno.test("gitignoreDenies returns read+write denies for ignored paths only", as
     await Deno.writeTextFile(`${dir}/main.ts`, "// tracked, not ignored");
 
     const denies = await gitignoreDenies(dir);
-    const scopes = new Set(denies.map((d) => `${d.flag}:${d.scope}`));
+    const scopes = new Set(
+      denies.map((d) => `${d.flag}:${"scope" in d ? d.scope : ""}`),
+    );
 
     // ignored paths (incl. the *.key glob, matched by git) are denied r+w
     assertEquals(scopes.has(`read:${dir}/.env`), true);
