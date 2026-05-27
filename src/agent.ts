@@ -97,6 +97,23 @@ function absolutizePerm(flagStr: string, base: string): string {
 const MAX_FIX = 3;
 const MAX_TURNS = 6;
 
+/**
+ * The respond phase's permissions — **invariant #1 in code**. The only process
+ * the model drives may read the allowlist and reach the model, nothing else:
+ * never write, run, env, or blanket allow. `agent.test.ts` asserts this so a
+ * future edit can't silently widen it. (The runner, not this phase, holds the
+ * real-effect perms — and only after approval.)
+ */
+export function respondFlags(
+  providerHost: string,
+  readPaths: string[],
+): string[] {
+  return [
+    `--allow-net=${providerHost}`,
+    ...readPaths.map((p) => `--allow-read=${p}`),
+  ];
+}
+
 /** Strip spawnPhase's `phase <entry> exited <n>: ` wrapper to surface the
  * phase's own message (e.g. a one-line provider error) on a single line. */
 function cleanPhaseError(msg: string): string {
@@ -122,10 +139,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
   const respond = () =>
     spawnPhase({
       entry: join(ctx.phaseDir, "respond.ts"),
-      flags: [
-        `--allow-net=${ctx.providerHost}`,
-        ...ctx.readPaths.map((p) => `--allow-read=${p}`),
-      ],
+      flags: respondFlags(ctx.providerHost, ctx.readPaths),
       input: input(),
       onStderr: stream ? (c) => stream(c) : undefined,
     });
