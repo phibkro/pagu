@@ -175,6 +175,25 @@ export function composeLayers(layers: ConfigLayer[]): ConfigLayer {
   return layers.reduce(mergeLayer, {});
 }
 
+const isStringArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === "string");
+
+/** Interpret an arbitrary parsed object (e.g. a role's YAML frontmatter) as a
+ * ConfigLayer, keeping only well-typed known fields and dropping the rest. */
+export function toLayer(data: Record<string, unknown>): ConfigLayer {
+  const l: ConfigLayer = {};
+  if (typeof data.provider === "string") l.provider = data.provider;
+  if (typeof data.model === "string") l.model = data.model;
+  if (typeof data.baseURL === "string") l.baseURL = data.baseURL;
+  if (typeof data.apiKeyEnv === "string") l.apiKeyEnv = data.apiKeyEnv;
+  if (data.format === "openai" || data.format === "anthropic") {
+    l.format = data.format;
+  }
+  if (isStringArray(data.allow)) l.allow = data.allow;
+  if (isStringArray(data.write)) l.write = data.write;
+  return l;
+}
+
 /** Pure: compute the config dir from given env values. */
 export function configDir(xdgConfigHome?: string, home?: string): string {
   if (xdgConfigHome) return join(xdgConfigHome, "pagu");

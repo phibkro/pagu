@@ -8,7 +8,22 @@ import {
   mergeConfig,
   mergeLayer,
   resolveProvider,
+  toLayer,
 } from "./config.ts";
+
+Deno.test("toLayer keeps well-typed known fields, drops the rest", () => {
+  assertEquals(
+    toLayer({
+      provider: "openai",
+      model: 5, // ill-typed → dropped
+      allow: ["/a", "/b"],
+      format: "anthropic",
+      junk: true, // unknown → dropped
+    }),
+    { provider: "openai", allow: ["/a", "/b"], format: "anthropic" },
+  );
+  assertEquals(toLayer({ allow: ["/a", 3] }), {}); // not all strings → dropped
+});
 
 // --- the role-composition monoid (pure; property-checked) ---
 
