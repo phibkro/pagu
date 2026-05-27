@@ -324,20 +324,29 @@ in is fair game — remove what doesn't earn its keep.
 
 1. **Config interop — CLAUDE.md fallback.** _Done._ Read `CLAUDE.md` per scope
    when `AGENTS.md` is absent; prose only, never `.claude/` settings.
-2. **Roles — compositional configuration.** Named, composable bundles of config
-   - instructions; an agent **carries** several at once (a "profile" = the
-     resolved whole). A role is a **markdown file**: prose body + YAML
-     frontmatter — composing roles concatenates the prose (monoid) and merges
-     the frontmatter (the config merge law: scalars last-wins, grants union,
-     deny-wins lattice; see `docs/CONCEPTS.md`). `AGENTS.md` is the always-on
-     base role; named roles fold on top via `mergeConfig` generalized to an
-     associative merge (monoid), so hierarchy falls out of order. Scopes: global
-     `~/.config/pagu/roles/` (any project) + project `./.pagu/roles/`.
-     Selection: explicit/ordered first (`--role`, TUI `/roles`); context
-     auto-activation later (sugar). Fit: extends today's global+project
-     layering. Risk: low–med. **Likely first** — underpins flags. _Open:_
-     project roles committed (shared) vs local — lean committed (carve
-     `.pagu/sessions/` out of the gitignore, track `.pagu/roles/`).
+2. **Roles — compositional configuration.** _Pure core built and proven
+   (`mergeLayer`, `composeLayers`); loading and wiring next._ Named, composable
+   bundles of config and instructions; an agent **carries** several (a "profile"
+   is the resolved whole). A role is a **markdown file**: prose body with YAML
+   frontmatter. `AGENTS.md` is the always-on base role; named roles fold on top.
+   Decided behavior (intended, surfaced — not bugs):
+   - **Fold order:** defaults → global `config.json` → selected roles (in
+     `--role` order) → CLI flags (flags win last; roles are reusable middle
+     layers). Prose: base AGENTS/CLAUDE (global then project), then each role's
+     body, concatenated.
+   - **Merge law** (`mergeLayer`, a monoid): scalars last-write-wins; grants
+     (`allow`/`write`) set-union (order-independent); deny-wins lattice when
+     explicit denies arrive. See `docs/CONCEPTS.md`.
+   - **Scopes:** global `~/.config/pagu/roles/<name>.md` (any project), project
+     `./.pagu/roles/<name>.md` (tracked/shared — `.gitignore` ignores only
+     `.pagu/sessions/`).
+   - **Same name in both scopes:** **shadow** — the project file wins (one role
+     per name); compose-same-name deferred.
+   - **Missing `--role <name>`:** **fail loud** (error), never silently ignored.
+   - Roles set the envelope; the per-script/human gate stays the backstop.
+
+   Selection: explicit/ordered first (`--role`, TUI `/roles`); context
+   auto-activation later (sugar). _Open:_ the frontmatter parser (see below).
 3. **Composable extensibility — plugins / extensions / feature flags.** Add
    capability without forking the core, but an extension must **not** create an
    agent exec path (invariant #1) — so extensions are pure/effect-scoped units

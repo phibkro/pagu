@@ -57,6 +57,10 @@ the blast radius statically enumerable._
   forward backlog in `CONTEXT.md` → Roadmap is designed through this lens.
 - **Iterate-to-stable, then codify.** Ship the simplest correct thing, let the
   next constraint surface, verify live, commit small.
+- **Surface intended behavior.** Decisions encoded in code — precedence,
+  defaults, fallbacks, shadowing, merge laws — are documented (in `CONTEXT.md` /
+  `docs/CONCEPTS.md`) as _intended behavior_, not left implicit. An undocumented
+  rule looks like a bug; transparency is for the next reader and the user.
 - **Clarity over brevity; readability over code-writing velocity; security over
   utility.** When these trade off, optimize in that order — and surface the
   tradeoff. (Hence: `permissions/` not `perms/`, `// effects:` markers, the
