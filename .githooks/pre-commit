@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# pagu pre-commit gate: format-check, lint, typecheck, tests.
+# Enable once per clone:  git config core.hooksPath .githooks
+# Skips gracefully if deno isn't on PATH so it never blocks a commit on a
+# machine without the toolchain (CI, if added, is the backstop).
+set -euo pipefail
+
+if ! command -v deno >/dev/null 2>&1; then
+  echo "pre-commit: deno not on PATH — skipping checks." >&2
+  exit 0
+fi
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+echo "pre-commit: deno fmt --check"
+deno fmt --check
+echo "pre-commit: deno lint"
+deno lint
+echo "pre-commit: deno check src"
+deno check src
+echo "pre-commit: deno test"
+deno test --allow-run --allow-read --allow-write --allow-net --allow-env
+echo "pre-commit: all green ✓"

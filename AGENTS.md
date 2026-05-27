@@ -80,7 +80,9 @@ Provider + phases + config:
 - `deno test --allow-run --allow-read --allow-write --allow-net --allow-env` —
   the suite (pure cores + HTTP-mocked providers + sandboxed integration). Keep
   it green.
-- `deno fmt && deno lint && deno check src` before committing.
+- `deno fmt && deno lint && deno check src` before committing — or enable the
+  pre-commit hook once per clone: `git config core.hooksPath .githooks` (runs
+  fmt-check + lint + check + tests; skips if deno isn't on PATH).
 - **Live-verify** real changes against Ollama (default provider). The no-stdin
   recipe (auto-approves in repo mode, so it's self-contained):
   ```sh
