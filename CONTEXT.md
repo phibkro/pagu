@@ -434,6 +434,17 @@ portable tier-1 floor around it (no regression).
   the stored ceiling. Explicit annotation = declared permissions; inferred type
   = cage-discovered permissions; strict mode = outside-repo (explicit required);
   type cache = `inferred-perms.json`.
+- **ACP frontend** (`src/frontends/acp.ts`) — pagu runs as an Agent Client
+  Protocol agent over stdio (`pagu --acp`), so editors (Zed via `agent_servers`)
+  drive it. pagu is the _agent_, editor is the _client_, launched as a local
+  subprocess. Port mapping: `session/prompt` → `runTask`; `session/update` ←
+  `UI` (show/stream → `agent_message_chunk`); `session/request_permission` ←
+  `Approver`; `session/new`/`session/load` ↔ session store. Uses
+  `@agentclientprotocol/sdk` (`AgentSideConnection`, ndJSON over Deno-native web
+  streams). **Declines the client's `terminal/*`/`fs/write` for execution** —
+  the runner stays the only exec path (invariant #1); ACP carries conversation +
+  approval UX only. Deferred: session/cancel (needs cancellable `runTask`),
+  images/audio, MCP, remote transport.
 
 ### Roles — decided behavior (shipped; intended, surfaced — not bugs)
 
@@ -473,60 +484,26 @@ portable tier-1 floor around it (no regression).
 
 ### Idea backlog (speculative / paradigm-level)
 
-**Next up: #1, ACP frontend** — skills and command policy are shipped; the
-natural next extension point is letting pagu be driven by editor clients.
+**Next up: #1, composable agent loops** — ACP shipped (2026-05-27); the capstone
+is making the loop itself a composable value.
 
 To knock out one at a time — not commitments. Designed through the compositional
 lens (see `AGENTS.md` → Values: functional/compositional core, composition over
 inheritance, category-theory/algebraic abstractions) and bound by the invariants
 above (esp. #1: no agent exec path). It's a personal harness, so packing ideas
 in is fair game — remove what doesn't earn its keep. (Shipped already: config
-interop, roles, skills, command policy — see the Shipped sections above.)
+interop, roles, skills, command policy, ACP frontend — see the Shipped sections
+above.)
 
-1. **ACP (Agent Client Protocol).** Let pagu be driven by ACP clients (editors,
-   …) as another **frontend** behind the `UI`/`Approver` seam, not a core change
-   ("one state, many interfaces"). **Designed (2026-05-27), not yet built:**
-
-   - **pagu is the ACP _agent_; the editor is the _client_.** Zed launches it as
-     a custom `agent_servers` entry (`command: "pagu", args: ["--acp"]`) — a
-     **local subprocess over stdio**, not a WASM extension.
-   - **Port mapping (the refactor set this up):** `session/prompt` → `runTask`;
-     `session/update` notifications ← `UI` (`agent_message_chunk` ← stream,
-     `tool_call`/`tool_call_update` ← action entries);
-     `session/request_permission` ← `Approver` (the structured review aid is the
-     prompt content); `session/new`/`session/load` ↔ pagu's session store
-     (already the same concept).
-   - **Security invariant (load-bearing):** pagu **must decline the client's
-     `terminal/*` and `fs/write` capabilities for execution.** Using the
-     editor's generic terminal would bypass cage + scoped Deno perms + OS
-     sandbox → breaks invariant #1. pagu's runner stays the only execution path.
-     ACP carries conversation + approval UX only, never a capability.
-   - **SDK, not hand-roll** (`@agentclientprotocol/sdk`): ES module, zero
-     runtime deps, `zod` peer dep, ndJSON framing via `acp.ndJsonStream`, agent
-     side is `AgentSideConnection` with `sessionUpdate()`/`requestPermission()`.
-     Justified where the hand-rolled provider clients aren't: ACP is
-     security-neutral (pure adapter, no TCB), schema-heavy + evolving (genuinely
-     fiddly), and the SDK tracks protocol drift for free. **Verify Deno compat
-     first** (the `node:stream` → web-streams bridge); fall back to hand-rolled
-     ndJSON + SDK types only if Deno can't bridge it.
-   - **Zed-extension-as-runner: closed, and unnecessary.** Zed WASM extensions
-     are sandboxed via `zed_extension_api` and cannot spawn a general sandboxed
-     runner. Not needed anyway: ACP agents launch _locally_, so pagu's runner is
-     always co-located with pagu. The only remote piece (the model) is already
-     handled by the provider layer. Don't re-explore this.
-   - **v1 scope:** initialize (declare `loadSession`; decline nothing dangerous
-     — just don't _use_ fs/terminal), session/new, session/load, session/prompt
-     → runTask, session/update ← UI, session/request_permission ← Approver.
-     **Defer:** session/cancel (needs cancellable `runTask`), images/audio, MCP,
-     remote transport.
-2. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
+1. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
    (or a smaller turn unit) as a **composable value** so loops combine: author →
    reviewer (iterative critique), fan-out/critique, etc. Multi-agent is _later_,
    but designing the loop as a composed procedure now (explicit in/out, no
    hidden actor state) keeps the door open — and that's the point where
-   "independent actors" finally become appropriate. The capstone; depends on #1.
-3. **Composable extensibility — plugins / feature flags.** Further extension
+   "independent actors" finally become appropriate. The capstone (ACP, its
+   prerequisite frontend seam, is shipped).
+2. **Composable extensibility — plugins / feature flags.** Further extension
    beyond skills/tasks without forking the core; new providers behind `chat()`,
    new frontends behind `UI`/`Approver`, new tools that still only _propose_.
 
-Suggested order **1 → 2 → 3** (re-sequence freely as constraints surface).
+Suggested order **1 → 2** (re-sequence freely as constraints surface).

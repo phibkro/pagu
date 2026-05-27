@@ -139,8 +139,14 @@ Primary adapters (frontends):
 
 - `src/frontends/cli.ts` — one-shot frontend (stdin approver).
   `src/frontends/tui.ts` — REPL frontend (colored, multi-turn; slash commands +
-  arrow-key pickers via `src/frontends/select.ts`). They differ _only_ in UI +
-  Approver.
+  arrow-key pickers via `src/frontends/select.ts`). `src/frontends/acp.ts` —
+  **ACP agent frontend** (`pagu --acp`): pagu driven by an editor client (e.g.
+  Zed) over JSON-RPC/stdio via `@agentclientprotocol/sdk` —
+  `acpUI`/`acpApprover` map the same UI/Approver seam onto ACP
+  `session/update` + `session/request_permission`; each ACP session = one pagu
+  conversation. The runner stays the only exec path; pagu declines the client's
+  terminal/fs capabilities (invariant #1 holds across frontends). All frontends
+  differ _only_ in UI + Approver.
 
 Secondary adapters:
 

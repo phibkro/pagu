@@ -69,6 +69,26 @@ pagu "count the .txt files in ./photos and write the total to count.txt" \
 
 Bare **`pagu`** in a terminal (or `pagu --tui`) launches an interactive REPL.
 
+## Editor integration (ACP)
+
+pagu can run as an [Agent Client Protocol](https://agentclientprotocol.com)
+agent, so editors drive it like any other coding agent. In Zed, add it to
+`agent_servers` in your settings:
+
+```json
+{
+  "agent_servers": {
+    "pagu": { "type": "custom", "command": "pagu", "args": ["--acp", "--repo"] }
+  }
+}
+```
+
+The editor handles conversation display and approval prompts; pagu does
+everything else exactly as on the CLI — same cage, same human gate, same
+sandboxed runner. pagu **never** uses the editor's terminal/filesystem for
+execution: the runner stays the only execution path (the no-exec invariant holds
+across frontends). Each editor session maps to a pagu conversation.
+
 **Conversations** are stored per-project under `./.pagu/sessions/` (gitignored).
 Each launch starts a **new** conversation by default; `--continue` resumes the
 latest and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
