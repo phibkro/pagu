@@ -28,8 +28,10 @@ proposal and run.
 ## Requirements
 
 - [Deno](https://deno.com/) 2.x
-- An Ollama endpoint with a tool-calling model (default `qwen3.5:9b` at
-  `http://127.0.0.1:11434`).
+- A tool-calling model behind an **OpenAI Chat-Completions-compatible**
+  endpoint. Out of the box: local **Ollama** (default, `qwen3.5:9b`). Also any
+  compatible provider — **OpenRouter** (one key → 300+ models incl.
+  Anthropic/OpenAI), OpenAI, Groq, LM Studio, vLLM — via config (below).
 
 ## Install
 
@@ -53,8 +55,10 @@ Flags:
 
 - `--allow <path>` (repeatable) — read-allowlist for the Observe phase (defaults
   to `.`).
-- `--model <name>` — Ollama model (default `qwen3.5:9b`).
-- `--ollama <url>` — Ollama base URL (default `http://127.0.0.1:11434`).
+- `--model <name>` — model id (default `qwen3.5:9b`).
+- `--provider <preset>` — `ollama` (default), `openrouter`, or `openai`.
+- `--base-url <url>` — override the API root for a custom OpenAI-compatible
+  endpoint.
 - `--log <file>` — conversation log path (default `pagu.log.md`).
 - `--write <dir>` (repeatable) — directories scripts may write to.
 - `--repo` — **repo mode**: grant read+write to the current git repo and
@@ -75,11 +79,22 @@ Zero-config works. To customize, drop files in `~/.config/pagu/` (or
 
 ```json
 {
-  "model": "qwen3.5:9b",
-  "ollama": "http://127.0.0.1:11434",
+  "provider": "openrouter",
+  "model": "anthropic/claude-sonnet-4.5",
   "allow": ["/home/me/work", "/home/me/notes"]
 }
 ```
+
+`provider` is a preset (`ollama` / `openrouter` / `openai`); each preset knows
+its base URL and which **env var** holds the API key (`OPENROUTER_API_KEY`,
+`OPENAI_API_KEY`) — so secrets never live in the config file. Override a preset
+with `baseURL` / `apiKeyEnv` for any other OpenAI-compatible endpoint. Default
+is local `ollama` (no key, fully private).
+
+> **Privacy:** with a **cloud** provider, the agent's _observations_ (file
+> contents it reads) are sent to that provider. The sandboxed runner blocks
+> _script_ exfiltration, but the agent's reads always go to whichever model you
+> point at. **Local Ollama keeps everything on your machine.**
 
 `AGENTS.md` — free-form agent instructions, injected into the prompts. This is
 the cross-tool standard (also read by Codex, Cursor, Copilot, …), so one file

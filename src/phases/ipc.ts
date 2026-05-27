@@ -1,10 +1,5 @@
 import type { Entry } from "../log/schema.ts";
-
-/** Provider config passed to a phase subprocess. */
-export interface ProviderConfig {
-  model: string;
-  baseUrl: string;
-}
+import type { ProviderConfig } from "../provider/chat.ts";
 
 /** What a phase subprocess receives on stdin. The log carries all prior
  * context (including the user's task as the latest message), so a phase

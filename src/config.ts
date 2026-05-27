@@ -7,16 +7,52 @@
  * Location: `$XDG_CONFIG_HOME/pagu/` or `$HOME/.config/pagu/`.
  */
 export interface PaguConfig {
+  /** Provider preset name (see PRESETS) or "custom" with an explicit baseURL. */
+  provider: string;
   model: string;
-  ollama: string;
+  /** Override the preset's API root (OpenAI Chat Completions, ends at /v1). */
+  baseURL?: string;
+  /** Name of the env var holding the API key (keeps secrets out of config). */
+  apiKeyEnv?: string;
   allow: string[];
 }
 
+/** Provider presets — all speak the OpenAI Chat Completions format. */
+export const PRESETS: Record<string, { baseURL: string; apiKeyEnv?: string }> =
+  {
+    ollama: { baseURL: "http://127.0.0.1:11434/v1" }, // local, no key
+    openrouter: {
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKeyEnv: "OPENROUTER_API_KEY",
+    },
+    openai: {
+      baseURL: "https://api.openai.com/v1",
+      apiKeyEnv: "OPENAI_API_KEY",
+    },
+  };
+
 export const DEFAULTS: PaguConfig = {
+  provider: "ollama",
   model: "qwen3.5:9b",
-  ollama: "http://127.0.0.1:11434",
   allow: [],
 };
+
+/** Resolve a config to its API root + key-env-var (preset, overridable).
+ * Pure — the caller reads the actual secret from the env. */
+export function resolveProvider(
+  cfg: PaguConfig,
+): { baseURL: string; apiKeyEnv?: string } {
+  const preset = PRESETS[cfg.provider] ?? {};
+  const baseURL = cfg.baseURL ?? preset.baseURL;
+  const apiKeyEnv = cfg.apiKeyEnv ?? preset.apiKeyEnv;
+  if (!baseURL) {
+    throw new Error(
+      `unknown provider "${cfg.provider}" — use a preset ` +
+        `(${Object.keys(PRESETS).join(", ")}) or set baseURL`,
+    );
+  }
+  return { baseURL, apiKeyEnv };
+}
 
 export interface Loaded {
   config: PaguConfig;
@@ -40,8 +76,10 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
   const out: PaguConfig = { ...base, allow: [...base.allow] };
   if (parsed && typeof parsed === "object") {
     const p = parsed as Record<string, unknown>;
+    if (typeof p.provider === "string") out.provider = p.provider;
     if (typeof p.model === "string") out.model = p.model;
-    if (typeof p.ollama === "string") out.ollama = p.ollama;
+    if (typeof p.baseURL === "string") out.baseURL = p.baseURL;
+    if (typeof p.apiKeyEnv === "string") out.apiKeyEnv = p.apiKeyEnv;
     if (Array.isArray(p.allow) && p.allow.every((x) => typeof x === "string")) {
       out.allow = p.allow as string[];
     }

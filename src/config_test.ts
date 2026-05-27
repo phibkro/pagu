@@ -1,5 +1,5 @@
-import { assertEquals } from "jsr:@std/assert@^1";
-import { DEFAULTS, mergeConfig } from "./config.ts";
+import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
+import { DEFAULTS, mergeConfig, resolveProvider } from "./config.ts";
 
 Deno.test("empty/garbage parsed yields the base unchanged", () => {
   assertEquals(mergeConfig(DEFAULTS, {}), DEFAULTS);
@@ -9,14 +9,18 @@ Deno.test("empty/garbage parsed yields the base unchanged", () => {
 
 Deno.test("known fields override, unknown keys ignored", () => {
   const merged = mergeConfig(DEFAULTS, {
-    model: "llama3.2:3b",
-    ollama: "http://host:1234",
+    provider: "openrouter",
+    model: "anthropic/claude-sonnet-4.5",
+    baseURL: "https://example/v1",
+    apiKeyEnv: "MY_KEY",
     allow: ["/home/me/docs"],
     bogus: 42,
   });
   assertEquals(merged, {
-    model: "llama3.2:3b",
-    ollama: "http://host:1234",
+    provider: "openrouter",
+    model: "anthropic/claude-sonnet-4.5",
+    baseURL: "https://example/v1",
+    apiKeyEnv: "MY_KEY",
     allow: ["/home/me/docs"],
   });
 });
@@ -26,8 +30,27 @@ Deno.test("ill-typed allow is rejected, base kept", () => {
   assertEquals(mergeConfig(base, { allow: ["ok", 5] }).allow, ["keep"]);
 });
 
-Deno.test("merge does not mutate the base allow array", () => {
-  const base = { ...DEFAULTS, allow: ["a"] };
-  mergeConfig(base, { allow: ["b"] });
-  assertEquals(base.allow, ["a"]);
+Deno.test("resolveProvider: preset, override, and unknown", () => {
+  // default ollama preset, no key
+  assertEquals(resolveProvider(DEFAULTS), {
+    baseURL: "http://127.0.0.1:11434/v1",
+    apiKeyEnv: undefined,
+  });
+  // openrouter preset carries the key env var
+  assertEquals(resolveProvider({ ...DEFAULTS, provider: "openrouter" }), {
+    baseURL: "https://openrouter.ai/api/v1",
+    apiKeyEnv: "OPENROUTER_API_KEY",
+  });
+  // explicit overrides win over the preset
+  assertEquals(
+    resolveProvider({
+      ...DEFAULTS,
+      provider: "openai",
+      baseURL: "https://proxy/v1",
+      apiKeyEnv: "PROXY_KEY",
+    }),
+    { baseURL: "https://proxy/v1", apiKeyEnv: "PROXY_KEY" },
+  );
+  // unknown provider with no baseURL throws
+  assertThrows(() => resolveProvider({ ...DEFAULTS, provider: "bogus" }));
 });

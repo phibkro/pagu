@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../provider/ollama.ts";
+import type { ChatMessage } from "../provider/chat.ts";
 import type { Entry } from "../log/schema.ts";
 
 /** Project the conversation log into chat messages for the model. */

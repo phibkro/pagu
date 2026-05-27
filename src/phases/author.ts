@@ -1,4 +1,4 @@
-import { chat } from "../provider/ollama.ts";
+import { chat } from "../provider/chat.ts";
 import { handleWrite, writeToolDef } from "../tools/write.ts";
 import { logToMessages } from "./messages.ts";
 import { readInput, withAgents, writeOutput } from "./ipc.ts";

@@ -6,7 +6,7 @@ import type { PhaseInput } from "./phases/ipc.ts";
 import { spawnPhase } from "./phases/spawn.ts";
 import { runScript } from "./runner/run.ts";
 import { classifyRun } from "./runner/classify.ts";
-import { loadConfig, type PaguConfig } from "./config.ts";
+import { loadConfig, type PaguConfig, resolveProvider } from "./config.ts";
 import { formatFlag, parsePermission } from "./perms/envelope.ts";
 import { buildEnvelope, shouldAutoApprove } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
@@ -45,7 +45,8 @@ function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
     const a = argv[i];
     if (a === "--log") logPath = argv[++i];
     else if (a === "--model") config.model = argv[++i];
-    else if (a === "--ollama") config.ollama = argv[++i];
+    else if (a === "--provider") config.provider = argv[++i];
+    else if (a === "--base-url") config.baseURL = argv[++i];
     else if (a === "--allow") config.allow.push(argv[++i]);
     else if (a === "--write") write.push(argv[++i]);
     else if (a === "--repo") repo = true;
@@ -103,8 +104,15 @@ if (!opts.task) {
 const { config: cfg, task, logPath } = opts;
 
 const phaseDir = fromFileUrl(new URL("./phases/", import.meta.url));
-const provider = { model: cfg.model, baseUrl: cfg.ollama };
-const ollamaHost = new URL(cfg.ollama).host;
+const { baseURL, apiKeyEnv } = resolveProvider(cfg);
+const apiKey = apiKeyEnv ? Deno.env.get(apiKeyEnv) : undefined;
+if (apiKeyEnv && !apiKey) {
+  console.error(
+    `⚠ provider "${cfg.provider}" expects an API key in $${apiKeyEnv}, but it is unset.`,
+  );
+}
+const provider = { model: cfg.model, baseURL, apiKey };
+const providerHost = new URL(baseURL).host;
 
 // Session envelope. Repo mode grants read+write to the cwd repo (with its
 // .gitignore'd paths denied) and enables auto-approve within it.
@@ -183,7 +191,7 @@ console.error("· observing…");
 const observed = await spawnPhase({
   entry: `${phaseDir}observe.ts`,
   flags: [
-    `--allow-net=${ollamaHost}`,
+    `--allow-net=${providerHost}`,
     ...readPaths.map((p) => `--allow-read=${p}`),
   ],
   input: input(),
@@ -195,7 +203,7 @@ persist();
 const author = () =>
   spawnPhase({
     entry: `${phaseDir}author.ts`,
-    flags: [`--allow-net=${ollamaHost}`],
+    flags: [`--allow-net=${providerHost}`],
     input: input(),
   });
 
