@@ -1,8 +1,11 @@
 # pagu — design
 
-> Status: draft for iteration. Command: `pagu`. Named for _Paguroidea_, the
-> hermit-crab superfamily — soft and untrusted inside (the LLM), operating only
-> through a hard, borrowed, disposable shell (the sandboxed runner).
+> Status: the v1 loop is implemented and in daily use. Command: `pagu`. Named
+> for _Paguroidea_, the hermit-crab superfamily — soft and untrusted inside (the
+> LLM), operating only through a hard, borrowed, disposable shell (the sandboxed
+> runner). This doc is the rationale + threat model; **`README.md`** is usage
+> and **`AGENTS.md`** is how-we-work. The **Roadmap** at the bottom tracks
+> what's shipped vs. open.
 
 ## One-liner
 
@@ -33,10 +36,13 @@ blast radius is statically enumerable.
 
 **Non-goals (deferred)**
 
-- GUI/computer-use (mouse/screen) — CLI first, expand only if needed.
-- Conversation forking — planned; borrow Pi's implementation later.
-- Multi-provider abstraction beyond the first provider.
-- Uniform OS-level sandboxing across every platform (see Security tiers).
+- GUI/computer-use (mouse/screen) — CLI + TUI first, expand only if needed.
+- Uniform OS-level sandboxing across every platform (see Security tiers — Linux
+  and macOS are done; Windows is open).
+
+(Several original non-goals have since shipped: conversation **forking**
+(`/fork`), and a **multi-provider** layer — OpenAI Chat Completions covers
+Ollama/OpenRouter/OpenAI/etc., with native Anthropic alongside.)
 
 ## Core principle: the model has no _real-effect_ execute capability
 
@@ -51,7 +57,7 @@ cage** to self-test and self-correct before you see it. The cage grants
 real-path writes** — so autonomous execution cannot exfiltrate or damage
 anything. The cage classifies each run:
 
-- **runtime/type error** → feed back to the Author phase; it fixes and retries
+- **runtime/type error** → feed back to the agent; it fixes and retries
   (bounded), so you review a _working_ script, not a buggy one;
 - **permission denial** → not a bug — the script asked for a real permission the
   cage withholds; this _is_ the permission-discovery mechanism (see below),
@@ -61,23 +67,29 @@ anything. The cage classifies each run:
 So the boundary is precise: autonomous execution is confined to a no-net,
 no-real-write rehearsal; real-effect execution stays human-gated.
 
-## Phase FSM
+## Phase FSM (chat-or-act)
 
-The loop is a small state machine. **Each phase is a separate, short-lived
-process launched with exactly that phase's permissions** — so the runtime
-sandbox, not just our code, enforces the boundary. Phases are stateless: each
+The loop is a small state machine. **Each turn is a separate, short-lived
+process launched with exactly that turn's permissions** — so the runtime
+sandbox, not just our code, enforces the boundary. Turns are stateless: each
 folds the conversation log and appends new events.
 
-| Phase                | process permissions                                 | tools                 | advances when                        |
-| -------------------- | --------------------------------------------------- | --------------------- | ------------------------------------ |
-| **Observe** (query)  | read = allowlist; net = provider only               | `read`                | model has needed context             |
-| **Author** (command) | write = log/scratch; net = provider only            | `write`               | model emits a script                 |
-| **Review**           | _(no agent process)_                                | —                     | **human** approves / rejects / edits |
-| **Run**              | runner: scoped perms, in OS sandbox where available | — (runner, not agent) | script exits                         |
-| → Observe            |                                                     |                       |                                      |
+The original Observe and Author phases are now a **single `respond` phase**: the
+model converses normally and only switches into "act" mode — authoring a script
+with the `write` tool — when finishing the task genuinely needs an effect. It
+reads with the `read` tool inside the same phase. So a plain question costs one
+read-capable turn and no script at all.
 
-Read _results_ persist in the model's context across phases, so the agent never
-simultaneously holds read + write.
+| Phase                | process permissions                                 | tools           | advances when                        |
+| -------------------- | --------------------------------------------------- | --------------- | ------------------------------------ |
+| **Respond**          | read = allowlist; net = provider only               | `read`, `write` | model replies (chat) or emits script |
+| **Cage** (self-test) | read = allowlist; write = scratch; **no net**       | — (runner)      | proposal runs clean / needs-perms    |
+| **Review**           | _(no agent process)_                                | —               | **human** y/n (or envelope auto)     |
+| **Run**              | runner: scoped perms, in OS sandbox where available | — (runner)      | script exits → result re-enters loop |
+
+The agent process only ever holds read + net-to-model; it never holds write or
+run. After a run, the result re-enters the log and the loop continues (the model
+wraps up or proposes the next step), bounded by a turn limit.
 
 ## State model: the conversation log _is_ the event store
 
@@ -88,36 +100,39 @@ those events. Git history gives audit + (later) forking = branching the log.
 
 ### Format: Markdown + structured fenced blocks
 
-Human-diffable prose with typed, parseable fenced blocks:
+Human-diffable prose with typed, parseable fenced blocks. **Tilde** fences
+(`~~~pagu:<kind>`), not backtick, so a script body containing ``` survives the
+round-trip:
 
-- `` ```pagu:observation `` — what a read returned (source + content).
-- `` ```pagu:script `` — a proposed script (lang + body).
-- `` ```pagu:perms `` — permissions discovered for that script (the
-  zero-permission discovery run's findings).
-- `` ```pagu:decision `` — human approve/reject/edit + rationale.
-- `` ```pagu:result `` — runner output + exit status + the exact perms it ran
-  with.
+- `~~~pagu:message` — a conversational turn (user task or assistant prose).
+- `~~~pagu:observation` — what a read returned. `source` records **the command
+  that ran** (`read <path>` / `ls <path>`) for a full action audit, not just its
+  output.
+- `~~~pagu:script` — a proposed script (lang + body).
+- `~~~pagu:decision` — human approve/reject + rationale.
+- `~~~pagu:result` — runner output + exit status + the exact perms it ran with.
 
-One file, readable by a human, parseable by the harness, clean git diffs.
+One file, readable by a human, parseable by the harness, clean git diffs. A
+session also carries a small YAML **frontmatter** header (display `name`,
+`created`); the entries below stay the source of truth (`src/conversations.ts`).
 
 ## Approval model
 
-> **v1 scope:** manual per-script approval only. The human reads the proposed
-> script, grants the permissions at approval time, and the runner enforces
-> exactly those. Auto-approve modes (below) are deferred because they require
-> _trustworthy_ permission discovery — see "Deferred: how to discover a proposed
-> script's permissions". The runner's enforcement is the actual security
-> boundary either way.
+> **Implemented:** a simple **y/n** per-script gate is the default — the human
+> sees the proposed script and the exact permissions it will run with (surfaced
+> by the cage's discovery), and approves or rejects. The runner enforces exactly
+> those permissions; its enforcement is the actual security boundary.
 
-- **Per-script explicit by default.**
-- **Auto-approve rules** may be configured. Safety invariant: a rule fires only
-  when the script's **discovered permission set ⊆ a pre-vetted envelope**,
-  verified by the zero-permission discovery run + lint — never by trusting the
-  agent's description. So auto-approve can never silently widen the real
-  capability surface.
-- **Modes** = named bundles of such envelopes (à la Claude Code's permission
-  modes), e.g. a `scratch-readonly` mode that auto-runs only scripts proven to
-  touch nothing beyond a read-only scratch.
+- **Per-script explicit by default** (y/n; the perms list is always shown).
+- **Auto-approve within an envelope.** A proposal runs without a prompt only
+  when its **discovered permission set ⊆ a pre-vetted envelope**, verified by
+  the cage (Deno's own denials), never by trusting the agent's description — so
+  auto-approve can never silently widen the real capability surface. **Repo
+  mode** is the shipped instance: grant read+write to the current git repo and
+  auto-approve scripts confined to it (git is the undo buffer, the runner has no
+  net, `.gitignore`'d paths are write-denied). Remembered per repo.
+- **Modes** = named bundles of such envelopes — generalizing repo mode (e.g. a
+  `scratch-readonly` mode) — remain open.
 
 ## Output gating falls out of the runner's permissions
 
@@ -140,12 +155,22 @@ double-gate output for net-less runs.
    scoping, identical on Linux/macOS/Windows. This is always present. Also
    applied to the **harness's own phase processes** (a buggy harness in Author
    phase still cannot read the disk).
-2. **Opt-in OS isolation — platform-specific hardening.** bubblewrap / Landlock
-   (Linux), sandbox-exec/seatbelt (macOS), AppContainer/Job Objects (Windows).
-   Best-effort per platform; layered on top of the floor where available.
+2. **OS isolation — platform-specific hardening (implemented for Linux/macOS).**
+   The runner wraps each `deno run` in **bubblewrap** (Linux, when `bwrap` is on
+   PATH) or **sandbox-exec** (macOS). v1 hardens the two escape vectors that
+   matter: it **denies network** (unless granted) and **confines writes** to the
+   granted paths + scratch. Crucially this contains a subprocess spawned via
+   `--allow-run` — which Deno does _not_ permission-bound — at the kernel level.
+   It wraps both the cage self-test (unreviewed code) and the approved run.
+   Auto-detected; falls back to tier 1 with a note when unavailable
+   (`src/runner/sandbox.ts`). Windows (AppContainer/Job Objects) is open.
 
-Honest ceiling: on a platform with only tier 1, a Deno/V8 escape would breach
-isolation. Tier 2 closes that where the OS supports it.
+   _Scope of v1:_ **reads stay broad** at the OS layer (Deno still bounds the
+   script's own reads). OS-layer read isolation + Landlock are roadmap items.
+
+Honest ceiling: with only tier 1, a Deno/V8 escape would breach isolation; tier
+2 closes the write/network escape (incl. via subprocesses) where the OS supports
+it. Read confinement of subprocesses is the remaining tier-2 gap.
 
 ## Threat model (load-bearing parts)
 
@@ -170,14 +195,21 @@ isolation. Tier 2 closes that where the OS supports it.
   Revisit only if orchestration pain justifies it, and even then keep it out of
   the security-critical core. (If adopted later, vendor the Effect repo as a
   read-only `git subtree` for agent reference — deferred until that decision.)
-- **Provider:** Ollama first (native tool-calling), BYO key; pluggable.
+- **Provider:** a hand-rolled **OpenAI Chat Completions** client is the default
+  wire format (covers Ollama — the local default — plus OpenRouter, OpenAI,
+  Groq, LM Studio, vLLM…), with a native **Anthropic** Messages client
+  alongside, selected by a per-preset `format`. BYO key via named env vars;
+  config never holds secrets. (Anthropic subscription OAuth is barred — API key
+  only.)
 - **Harness:** our own minimal loop + phase FSM, written from scratch — inspired
   by Pi (loop shape, tool-call parsing), not forked. Smaller TCB is the point,
   and from-scratch bakes in the no-exec/phase model from line one. `pi-ai` kept
   as an optional fallback if multi-provider lands.
-- **Runner shell-out:** generated scripts call CLIs via `Deno.Command`
-  (low-level) or `dax` (`$`-style, the Bun-Shell analog) — both gated by
-  `--allow-run=<specific binaries>`, surfaced by the discovery run.
+- **Runner shell-out:** generated scripts use **only Deno built-ins** (no
+  imports — simplest to run offline and review); they call CLIs via
+  `Deno.Command`, gated by `--allow-run=<specific binaries>` surfaced by the
+  cage. (A `dax`-style helper could be allowed later if the no-import rule
+  proves too restrictive.)
 - **UX:** CLI-first ("terminal with an LLM"); TUI for the transcript + approval
   view; GUI only if a real need appears.
 
@@ -187,26 +219,42 @@ isolation. Tier 2 closes that where the OS supports it.
   homelab repo; published separately, e.g. JSR `@.../pagu`).
 - No build step (Deno runs TS); distribute via `deno install` / `deno compile`.
 
-## Deferred / open
+## Roadmap
 
-- **Permission discovery — RESOLVED via the cage** (see "Core principle: the
-  cage"). The cage self-test runs the script with no real-path writes and no
-  net, and collects the permissions Deno _denies_ (`NotCapable` / "Requires X
-  access to …") as the requested set — without granting them. Surfaced at
-  approval; later fed to `within()` (`src/perms/envelope.ts`) to gate
-  auto-approve modes. Static AST analysis stays a possible precision refinement,
-  but is no longer required for v1.
-- **Read-protection of gitignored files inside a broadly-allowed repo.** Deno's
-  `--deny-read=<child>` makes `readDir` of the parent fail (it won't list a dir
-  containing a denied entry), which breaks most tasks — so repo mode applies
-  gitignore denies as **deny-write only**. A broad-read script could therefore
-  surface a secret's _contents_ to the local model (no internet exfil — the
-  runner has no net). Future fix: per-file read allowlisting, content redaction,
-  or a narrower granted read set.
-- **Session store + resume + envelope persistence** (the cwd-keyed git- backed
-  store). Repo mode currently rebuilds the envelope per invocation; persisting
-  it enables resume, forking, and cross-invocation memory.
-- Conversation **forking** mechanism (borrow Pi).
-- OS-isolation backends beyond Linux.
-- GUI/computer-use.
-- Multi-provider layer.
+### Shipped since the original draft
+
+- **The chat-or-act loop** — a single `respond` phase that converses and only
+  authors a script when an effect is needed (replaced separate Observe/Author).
+- **Permission discovery via the cage** — the self-test runs with no net and
+  scratch-only writes, collecting the permissions Deno _denies_ as the requested
+  set, surfaced at approval and fed to `within()`
+  (`src/permissions/envelope.ts`) to gate auto-approve. Static AST analysis
+  remains an optional precision refinement, not required.
+- **Approval** — y/n per-script gate; **repo-mode** auto-approve within the
+  git-repo envelope.
+- **Conversation sessions** — per-project `.pagu/sessions/<id>.log.md` store
+  with list / new / open / **fork** / rename (frontmatter `name`), `--continue`.
+- **OS sandbox tier** — bubblewrap (Linux) + sandbox-exec (macOS): denies
+  network and confines writes beneath the Deno floor (`src/runner/sandbox.ts`).
+- **Providers** — OpenAI Chat Completions (default; Ollama/OpenRouter/OpenAI/…)
+  - native Anthropic.
+- **Frontends** — CLI one-shot + streaming TUI (spinner, slash commands with
+  ghost-text autocomplete, context readout).
+
+### Open
+
+- **Verify the macOS `sandbox-exec` profile on a Mac** — implemented but not yet
+  exercised on real hardware (developed/tested on Linux).
+- **OS-layer read isolation + Landlock (Linux).** Tier 2 confines writes +
+  network but leaves reads broad at the OS layer; per-path read binding / a
+  Landlock backend would close subprocess read-confinement.
+- **`.gitignore` read-protection.** `--deny-read=<child>` breaks `readDir` of
+  the parent, so repo mode applies gitignore denies as **deny-write only**. A
+  broad-read script can thus surface a secret's _contents_ to the (local) model
+  — no internet exfil, the runner has no net. Fix: per-file read allowlisting,
+  content redaction, or a narrower granted read set.
+- **Windows OS isolation** (AppContainer / Job Objects).
+- **Permission modes** — named envelope bundles generalizing repo mode.
+- **A credential-injecting egress proxy** so net-granted scripts never see raw
+  secrets.
+- GUI / computer-use.
