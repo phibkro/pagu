@@ -76,6 +76,8 @@ lawful.
 | **role**                   | a hat you wear / a part you play | a composable bundle of config + instructions; an agent _carries_ several at once                                                    |
 | **profile**                | a profile = the whole picture    | the resolved agent + config (the result of composing roles onto the base)                                                           |
 | **phase / turn**           | turn-taking in conversation      | one short-lived, scoped step of the loop                                                                                            |
+| **skill**                  | a skill you have mastered        | a bundled capability: reference files + pre-approved procedures the agent can invoke verbatim without a fresh human gate            |
+| **task / command policy**  | a task you are permitted to run  | a named project command the agent can invoke by exact name; deny-by-default, opt-in via config; permissions inferred then cached    |
 
 ## The compositional spine
 
@@ -106,7 +108,40 @@ is a **lawful merge**.
     the same law.)
   - The per-script + envelope **human gate stays the backstop** — roles set the
     envelope, never a bypass.
+- **Skills as role extension.** A skill extends the role denotation with two new
+  fields: `files` (paths added to the read allowlist) and `scripts`
+  (pre-authored verbatim procedures). Formally:
+  `⟦Skill⟧ = (prose, ConfigLayer, files: string[],
+  scripts: SkillScript[])`.
+  The same composition law applies — a skill folds into the session exactly as a
+  role does, and the result is a lawful merge. The `files` field composes by
+  union (like grants); `scripts` compose by concatenation (order-independent for
+  lookup by name). Crucially, a skill's scripts carry a **permission ceiling**
+  (declared in `SKILL.md` frontmatter); the cage verifies at invocation that the
+  actual run stays within it — so composition cannot silently widen the
+  capability surface.
 
-> Status: **roles** are designed here, not yet built — see `CONTEXT.md` →
-> Roadmap (backlog #2). The base-role behaviour (AGENTS.md / CLAUDE.md fallback,
-> global + project, prose-append) already exists and is the seed of this model.
+## Command policy as a type system
+
+The command policy for `run_task` is deliberately isomorphic to a type system:
+
+| type system concept      | command policy equivalent                                    |
+| ------------------------ | ------------------------------------------------------------ |
+| explicit type annotation | `declared-perms` in config — the task's stated ceiling       |
+| inferred type            | cage-discovered permissions — what the task _actually_ needs |
+| strict mode              | outside-repo context — explicit annotation required          |
+| type cache               | `.pagu/inferred-perms.json` — the lockfile                   |
+| type checker             | the cage — validates the run stays within the ceiling        |
+
+On first invocation with no declaration, the cage runs the task with minimal
+permissions, collects every Deno denial, and writes the discovered set to
+`inferred-perms.json`. Subsequent runs cage against that stored ceiling — fast
+(no rediscovery) and safe (ceiling is fixed). Changing the task's behaviour
+invalidates the lockfile; the cage detects the new denial and updates it.
+Outside a repo (strict mode) the declared permissions are required: inference is
+disabled because there is no human-reviewed baseline to anchor against.
+
+The metaphor earns its keep: it gives the user a correct mental model of what
+`--declare-perms` does versus not doing it, and it explains why the lockfile
+exists and when to delete it (when the task changes in a way that needs new
+permissions).

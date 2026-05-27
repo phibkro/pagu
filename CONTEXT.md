@@ -56,10 +56,27 @@ Ollama/OpenRouter/OpenAI/etc., with native Anthropic alongside.)
 
 ## Core principle: the model has no _real-effect_ execute capability
 
-The agent's only tools are **read** (allowlisted) and **write** (script
-proposals). There is no `bash`/exec tool. **Real-effect execution** — running a
+The agent's tools are **read** (allowlisted inspect), **write** (arbitrary
+script proposals — requires human approval), **invoke_skill** (pre-authored
+skill scripts — auto-approved within declared ceiling), and **run_task** (named
+project tasks from the command policy — auto-approved within inferred/declared
+ceiling). There is no `bash`/exec tool. **Real-effect execution** — running a
 script with real-path writes, network, or broader permissions — happens only in
-a separate process triggered by **human approval**.
+a separate process triggered by **human approval** or a pre-vetted envelope.
+
+### The capability ladder
+
+| tool           | what it does                             | approval path                            |
+| -------------- | ---------------------------------------- | ---------------------------------------- |
+| `read`         | inspect files/dirs                       | no side effects — always allowed         |
+| `write`        | author arbitrary scripts                 | **human gate** (y/n at every proposal)   |
+| `invoke_skill` | run a pre-authored skill script verbatim | auto-approved (verbatim match + ceiling) |
+| `run_task`     | run a named project task from policy     | auto-approved (policy match + ceiling)   |
+
+`invoke_skill` and `run_task` expand the agent's effective capability without
+widening the blast radius: the orchestrator verifies the script body matches
+verbatim what was pre-approved, and the cage still validates permissions within
+the declared or inferred ceiling before executing.
 
 Refinement (the cage): the agent _may_ run its proposed script in a **disposable
 cage** to self-test and self-correct before you see it. The cage grants
@@ -116,12 +133,12 @@ with the `write` tool — when finishing the task genuinely needs an effect. It
 reads with the `read` tool inside the same phase. So a plain question costs one
 read-capable turn and no script at all.
 
-| Phase                | process permissions                                 | tools           | advances when                        |
-| -------------------- | --------------------------------------------------- | --------------- | ------------------------------------ |
-| **Respond**          | read = allowlist; net = provider only               | `read`, `write` | model replies (chat) or emits script |
-| **Cage** (self-test) | read = allowlist; write = scratch; **no net**       | — (runner)      | proposal runs clean / needs-perms    |
-| **Review**           | _(no agent process)_                                | —               | **human** y/n (or envelope auto)     |
-| **Run**              | runner: scoped perms, in OS sandbox where available | — (runner)      | script exits → result re-enters loop |
+| Phase                | process permissions                                 | tools                                       | advances when                        |
+| -------------------- | --------------------------------------------------- | ------------------------------------------- | ------------------------------------ |
+| **Respond**          | read = allowlist; net = provider only               | `read`, `write`, `invoke_skill`, `run_task` | model replies (chat) or emits script |
+| **Cage** (self-test) | read = allowlist; write = scratch; **no net**       | — (runner)                                  | proposal runs clean / needs-perms    |
+| **Review**           | _(no agent process)_                                | —                                           | **human** y/n (or envelope auto)     |
+| **Run**              | runner: scoped perms, in OS sandbox where available | — (runner)                                  | script exits → result re-enters loop |
 
 The agent process only ever holds read + net-to-model; it never holds write or
 run. After a run, the result re-enters the log and the loop continues (the model
@@ -362,7 +379,27 @@ portable tier-1 floor around it (no regression).
 - **Illegal state elimination** — three redundant derived fields removed:
   `autoEnabled` (was `!!repo`), `autoReturn` (was `!grantsNet(ranWith)`), and
   scoped `Permission { flag: "all" }` (now a discriminated union; `all` is never
-  scoped).
+  scoped). `advisorEnabled` also removed — `advisorConfig` presence is the
+  signal.
+- **Skills system** (`src/skills.ts`, `src/tools/invoke-skill.ts`) — a skill is
+  a directory `.pagu/skills/<name>/` containing `SKILL.md` (frontmatter +
+  instructions, agentskills.io spec) and a `scripts/` subdirectory with
+  pre-authored `.ts` files. Denotation: `(prose, ConfigLayer, files, scripts)` —
+  extends roles by the same composition law. `invoke_skill` tool: agent names a
+  skill script by enum-constrained name; the orchestrator resolves the verbatim
+  body from `ctx.activeSkillScripts` (agent never copies content); cage
+  validates and auto-approves within the declared permission ceiling.
+- **Command policy / `run_task`** (`src/command-policy.ts`, `src/discovery.ts`,
+  `src/tools/run-task.ts`) — `run_task` tool: agent passes an exact command
+  string (enum-constrained to the allowed-tasks policy). Deny by default: only
+  tasks listed in `allowed-tasks` config can run via `run_task`. Discovery scans
+  `deno.json`, `package.json`, `Justfile` for available tasks at startup.
+  **Type-inference model for permissions:** first cage run with minimal perms
+  discovers what the command actually needs → stored in
+  `.pagu/inferred-perms.json` (gitignored lockfile); second run cages against
+  the stored ceiling. Explicit annotation = declared permissions; inferred type
+  = cage-discovered permissions; strict mode = outside-repo (explicit required);
+  type cache = `inferred-perms.json`.
 
 ### Roles — decided behavior (shipped; intended, surfaced — not bugs)
 
@@ -402,34 +439,27 @@ portable tier-1 floor around it (no regression).
 
 ### Idea backlog (speculative / paradigm-level)
 
-**Next up: #1, composable extensibility / skills** — the natural successor to
-roles, and where feature flags and a pagu "skill" land.
+**Next up: #1, ACP frontend** — skills and command policy are shipped; the
+natural next extension point is letting pagu be driven by editor clients.
 
 To knock out one at a time — not commitments. Designed through the compositional
 lens (see `AGENTS.md` → Values: functional/compositional core, composition over
 inheritance, category-theory/algebraic abstractions) and bound by the invariants
 above (esp. #1: no agent exec path). It's a personal harness, so packing ideas
 in is fair game — remove what doesn't earn its keep. (Shipped already: config
-interop and roles — see the Shipped sections above.)
+interop, roles, skills, command policy — see the Shipped sections above.)
 
-1. **Composable extensibility — plugins / extensions / feature flags.** Add
-   capability without forking the core, but an extension must **not** create an
-   agent exec path (invariant #1) — so extensions are pure/effect-scoped units
-   behind the existing ports (a provider behind `chat()`, a frontend behind
-   `UI`/`Approver`, a tool that still only _proposes_). Feature flags =
-   compositional config (ties to roles). **Skills** land here: a pagu "skill" is
-   instruction + allowlisted reference files, not an exec bundle. Risk:
-   **highest** (trust surface) — design the interface so the boundary holds by
-   construction.
-2. **ACP (Agent Client Protocol).** Let pagu be driven by ACP clients (editors,
+1. **ACP (Agent Client Protocol).** Let pagu be driven by ACP clients (editors,
    …) as another **frontend** behind the `UI`/`Approver` seam, not a core change
    ("one state, many interfaces"). Clean if it stays a transport adapter.
-3. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
+2. **Composable agent loops — iterative review / multi-agent.** Treat `runTask`
    (or a smaller turn unit) as a **composable value** so loops combine: author →
    reviewer (iterative critique), fan-out/critique, etc. Multi-agent is _later_,
    but designing the loop as a composed procedure now (explicit in/out, no
    hidden actor state) keeps the door open — and that's the point where
-   "independent actors" finally become appropriate. The capstone; depends on
-   #1/#2.
+   "independent actors" finally become appropriate. The capstone; depends on #1.
+3. **Composable extensibility — plugins / feature flags.** Further extension
+   beyond skills/tasks without forking the core; new providers behind `chat()`,
+   new frontends behind `UI`/`Approver`, new tools that still only _propose_.
 
 Suggested order **1 → 2 → 3** (re-sequence freely as constraints surface).

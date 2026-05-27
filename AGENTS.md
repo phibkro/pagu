@@ -89,6 +89,44 @@ Security-critical pure cores (unit-tested — change with care + tests first):
   `{task, script, perms}` to a configurable model, returns structured
   `[advisory]` flags. Fails open. Both are pure and tested; neither holds an
   exec path.
+- `src/skills.ts` — skill loader: discovers `.pagu/skills/<name>/` directories,
+  reads `SKILL.md` (frontmatter + instructions, agentskills.io spec — requires
+  `name` and `description` fields matching directory name) and `scripts/*.ts`
+  files. Denotation:
+  `(prose, ConfigLayer, files: string[], scripts:
+  SkillScript[])` — extends
+  roles by the same composition law. Skills fold into `AgentContext` at startup.
+- `src/command-policy.ts` — parses `allowed-tasks` config into `CommandEntry`
+  objects (deny by default; only listed tasks may run via `run_task`).
+  `src/discovery.ts` — scans `deno.json`, `package.json`, `Justfile` at startup
+  to surface available tasks for enum completion. `inferred-perms.json`
+  (`.pagu/inferred-perms.json`, gitignored) is the permission lockfile written
+  by the first cage run and read by subsequent runs — analogous to a
+  type-inference cache; delete it when a task's permission requirements change.
+- `src/tools/invoke-skill.ts` — `invoke_skill` tool: agent names a skill script
+  by enum-constrained name; orchestrator resolves the verbatim body from
+  `ctx.activeSkillScripts` (agent never copies content); cage validates within
+  the declared ceiling; auto-approved on match. `src/tools/run-task.ts` —
+  `run_task` tool: agent passes an exact command string (enum-constrained to the
+  policy); first run discovers permissions via cage and writes lockfile; second
+  run cages against stored ceiling; auto-approved within ceiling.
+
+### The capability ladder
+
+The agent has four tools, ordered by how much pre-vetting the approval path
+requires:
+
+| tool           | what it does                             | approval path                            |
+| -------------- | ---------------------------------------- | ---------------------------------------- |
+| `read`         | inspect files/dirs, no side effects      | always allowed (no approval needed)      |
+| `write`        | author arbitrary scripts                 | **human gate** at every proposal         |
+| `invoke_skill` | run a pre-authored skill script verbatim | auto-approved (verbatim match + ceiling) |
+| `run_task`     | run a named project task from policy     | auto-approved (policy match + ceiling)   |
+
+New tools and features must not hand the agent a path outside this ladder.
+`invoke_skill` and `run_task` expand utility without widening the blast radius:
+the cage still validates permissions, and the orchestrator verifies the script
+body matches verbatim pre-approved content before any execution.
 
 The loop and its frontends:
 
