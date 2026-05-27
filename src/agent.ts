@@ -259,10 +259,30 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
           ctx.persist();
           continue;
         }
+        // Re-read from disk at invocation time: the auto-approval claim is
+        // "this is what's currently in the skill file," not a startup snapshot.
+        let currentBody: string;
+        try {
+          currentBody = await Deno.readTextFile(ss.path);
+        } catch (e) {
+          ctx.ui.show(
+            `✗ skill "${ss.name}": script file not readable at ${ss.path}`,
+          );
+          ctx.log.push({
+            kind: "decision",
+            script: skillInvoke.id,
+            verdict: "reject",
+            rationale: `skill script unreadable: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          });
+          ctx.persist();
+          return;
+        }
         ctx.ui.status(`caging skill script: ${ss.name}…`);
         const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
         const file = `${scratch}/${skillInvoke.id}.ts`;
-        await Deno.writeTextFile(file, ss.body);
+        await Deno.writeTextFile(file, currentBody);
         const cageResult = await runScript({
           scriptPath: file,
           perms: [
@@ -333,7 +353,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
 
         const runScratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
         const runFile = `${runScratch}/${skillInvoke.id}.ts`;
-        await Deno.writeTextFile(runFile, ss.body);
+        await Deno.writeTextFile(runFile, currentBody);
         const result = await runScript({
           scriptPath: runFile,
           perms: [...skillPerms, ...ctx.denyFlags],

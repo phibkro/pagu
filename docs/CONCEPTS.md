@@ -145,3 +145,53 @@ The metaphor earns its keep: it gives the user a correct mental model of what
 `--declare-perms` does versus not doing it, and it explains why the lockfile
 exists and when to delete it (when the task changes in a way that needs new
 permissions).
+
+## Derived state and inference chains
+
+A recurring pattern in pagu: effectful inference reads source files and produces
+a pure value that downstream logic consumes. The pure core doesn't know or care
+where the value came from — it's just a list or map.
+
+```
+source files  ──►  effectful inference  ──►  derived value  ──►  pure core
+```
+
+All the inference chains in the system:
+
+| Source                                    | Inference fn        | Derived value                     | Pure consumer                       | Staleness                                           |
+| ----------------------------------------- | ------------------- | --------------------------------- | ----------------------------------- | --------------------------------------------------- |
+| `.gitignore` + git                        | `gitignoreDenies()` | `string[]` denied paths           | read refusal in `handleRead`        | recomputed each `applyRoles()`                      |
+| `deno.json` / `package.json` / `Justfile` | `discoverTasks()`   | `DiscoveredTask[]`                | `run_task` listing, `matchesPolicy` | recomputed at session start                         |
+| cage denial output                        | `classifyRun()`     | `string[]` needed perms           | `withinEnvelope()`                  | per-invocation for `write`; lockfile for `run_task` |
+| `SKILL.md` + `scripts/*.ts`               | `loadSkill()`       | `Skill` incl. body                | `invoke_skill` body, ceiling check  | re-read from disk at each `invoke_skill` call       |
+| roles + config + flags                    | `composeLayers()`   | `PaguConfig`, readPaths, envelope | every downstream decision           | `setRoles()` / `setProvider()` triggers re-derive   |
+| `AGENTS.md` / `CLAUDE.md`                 | `firstPresent()`    | prose `string`                    | system prompt                       | session start                                       |
+| `Entry[]` (append-only log)               | `logToMessages()`   | `ChatMessage[]`                   | model API call                      | correct-by-construction (pure, no cache)            |
+
+**Three staleness strategies** are in use:
+
+1. **Recompute at session start** — cheapest; acceptable because sessions are
+   short. Used for: gitignore paths, discovered tasks, agents prose.
+2. **Recompute at invocation time** — slightly more expensive; used where the
+   derived value must always reflect the current file. Used for: skill script
+   bodies (re-read from disk on every `invoke_skill`).
+3. **Lockfile + mtime invalidation** — used for expensive inferences that need
+   to persist across sessions. Used for: command policy ceilings in
+   `.pagu/inferred-perms.json`, invalidated by `filterStaleInferred()` when the
+   source file's mtime advances past `inferredAt`.
+
+**The pub-sub angle.** This is a reactive dataflow: source files trigger
+recomputation, recomputation updates derived state, derived state drives
+behavior. Currently the "subscriptions" are implicit (startup, invocation, or
+per-turn). An explicit reactive graph would be overkill at this scale; what
+matters is that each inference chain documents its staleness strategy, and that
+security-critical derived values (skill bodies, permission ceilings) are
+re-validated as close to use as practical.
+
+**Where this pattern lives in the codebase.** The inference functions tend to
+cluster with the types they produce: `gitignoreDenies` with the `Permission`
+type in `src/permissions/`, `discoverTasks` paired with `CommandEntry` in
+`src/command-policy.ts` (they are the most tightly coupled pair currently at the
+root — they change together whenever the task policy model changes). Noticing
+which files you always open together to understand a piece of behavior is the
+right signal for whether co-location is warranted.
