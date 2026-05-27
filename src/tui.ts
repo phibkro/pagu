@@ -216,6 +216,7 @@ export async function tuiMain(): Promise<void> {
       (ctx.repo ? dim(`\n  repo      ${ctx.repo} (auto-approve)`) : ""),
   );
   console.log(dim(`  log       ${ctx.currentLogPath()}`));
+  console.log(dim(`  sandbox   ${ctx.sandboxKind}`));
   console.log(dim("  /help for commands; empty line or Ctrl-D to exit\n"));
 
   if (opts.task) await runTask(ctx, opts.task); // seed from argv if given

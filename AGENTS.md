@@ -60,8 +60,14 @@ Security-critical pure cores (unit-tested — change with care + tests first):
 - `src/log/` — `pagu:*` block parse/serialize (the event store format).
 - `src/permissions/envelope.ts` — `covers`/`within`/`withinEnvelope`
   (auto-approve gate); `gitignore.ts` — deny derivation via `git ls-files`.
-- `src/runner/run.ts` — sandboxed `deno run`; `classify.ts` — cage result → ok /
-  needs-perms (discovery) / bug.
+- `src/runner/run.ts` — scoped `deno run`; `classify.ts` — cage result → ok /
+  needs-perms (discovery) / bug; `sandbox.ts` — **OS sandbox tier** that wraps
+  the run (bubblewrap on Linux, `sandbox-exec` on macOS) as defense-in-depth
+  beneath the Deno floor: denies network + confines writes (so an `--allow-run`
+  subprocess, which Deno does NOT bound, is still contained). Pure
+  `wrapForSandbox` builds the wrapper argv; `detectSandbox` picks the tier
+  (`none` when unavailable — no regression). Applies to both the cage and the
+  real run.
 
 The loop and its frontends:
 

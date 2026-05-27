@@ -6,6 +6,7 @@ import { type PaguConfig, resolveProvider } from "./config.ts";
 import { formatFlag } from "./permissions/envelope.ts";
 import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
+import { detectSandbox } from "./runner/sandbox.ts";
 import {
   latestSession,
   loadSession,
@@ -32,6 +33,8 @@ export interface RunOpts {
   cont: boolean;
   /** `--list-sessions`: print the stored conversations and exit. */
   listSessions: boolean;
+  /** `--no-sandbox`: disable the OS sandbox tier (Deno floor still applies). */
+  noSandbox: boolean;
   repo: boolean;
   write: string[];
 }
@@ -42,6 +45,7 @@ export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
   let session: string | undefined;
   let cont = false;
   let listSessions = false;
+  let noSandbox = false;
   let repo = false;
   const write: string[] = [];
   const positional: string[] = [];
@@ -51,6 +55,7 @@ export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
     else if (a === "--session") session = argv[++i];
     else if (a === "--continue") cont = true;
     else if (a === "--list-sessions") listSessions = true;
+    else if (a === "--no-sandbox") noSandbox = true;
     else if (a === "--model") config.model = argv[++i];
     else if (a === "--provider") config.provider = argv[++i];
     else if (a === "--base-url") config.baseURL = argv[++i];
@@ -68,6 +73,7 @@ export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
     session,
     cont,
     listSessions,
+    noSandbox,
     repo,
     write,
   };
@@ -183,6 +189,16 @@ export async function buildContext(
   const loaded = await loadSession(logPath);
   const log: Entry[] = loaded.entries;
   if (!loaded.meta.created) loaded.meta.created = now.toISOString();
+  // OS sandbox tier (defense-in-depth beneath Deno perms): use it when
+  // available unless --no-sandbox. On Linux it needs bubblewrap installed.
+  const sandboxKind = opts.noSandbox ? "none" : await detectSandbox();
+  if (sandboxKind === "none" && !opts.noSandbox && Deno.build.os === "linux") {
+    console.error(
+      "· no OS sandbox (install `bubblewrap` for a kernel-level wall); " +
+        "Deno permissions still bound every run.",
+    );
+  }
+
   const active = { path: logPath, meta: loaded.meta };
   const persist = () => {
     Deno.mkdirSync(dirname(active.path), { recursive: true });
@@ -219,6 +235,7 @@ export async function buildContext(
     denyFlags,
     autoEnabled: repo !== undefined,
     capabilities,
+    sandboxKind,
     log,
     persist,
     sessionBase: base,

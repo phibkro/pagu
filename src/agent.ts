@@ -9,6 +9,7 @@ import {
   parsePermission,
 } from "./permissions/envelope.ts";
 import { shouldAutoApprove } from "./session.ts";
+import type { SandboxKind } from "./runner/sandbox.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
 import type { SessionMeta } from "./conversations.ts";
@@ -52,6 +53,8 @@ export interface AgentContext {
   /** A description of what authored scripts can actually do (read/write
    * scope), injected into the agent's prompt so it knows its real reach. */
   capabilities: string;
+  /** OS sandbox tier wrapping every run (bubblewrap / sandbox-exec / none). */
+  sandboxKind: SandboxKind;
   /** The active conversation, mutated in place (so a session switch keeps
    * this reference valid). Append events here; call persist to save. */
   log: Entry[];
@@ -149,6 +152,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
           ...ctx.denyFlags,
         ],
         cwd: ctx.repo ?? scratch,
+        sandbox: ctx.sandboxKind,
       });
       await Deno.remove(scratch, { recursive: true });
 
@@ -238,6 +242,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
       scriptPath: file,
       perms: [...perms, ...ctx.denyFlags],
       cwd: ctx.repo ?? scratch,
+      sandbox: ctx.sandboxKind,
     });
     await Deno.remove(scratch, { recursive: true });
 

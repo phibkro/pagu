@@ -33,6 +33,9 @@ proposal and run.
 ## Requirements
 
 - [Deno](https://deno.com/) 2.x
+- _Optional, recommended:_ **bubblewrap** (`bwrap`) on Linux for the OS sandbox
+  tier (a kernel-level wall beneath Deno's permissions; macOS uses the built-in
+  `sandbox-exec`). Without it, runs fall back to the Deno-permission floor.
 - A tool-calling model behind an **OpenAI Chat-Completions-compatible**
   endpoint. Out of the box: local **Ollama** (default, `qwen3.5:9b`). Also any
   compatible provider — **OpenRouter** (one key → 300+ models incl.
@@ -90,6 +93,8 @@ Flags:
 - `--list-sessions` — print this project's saved conversations and exit.
 - `--log <file>` — use an explicit log file, bypassing the session store.
 - `--write <dir>` (repeatable) — directories scripts may write to.
+- `--no-sandbox` — disable the OS sandbox tier (the Deno-permission floor still
+  applies to every run).
 - `--repo` — **repo mode**: grant read+write to the current git repo and
   **auto-approve** scripts confined to it (no per-script prompt). Safe because
   git is your undo buffer, the runner has no network, and `.gitignore`'d paths
@@ -156,8 +161,11 @@ self-test** (self-correct + permission discovery) → y/n approve → sandboxed 
 with results fed back for multi-step turns; **repo mode** auto-approve; **CLI +
 TUI** frontends (the TUI **streams** replies live with a progress spinner and
 slash commands); **per-project conversation sessions** (list / new / open /
-fork, `--continue`); providers **Ollama / OpenRouter / OpenAI / Anthropic**;
-AGENTS.md + config. See `AGENTS.md` for how to work in the repo.
+fork, `--continue`); **OS sandbox tier** (bubblewrap / sandbox-exec — denies
+network and confines writes beneath the Deno floor); providers **Ollama /
+OpenRouter / OpenAI / Anthropic**; AGENTS.md + config. See `AGENTS.md` for how
+to work in the repo.
 
-Deferred (see `DESIGN.md`): `.gitignore` read-protection, OS-level sandbox tiers
-beyond Deno permissions.
+Deferred (see `DESIGN.md`): OS-layer **read** isolation (writes + network are
+done; reads still rely on the Deno floor), Landlock, `.gitignore`
+read-protection.
