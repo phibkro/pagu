@@ -11,6 +11,9 @@ export interface PhaseInput {
   /** Merged AGENTS.md instructions (global + project), injected into the
    * phase's system prompt. Empty if none configured. */
   agents?: string;
+  /** A description of what the authored scripts can actually do (read
+   * scope, write/repo scope), so the agent understands its real reach. */
+  capabilities?: string;
 }
 
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */

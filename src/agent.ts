@@ -49,6 +49,9 @@ export interface AgentContext {
   envelope: Envelope;
   denyFlags: string[];
   autoEnabled: boolean;
+  /** A description of what authored scripts can actually do (read/write
+   * scope), injected into the agent's prompt so it knows its real reach. */
+  capabilities: string;
   /** The active conversation, mutated in place (so a session switch keeps
    * this reference valid). Append events here; call persist to save. */
   log: Entry[];
@@ -90,6 +93,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     log: ctx.log,
     provider: ctx.provider,
     agents: ctx.agents,
+    capabilities: ctx.capabilities,
   });
   const stream = ctx.ui.stream;
   const respond = () =>

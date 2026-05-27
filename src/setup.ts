@@ -192,6 +192,22 @@ export async function buildContext(
     );
   };
 
+  // Tell the agent its real reach, so it neither under- nor over-claims:
+  // it reads here, and the scripts it authors run on the machine with real
+  // effect within the approved permission scope (not merely "in a sandbox").
+  const capabilities = [
+    `You can read: ${readPaths.join(", ") || "(nothing configured)"}.`,
+    repo
+      ? `Scripts you author can read and write anywhere under the repo ${repo} ` +
+        `(auto-approved within it), except .gitignored paths (write-denied).`
+      : `Scripts you author run under permissions the human grants per run ` +
+        `(e.g. write to a specific directory).`,
+    `An approved script runs on the machine with REAL effect — it genuinely ` +
+    `creates/edits files and can run programs — though with no network ` +
+    `access unless explicitly granted. So within the approved scope you do ` +
+    `have real power to change the system; you are not limited to talking.`,
+  ].join(" ");
+
   return {
     provider,
     providerHost,
@@ -202,6 +218,7 @@ export async function buildContext(
     envelope,
     denyFlags,
     autoEnabled: repo !== undefined,
+    capabilities,
     log,
     persist,
     sessionBase: base,

@@ -24,10 +24,11 @@ const SYSTEM =
   "Converse normally and answer questions directly. Use the `read` tool to " +
   "inspect files or directories when it helps. When accomplishing the task " +
   "requires changing the system, creating/editing files, or running code, " +
-  "propose a Deno TypeScript script with the `write` tool — it is reviewed " +
-  "by a human and run in a sandbox; you cannot run it yourself. If you can " +
-  "answer or finish without acting, just reply — only write a script when an " +
-  "action is genuinely needed.\n\n" + DENO_NOTES;
+  "propose a Deno TypeScript script with the `write` tool — a human approves " +
+  "it and a separate process then runs it on the machine with REAL effect " +
+  "(you cannot run it yourself). If you can answer or finish without acting, " +
+  "just reply — only write a script when an action is genuinely needed.\n\n" +
+  DENO_NOTES;
 
 const MAX_READS = 6;
 
@@ -38,7 +39,10 @@ const enc = new TextEncoder();
 const onToken = (t: string) => Deno.stderr.writeSync(enc.encode(t));
 
 const input = await readInput();
-const messages = logToMessages(input.log, withAgents(SYSTEM, input.agents));
+const system = input.capabilities
+  ? `${SYSTEM}\n\n${input.capabilities}`
+  : SYSTEM;
+const messages = logToMessages(input.log, withAgents(system, input.agents));
 const out: Entry[] = [];
 
 for (let i = 0; i <= MAX_READS; i++) {
