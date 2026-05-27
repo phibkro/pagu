@@ -3,3 +3,6 @@ pagu.log.md
 *.log.md
 .pagu/
 .env
+# Local Claude Code config; .claude/CLAUDE.md is a symlink → AGENTS.md so
+# Claude agents in this repo inherit our operating manual.
+.claude/
