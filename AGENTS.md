@@ -93,6 +93,8 @@ Provider + phases + config:
   never does.
 - `src/{config,repo,session}.ts` — config presets + AGENTS.md load; git-repo
   detect + per-repo memory; envelope building + auto-approve policy.
+  `src/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
+  `@std/dotenv`) so keys like `ANTHROPIC_API_KEY` need no manual export.
 - `src/conversations.ts` — the conversation-session store: per-project
   `.pagu/sessions/<id>.log.md` (id = immutable ISO timestamp). Log entries are
   the source of truth; a YAML **frontmatter** header holds metadata (optional
