@@ -49,6 +49,16 @@ export function parsePermission(s: string): Permission {
   return scope === undefined || scope === "" ? { flag } : { flag, scope };
 }
 
+/** Render a permission as a Deno flag body, e.g. `allow-read=/x` or
+ * `deny-write=/x` (no `=scope` when unscoped). The runner prepends `--`. */
+export function formatFlag(
+  p: Permission,
+  mode: "allow" | "deny" = "allow",
+): string {
+  const base = `${mode}-${p.flag}`;
+  return p.scope === undefined ? base : `${base}=${p.scope}`;
+}
+
 function stripTrailing(p: string): string {
   const n = normalize(p);
   return n.length > 1 && n.endsWith("/") ? n.slice(0, -1) : n;

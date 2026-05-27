@@ -196,6 +196,16 @@ isolation. Tier 2 closes that where the OS supports it.
   approval; later fed to `within()` (`src/perms/envelope.ts`) to gate
   auto-approve modes. Static AST analysis stays a possible precision refinement,
   but is no longer required for v1.
+- **Read-protection of gitignored files inside a broadly-allowed repo.** Deno's
+  `--deny-read=<child>` makes `readDir` of the parent fail (it won't list a dir
+  containing a denied entry), which breaks most tasks — so repo mode applies
+  gitignore denies as **deny-write only**. A broad-read script could therefore
+  surface a secret's _contents_ to the local model (no internet exfil — the
+  runner has no net). Future fix: per-file read allowlisting, content redaction,
+  or a narrower granted read set.
+- **Session store + resume + envelope persistence** (the cwd-keyed git- backed
+  store). Repo mode currently rebuilds the envelope per invocation; persisting
+  it enables resume, forking, and cross-invocation memory.
 - Conversation **forking** mechanism (borrow Pi).
 - OS-isolation backends beyond Linux.
 - GUI/computer-use.

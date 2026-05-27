@@ -56,6 +56,11 @@ Flags:
 - `--model <name>` — Ollama model (default `qwen3.5:9b`).
 - `--ollama <url>` — Ollama base URL (default `http://127.0.0.1:11434`).
 - `--log <file>` — conversation log path (default `pagu.log.md`).
+- `--write <dir>` (repeatable) — directories scripts may write to.
+- `--repo` — **repo mode**: grant read+write to the current git repo and
+  **auto-approve** scripts confined to it (no per-script prompt). Safe because
+  git is your undo buffer, the runner has no network, and `.gitignore`'d paths
+  are denied write. "Safe computer use" for a codebase.
 
 At the review prompt, enter the permissions to grant the script (e.g.
 `allow-read=./photos allow-write=./count.txt`), blank for none, or `n` to
