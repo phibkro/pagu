@@ -22,6 +22,47 @@ pagu deliberately lacks (e.g. "the agent runs commands"), pick a different one
 (the agent _proposes a script_; a separate _runner_ performs it). Approachable
 **and** truthful — that's the bar.
 
+## How we approach design
+
+Concept design is the highest-leverage work here, so we name the lenses. Three
+moves, used together — _generate_, _evaluate_, _ground in meaning_:
+
+**Generate** (heuristics that bias what we build):
+
+- **Deep modules** (Ousterhout) — a simple interface over a powerful
+  implementation; most value, least surface.
+- **Hard to misuse** (Bloch) — the easy path is the correct one; "when in doubt,
+  leave it out."
+- **Make illegal states unrepresentable** — let the types carry the invariant.
+- **Honest metaphor** (above) — borrow lived-experience intuition, never lie
+  about behaviour.
+
+**Evaluate** (lenses to critique a design):
+
+- **Norman** — affordances, **mappings**, feedback, **conceptual model**: can a
+  person form a correct model of how it works and how to operate it? (The
+  _surface you act on_.)
+- **Cognitive Dimensions of Notations** (Green & Petre) — a _tradeoff_
+  vocabulary for the _structure you reason in_: viscosity (cost of change),
+  hidden dependencies, closeness of mapping, consistency, role-expressiveness,
+  error-proneness, premature commitment. No dimension is strictly "good" —
+  tuning one perturbs another; the value is naming the tradeoff.
+
+**Ground in meaning** (the spine):
+
+- **Denotational / lawful design** (Elliott; algebraic) — define what a thing
+  _means_ as a precise value, then derive its operations and laws from that
+  meaning, so it's lawful by construction (`⟦a ⋄ b⟧ = ⟦a⟧ ⋄ ⟦b⟧`). pagu already
+  does this: the log _means_ a fold over events (CQRS); the envelope _means_ a
+  membership predicate (`within`); a role _means_ `(prose, partial-config)` and
+  composition is the lawful merge (prose monoid + permission lattice). Define
+  the denotation first; the implementation just preserves it.
+
+Held together by **conceptual integrity** (Brooks) — one coherent set of ideas
+beats many uncoordinated good ones. These are lenses, not rules: generate, then
+evaluate against Norman + Cognitive Dimensions, then check the meaning is
+lawful.
+
 ## The metaphors we lean on
 
 | concept                    | borrowed from                    | what it is in pagu                                                                                                                  |
