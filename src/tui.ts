@@ -2,6 +2,13 @@
 import { loadConfig } from "./config.ts";
 import { applyArgs, buildContext, readLine } from "./setup.ts";
 import { type AgentContext, type Approver, runTask, type UI } from "./agent.ts";
+import {
+  listSessions,
+  loadLog,
+  newSessionId,
+  type SessionInfo,
+  sessionPath,
+} from "./conversations.ts";
 
 /**
  * pagu TUI — a colored REPL frontend onto the same core as the CLI. A
@@ -51,8 +58,12 @@ function makeSpinner() {
 /** Slash commands, single source of truth (dispatch, /help, autocomplete). */
 const COMMANDS: Record<string, string> = {
   "/help": "show this",
-  "/log": "show conversation log path + turn count",
-  "/clear": "forget the conversation (clears the log)",
+  "/sessions": "list saved conversations",
+  "/new": "start a new conversation",
+  "/open": "open conversation N from /sessions (e.g. /open 2)",
+  "/fork": "branch this conversation into a new one",
+  "/log": "show the active conversation's path + size",
+  "/clear": "forget the active conversation (clears its log)",
   "/exit": "quit",
 };
 const COMMAND_NAMES = Object.keys(COMMANDS);
@@ -175,13 +186,14 @@ export async function tuiMain(): Promise<void> {
   console.log(dim("  /help for commands; empty line or Ctrl-D to exit\n"));
 
   if (opts.task) await runTask(ctx, opts.task); // seed from argv if given
+  const nav = { listing: [] as SessionInfo[] }; // last /sessions, for /open
   while (true) {
     const raw = await readCommandLine(cyan("\npagu> "));
     if (raw === null) break;
     const line = raw.trim();
     if (line === "") break;
     if (line.startsWith("/")) {
-      if (handleCommand(line, ctx)) continue;
+      if (await handleCommand(line, ctx, nav)) continue;
       break; // /exit
     }
     await runTask(ctx, line);
@@ -191,20 +203,70 @@ export async function tuiMain(): Promise<void> {
 }
 
 /** Run a slash command. Returns false only for /exit (stop the REPL). */
-function handleCommand(line: string, ctx: AgentContext): boolean {
+async function handleCommand(
+  line: string,
+  ctx: AgentContext,
+  nav: { listing: SessionInfo[] },
+): Promise<boolean> {
   const cmd = line.split(/\s+/)[0];
   switch (cmd) {
     case "/help":
       console.log(
         dim(
           Object.entries(COMMANDS)
-            .map(([name, desc]) => `  ${name.padEnd(7)} ${desc}`)
+            .map(([name, desc]) => `  ${name.padEnd(10)} ${desc}`)
             .join("\n"),
         ),
       );
       return true;
+    case "/sessions": {
+      nav.listing = await listSessions(ctx.sessionBase);
+      if (nav.listing.length === 0) {
+        console.log(dim("  no saved conversations yet"));
+        return true;
+      }
+      const active = ctx.currentLogPath();
+      nav.listing.forEach((s, i) => {
+        const mark = s.path === active ? "*" : " ";
+        const n = String(i + 1).padStart(2);
+        console.log(dim(`  ${mark}${n}. ${s.title}  (${s.entries})`));
+      });
+      return true;
+    }
+    case "/new":
+      ctx.switchSession(
+        sessionPath(ctx.sessionBase, newSessionId(new Date())),
+        [],
+      );
+      console.log(dim("  started a new conversation"));
+      return true;
+    case "/open": {
+      if (nav.listing.length === 0) {
+        nav.listing = await listSessions(ctx.sessionBase);
+      }
+      const s = nav.listing[Number(line.split(/\s+/)[1]) - 1];
+      if (!s) {
+        console.log(dim("  usage: /open <n> — see /sessions for the numbers"));
+        return true;
+      }
+      ctx.switchSession(s.path, await loadLog(s.path));
+      console.log(dim(`  opened: ${s.title}`));
+      return true;
+    }
+    case "/fork": {
+      const entries = [...ctx.log];
+      ctx.switchSession(
+        sessionPath(ctx.sessionBase, newSessionId(new Date())),
+        entries,
+      );
+      ctx.persist(); // materialize the fork so it shows up in /sessions
+      console.log(dim(`  forked into a new conversation (${entries.length})`));
+      return true;
+    }
     case "/log":
-      console.log(dim(`  ${ctx.log.length} entries in the conversation log`));
+      console.log(
+        dim(`  ${ctx.currentLogPath()}  (${ctx.log.length} entries)`),
+      );
       return true;
     case "/clear":
       ctx.log.length = 0;

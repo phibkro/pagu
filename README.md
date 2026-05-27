@@ -67,6 +67,11 @@ Bare **`pagu`** in a terminal (or `pagu --tui`) launches an interactive REPL —
 type tasks one after another, with the same security model and a shared
 conversation log across turns (multi-turn context).
 
+**Conversations** are stored per-project under `./.pagu/sessions/` (gitignored).
+Each launch starts a **new** conversation by default; `--continue` resumes the
+latest and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
+`/open <n>`, and `/fork` manage them live.
+
 Flags:
 
 - `--allow <path>` (repeatable) — read-allowlist the agent may inspect (defaults
@@ -76,7 +81,11 @@ Flags:
   `anthropic`.
 - `--base-url <url>` — override the API root for a custom OpenAI-compatible
   endpoint.
-- `--log <file>` — conversation log path (default `pagu.log.md`).
+- `--session <id>` — open a specific stored conversation (see
+  `--list-sessions`).
+- `--continue` — resume the most recent conversation instead of starting new.
+- `--list-sessions` — print this project's saved conversations and exit.
+- `--log <file>` — use an explicit log file, bypassing the session store.
 - `--write <dir>` (repeatable) — directories scripts may write to.
 - `--repo` — **repo mode**: grant read+write to the current git repo and
   **auto-approve** scripts confined to it (no per-script prompt). Safe because
@@ -143,8 +152,9 @@ Working: **chat-or-act** loop (converse, act only when needed) → **cage
 self-test** (self-correct + permission discovery) → y/n approve → sandboxed run,
 with results fed back for multi-step turns; **repo mode** auto-approve; **CLI +
 TUI** frontends (the TUI **streams** replies live with a progress spinner and
-slash commands); providers **Ollama / OpenRouter / OpenAI / Anthropic**;
+slash commands); **per-project conversation sessions** (list / new / open /
+fork, `--continue`); providers **Ollama / OpenRouter / OpenAI / Anthropic**;
 AGENTS.md + config. See `AGENTS.md` for how to work in the repo.
 
-Deferred (see `DESIGN.md`): session store + resume + conversation forking,
-`.gitignore` read-protection, OS-level sandbox tiers beyond Deno permissions.
+Deferred (see `DESIGN.md`): `.gitignore` read-protection, OS-level sandbox tiers
+beyond Deno permissions.

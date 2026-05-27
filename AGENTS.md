@@ -87,6 +87,13 @@ Provider + phases + config:
   never does.
 - `src/{config,repo,session}.ts` — config presets + AGENTS.md load; git-repo
   detect + per-repo memory; envelope building + auto-approve policy.
+- `src/conversations.ts` — the conversation-session store: per-project
+  `.pagu/sessions/<id>.log.md` (id = ISO timestamp; title derived from the first
+  user message at list time — the log stays the only source of truth).
+  `buildContext` resolves which session a run uses; `AgentContext.switchSession`
+  lets the TUI change sessions mid-REPL (mutate the log array in place + repoint
+  persist). Note: `session.ts` is the _permission_ session; this is
+  _conversations_.
 
 ## Feedback loops
 
