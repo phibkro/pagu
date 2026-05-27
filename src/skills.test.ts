@@ -4,6 +4,7 @@ import { parsePermission } from "./permissions/envelope.ts";
 
 // --- helpers ---
 
+/** Create a skill directory with SKILL.md and optional scripts/ entries. */
 async function makeSkillDir(
   base: string,
   name: string,
@@ -12,11 +13,21 @@ async function makeSkillDir(
 ): Promise<string> {
   const dir = `${base}/${name}`;
   await Deno.mkdir(dir, { recursive: true });
-  await Deno.writeTextFile(`${dir}/skill.md`, skillMd);
-  for (const [fname, body] of Object.entries(scripts)) {
-    await Deno.writeTextFile(`${dir}/${fname}`, body);
+  await Deno.writeTextFile(`${dir}/SKILL.md`, skillMd);
+  if (Object.keys(scripts).length > 0) {
+    await Deno.mkdir(`${dir}/scripts`, { recursive: true });
+    for (const [fname, body] of Object.entries(scripts)) {
+      await Deno.writeTextFile(`${dir}/scripts/${fname}`, body);
+    }
   }
   return dir;
+}
+
+/** Minimal valid SKILL.md frontmatter for a given name. */
+function minimalFrontmatter(name: string, extra = ""): string {
+  return `---\nname: ${name}\ndescription: Test skill ${name}.${
+    extra ? "\n" + extra : ""
+  }\n---\n`;
 }
 
 // --- loadSkill ---
@@ -28,6 +39,8 @@ Deno.test("loadSkill: reads prose, config, files, and script bodies", async () =
     `${tmp}/.pagu/skills`,
     "git",
     `---
+name: git
+description: Git context and operations.
 files:
   - .git/config
 scripts:
@@ -64,7 +77,7 @@ Deno.test("loadSkill: skill with no files or scripts is valid", async () => {
   await makeSkillDir(
     `${tmp}/.pagu/skills`,
     "plain",
-    `---\n---\nJust instructions.`,
+    minimalFrontmatter("plain") + "Just instructions.",
   );
 
   const skill = await loadSkill("plain", tmp);
@@ -87,13 +100,10 @@ Deno.test("loadSkill: fails loud on missing skill", async () => {
 
 Deno.test("loadSkill: project skill shadows global", async () => {
   const tmp = await Deno.makeTempDir({ prefix: "pagu-skills-" });
-  // global skill (in configDir) — we'd need to mock configDir, so test via listSkills
-  // For loadSkill, test that project directory is preferred over a different one
-  // We test shadowing more thoroughly in listSkills tests below.
   await makeSkillDir(
     `${tmp}/.pagu/skills`,
     "test",
-    `---\n---\nProject version.`,
+    minimalFrontmatter("test") + "Project version.",
   );
   const skill = await loadSkill("test", tmp);
   assertEquals(skill.scope, "project");
@@ -101,12 +111,61 @@ Deno.test("loadSkill: project skill shadows global", async () => {
   await Deno.remove(tmp, { recursive: true });
 });
 
+Deno.test("loadSkill: fails loud when name field is missing", async () => {
+  const tmp = await Deno.makeTempDir({ prefix: "pagu-skills-" });
+  await makeSkillDir(
+    `${tmp}/.pagu/skills`,
+    "bad",
+    `---\ndescription: Missing name.\n---\n`,
+  );
+  await assertRejects(
+    () => loadSkill("bad", tmp),
+    Error,
+    'missing required frontmatter field "name"',
+  );
+  await Deno.remove(tmp, { recursive: true });
+});
+
+Deno.test("loadSkill: fails loud when description field is missing", async () => {
+  const tmp = await Deno.makeTempDir({ prefix: "pagu-skills-" });
+  await makeSkillDir(
+    `${tmp}/.pagu/skills`,
+    "bad",
+    `---\nname: bad\n---\n`,
+  );
+  await assertRejects(
+    () => loadSkill("bad", tmp),
+    Error,
+    'missing required frontmatter field "description"',
+  );
+  await Deno.remove(tmp, { recursive: true });
+});
+
+Deno.test("loadSkill: fails loud when name mismatches directory", async () => {
+  const tmp = await Deno.makeTempDir({ prefix: "pagu-skills-" });
+  await makeSkillDir(
+    `${tmp}/.pagu/skills`,
+    "correct-name",
+    `---\nname: wrong-name\ndescription: Test.\n---\n`,
+  );
+  await assertRejects(
+    () => loadSkill("correct-name", tmp),
+    Error,
+    "must match directory name",
+  );
+  await Deno.remove(tmp, { recursive: true });
+});
+
 // --- listSkills ---
 
 Deno.test("listSkills: returns skills sorted by name, project scope noted", async () => {
   const tmp = await Deno.makeTempDir({ prefix: "pagu-skills-" });
-  await makeSkillDir(`${tmp}/.pagu/skills`, "git", `---\n---\n`);
-  await makeSkillDir(`${tmp}/.pagu/skills`, "testing", `---\n---\n`);
+  await makeSkillDir(`${tmp}/.pagu/skills`, "git", minimalFrontmatter("git"));
+  await makeSkillDir(
+    `${tmp}/.pagu/skills`,
+    "testing",
+    minimalFrontmatter("testing"),
+  );
 
   const skills = await listSkills(tmp);
   assertEquals(

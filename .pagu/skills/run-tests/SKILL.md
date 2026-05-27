@@ -1,4 +1,8 @@
 ---
+name: run-tests
+description: >
+  Run the pagu test suite. Use when asked to run tests, verify the suite,
+  check that things are working, or confirm nothing is broken.
 files:
   - deno.json
 scripts:
@@ -13,5 +17,5 @@ scripts:
 ---
 
 When asked to run the tests, verify the suite, or check that things are working,
-use the `run-tests` script. Read it from the skills directory first, then
+use the `run-tests` script. Read it from `scripts/run-tests.ts` first, then
 propose it verbatim — do not modify it.

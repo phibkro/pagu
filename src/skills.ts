@@ -78,8 +78,14 @@ function parseScriptDefs(
 
 /**
  * Load a skill by name: project shadows global. Each skill is a directory
- * containing `skill.md` (frontmatter + instructions) and one `.ts` file per
- * declared script. Throws loud if the skill is not found.
+ * containing `SKILL.md` (the standard Agent Skills filename) with required
+ * `name` and `description` frontmatter fields. Script `.ts` files live in the
+ * `scripts/` subdirectory per the Agent Skills spec convention.
+ *
+ * Standard fields (`name`, `description`, `license`, `compatibility`,
+ * `metadata`, `allowed-tools`) follow agentskills.io. Pagu-specific
+ * extensions: `files` (read-allowlist additions) and `scripts` (pre-approved
+ * verbatim execution with permission ceilings).
  */
 export async function loadSkill(
   name: string,
@@ -89,11 +95,28 @@ export async function loadSkill(
     const skillDir = join(dir, name);
     let md: string;
     try {
-      md = await Deno.readTextFile(join(skillDir, "skill.md"));
+      md = await Deno.readTextFile(join(skillDir, "SKILL.md"));
     } catch {
       continue;
     }
     const { data, body } = frontmatter(md);
+
+    // Required fields per the Agent Skills spec
+    if (typeof data.name !== "string" || data.name === "") {
+      throw new Error(
+        `skill "${name}": SKILL.md is missing required frontmatter field "name"`,
+      );
+    }
+    if (typeof data.description !== "string" || data.description === "") {
+      throw new Error(
+        `skill "${name}": SKILL.md is missing required frontmatter field "description"`,
+      );
+    }
+    if (data.name !== name) {
+      throw new Error(
+        `skill "${name}": frontmatter name "${data.name}" must match directory name "${name}"`,
+      );
+    }
 
     const files = Array.isArray(data.files) &&
         data.files.every((f) => typeof f === "string")
@@ -103,13 +126,14 @@ export async function loadSkill(
     const scriptDefs = parseScriptDefs(data.scripts);
     const scripts: SkillScript[] = [];
     for (const def of scriptDefs) {
-      const scriptPath = join(skillDir, `${def.name}.ts`);
+      // Scripts live in scripts/ per the Agent Skills spec directory convention
+      const scriptPath = join(skillDir, "scripts", `${def.name}.ts`);
       let scriptBody: string;
       try {
         scriptBody = await Deno.readTextFile(scriptPath);
       } catch {
         throw new Error(
-          `skill "${name}": script "${def.name}" declared but ${def.name}.ts not found in ${skillDir}`,
+          `skill "${name}": script "${def.name}" declared but scripts/${def.name}.ts not found in ${skillDir}`,
         );
       }
       scripts.push({
@@ -152,9 +176,9 @@ export async function listSkills(projectBase: string): Promise<SkillInfo[]> {
       for await (const e of Deno.readDir(dir)) {
         if (!e.isDirectory) continue;
         if (seen.has(e.name)) continue;
-        // Verify it's a real skill directory (has skill.md)
+        // Verify it's a real skill directory (has SKILL.md)
         try {
-          await Deno.stat(join(dir, e.name, "skill.md"));
+          await Deno.stat(join(dir, e.name, "SKILL.md"));
         } catch {
           continue;
         }
