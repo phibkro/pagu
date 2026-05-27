@@ -9,6 +9,7 @@ import { classifyRun } from "./runner/classify.ts";
 import { loadConfig, type PaguConfig } from "./config.ts";
 import { formatFlag, parsePermission } from "./perms/envelope.ts";
 import { buildEnvelope, shouldAutoApprove } from "./session.ts";
+import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 
 /**
  * pagu orchestrator. Runs each phase as a separate scoped `deno run`
@@ -107,7 +108,31 @@ const ollamaHost = new URL(cfg.ollama).host;
 
 // Session envelope. Repo mode grants read+write to the cwd repo (with its
 // .gitignore'd paths denied) and enables auto-approve within it.
-const repo = opts.repo ? Deno.cwd() : undefined;
+// Repo mode: explicit --repo, or auto-detect a git repo and offer it
+// (remembering the choice per repo). Non-interactive runs never auto-enable.
+const repoRoot = await gitRoot(Deno.cwd());
+let repoMode = opts.repo;
+if (!repoMode && repoRoot) {
+  const prefs = await loadRepoPrefs();
+  if (repoRoot in prefs) {
+    repoMode = prefs[repoRoot] === "enabled";
+  } else if (Deno.stdin.isTerminal()) {
+    console.log(
+      `\nThis is a git repo: ${repoRoot}\n` +
+        "Repo mode lets the agent's scripts read+write the whole repo and\n" +
+        "auto-approves them with no per-script prompt. It's safe because:\n" +
+        "  • git is your undo buffer (commit or stash first),\n" +
+        "  • .gitignore'd paths are denied write,\n" +
+        "  • scripts run with no network access.\n",
+    );
+    const ans = await readApproval(
+      "Enable repo mode here? (remembered for this folder) [y/N]: ",
+    );
+    repoMode = (ans ?? "").toLowerCase().startsWith("y");
+    await saveRepoPref(repoRoot, repoMode);
+  }
+}
+const repo = repoMode ? (repoRoot ?? Deno.cwd()) : undefined;
 // Resolve to absolute: Deno's denial paths are absolute, so the envelope
 // must be too for path containment to match. In repo mode the runner cwd
 // is the repo, so the model's relative paths resolve where they're granted.

@@ -49,7 +49,7 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
   return out;
 }
 
-function configDir(): string {
+export function configDir(): string {
   const xdg = Deno.env.get("XDG_CONFIG_HOME");
   if (xdg) return `${xdg}/pagu`;
   return `${Deno.env.get("HOME") ?? "."}/.config/pagu`;
