@@ -1,13 +1,12 @@
 // pure: shouldAutoApprove; effect: buildEnvelope (git)
-import {
-  type Envelope,
-  type Permission,
-  withinEnvelope,
-} from "./permissions/envelope.ts";
-import { gitignoreDenies } from "./permissions/gitignore.ts";
+import { type Envelope, type Permission, withinEnvelope } from "./envelope.ts";
+import { gitignoreDenies } from "./gitignore.ts";
 
 /**
- * Session capability envelope. `read` paths the agent + scripts may read;
+ * A run's permission policy: build its capability envelope and gate
+ * auto-approve. (No relation to a conversation `session` — see sessions.ts.)
+ *
+ * Envelope: `read` paths the agent + scripts may read;
  * `write` paths scripts may write; when `repo` is set (repo mode), the
  * repo's `.gitignore`'d paths are added as denies so secrets stay
  * protected even though the whole repo is granted.

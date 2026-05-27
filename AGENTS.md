@@ -71,8 +71,10 @@ the blast radius statically enumerable._
 Security-critical pure cores (unit-tested — change with care + tests first):
 
 - `src/log/` — `pagu:*` block parse/serialize (the event store format).
-- `src/permissions/envelope.ts` — `covers`/`within`/`withinEnvelope`
-  (auto-approve gate); `gitignore.ts` — deny derivation via `git ls-files`.
+- `src/permissions/envelope.ts` — `covers`/`within`/`withinEnvelope` (the pure
+  containment check); `gitignore.ts` — deny derivation via `git ls-files`;
+  `policy.ts` — a run's permission policy: `buildEnvelope` (read/write grants +
+  gitignore denies) and `shouldAutoApprove` (the auto-approve gate).
 - `src/runner/run.ts` — scoped `deno run`; `classify.ts` — cage result → ok /
   needs-perms (discovery) / bug; `sandbox.ts` — **OS sandbox tier** that wraps
   the run (bubblewrap on Linux, `sandbox-exec` on macOS) as defense-in-depth
@@ -112,8 +114,8 @@ Provider + phases + config:
 - `src/config.ts` — provider presets, instruction load (AGENTS.md, CLAUDE.md
   fallback per scope, prose only), and the **`ConfigLayer` monoid**
   (`mergeLayer`/`composeLayers`/`toLayer`) that roles + flags fold through.
-  `src/{repo,session}.ts` — git-repo detect + per-repo memory; envelope building
-  and auto-approve policy.
+  `src/repo.ts` — git-repo detect + per-repo memory (the run's permission policy
+  lives in `permissions/policy.ts`).
 - `src/roles.ts` — composable config+instruction bundles (markdown +
   frontmatter): discovery (project shadows global), load, `listRoles`. Folds via
   the `config.ts` monoid; fail-loud on a missing `--role`.

@@ -8,7 +8,7 @@ import {
   formatFlag,
   parsePermission,
 } from "./permissions/envelope.ts";
-import { shouldAutoApprove } from "./session.ts";
+import { shouldAutoApprove } from "./permissions/policy.ts";
 import type { SandboxKind } from "./runner/sandbox.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";

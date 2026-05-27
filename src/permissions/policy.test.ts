@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { parsePermission } from "./permissions/envelope.ts";
-import { buildEnvelope, shouldAutoApprove } from "./session.ts";
+import { parsePermission } from "./envelope.ts";
+import { buildEnvelope, shouldAutoApprove } from "./policy.ts";
 
 Deno.test("buildEnvelope maps read/write paths to allow perms (no repo)", async () => {
   const env = await buildEnvelope({ read: ["/a"], write: ["/b"] });

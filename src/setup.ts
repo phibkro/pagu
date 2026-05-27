@@ -12,7 +12,7 @@ import {
   resolveProvider,
 } from "./config.ts";
 import { type Envelope, formatFlag } from "./permissions/envelope.ts";
-import { buildEnvelope } from "./session.ts";
+import { buildEnvelope } from "./permissions/policy.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "./runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
