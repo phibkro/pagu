@@ -48,8 +48,17 @@ export interface AgentContext {
   envelope: Envelope;
   denyFlags: string[];
   autoEnabled: boolean;
+  /** The active conversation, mutated in place (so a session switch keeps
+   * this reference valid). Append events here; call persist to save. */
   log: Entry[];
   persist: () => void;
+  /** Directory sessions live under (git repo root, else cwd). */
+  sessionBase: string;
+  /** Path of the active session's log file (changes on switchSession). */
+  currentLogPath: () => string;
+  /** Switch the active session: repoint persist and reload the log in
+   * place. Does not persist; the caller decides when to save. */
+  switchSession: (path: string, entries: Entry[]) => void;
   ui: UI;
   approve: Approver;
 }

@@ -1,3 +1,4 @@
-# Runtime conversation logs (the event store is per-user data, not source).
+# Runtime conversation logs + session store (per-user data, not source).
 pagu.log.md
 *.log.md
+.pagu/

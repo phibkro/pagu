@@ -2,6 +2,8 @@
 import { loadConfig } from "./config.ts";
 import { applyArgs, buildContext, readLine } from "./setup.ts";
 import { type Approver, runTask, type UI } from "./agent.ts";
+import { gitRoot } from "./repo.ts";
+import { listSessions } from "./conversations.ts";
 
 /**
  * pagu CLI — the one-shot frontend onto the I/O-agnostic core
@@ -15,6 +17,17 @@ import { type Approver, runTask, type UI } from "./agent.ts";
 
 const { config: fileConfig, agents } = await loadConfig();
 const opts = applyArgs(fileConfig, Deno.args);
+
+// --list-sessions: print stored conversations for this project and exit.
+if (opts.listSessions) {
+  const base = (await gitRoot(Deno.cwd())) ?? Deno.cwd();
+  const sessions = await listSessions(base);
+  if (sessions.length === 0) console.log("no saved conversations here yet.");
+  for (const s of sessions) {
+    console.log(`${s.id}  (${s.entries})  ${s.title}`);
+  }
+  Deno.exit(0);
+}
 
 // No task on a terminal (or --tui) → interactive REPL.
 if (Deno.args.includes("--tui") || (!opts.task && Deno.stdin.isTerminal())) {

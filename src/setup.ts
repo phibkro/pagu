@@ -1,12 +1,17 @@
 // effects: config/env/fs (buildContext); pure: applyArgs
-import { fromFileUrl, resolve } from "jsr:@std/path@^1";
-import { parseLog } from "./log/parse.ts";
+import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";
 import { type PaguConfig, resolveProvider } from "./config.ts";
 import { formatFlag } from "./permissions/envelope.ts";
 import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
+import {
+  latestSession,
+  loadLog,
+  newSessionId,
+  sessionPath,
+} from "./conversations.ts";
 import type { AgentContext, Approver, UI } from "./agent.ts";
 
 /**
@@ -18,20 +23,33 @@ import type { AgentContext, Approver, UI } from "./agent.ts";
 export interface RunOpts {
   config: PaguConfig;
   task: string;
-  logPath: string;
+  /** Explicit `--log <file>`: bypasses the session store entirely. */
+  logPath?: string;
+  /** `--session <id>`: open a specific stored conversation. */
+  session?: string;
+  /** `--continue`: resume the most recent stored conversation. */
+  cont: boolean;
+  /** `--list-sessions`: print the stored conversations and exit. */
+  listSessions: boolean;
   repo: boolean;
   write: string[];
 }
 
 export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
   const config: PaguConfig = { ...base, allow: [...base.allow] };
-  let logPath = "pagu.log.md";
+  let logPath: string | undefined;
+  let session: string | undefined;
+  let cont = false;
+  let listSessions = false;
   let repo = false;
   const write: string[] = [];
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--log") logPath = argv[++i];
+    else if (a === "--session") session = argv[++i];
+    else if (a === "--continue") cont = true;
+    else if (a === "--list-sessions") listSessions = true;
     else if (a === "--model") config.model = argv[++i];
     else if (a === "--provider") config.provider = argv[++i];
     else if (a === "--base-url") config.baseURL = argv[++i];
@@ -42,7 +60,16 @@ export function applyArgs(base: PaguConfig, argv: string[]): RunOpts {
     else positional.push(a);
   }
   if (config.allow.length === 0) config.allow.push(".");
-  return { config, task: positional.join(" "), logPath, repo, write };
+  return {
+    config,
+    task: positional.join(" "),
+    logPath,
+    session,
+    cont,
+    listSessions,
+    repo,
+    write,
+  };
 }
 
 /** Read one line from stdin (works for pipe and TTY, unlike prompt()). */
@@ -135,12 +162,27 @@ export async function buildContext(
     );
   }
 
-  let log: Entry[] = [];
-  try {
-    log = parseLog(await Deno.readTextFile(opts.logPath));
-  } catch {
-    // new conversation
-  }
+  // Resolve which conversation log this run uses. Explicit --log bypasses
+  // the store; otherwise sessions live per-project under .pagu/sessions/:
+  // --session opens one, --continue resumes the latest, default = new.
+  const base = repo ?? Deno.cwd();
+  let logPath: string;
+  if (opts.logPath) logPath = resolve(opts.logPath);
+  else if (opts.session) logPath = sessionPath(base, opts.session);
+  else if (opts.cont) {
+    logPath = (await latestSession(base)) ??
+      sessionPath(base, newSessionId(new Date()));
+  } else logPath = sessionPath(base, newSessionId(new Date()));
+
+  // A stable log array (mutated in place on session switch) + a mutable
+  // path box, so `persist` and `switchSession` always target the active
+  // session. The directory is created lazily on first write.
+  const log: Entry[] = await loadLog(logPath);
+  const active = { path: logPath };
+  const persist = () => {
+    Deno.mkdirSync(dirname(active.path), { recursive: true });
+    Deno.writeTextFileSync(active.path, serializeLog(log));
+  };
 
   return {
     provider,
@@ -153,7 +195,14 @@ export async function buildContext(
     denyFlags,
     autoEnabled: repo !== undefined,
     log,
-    persist: () => Deno.writeTextFileSync(opts.logPath, serializeLog(log)),
+    persist,
+    sessionBase: base,
+    currentLogPath: () => active.path,
+    switchSession: (path, entries) => {
+      active.path = path;
+      log.length = 0;
+      log.push(...entries);
+    },
     ui,
     approve,
   };
