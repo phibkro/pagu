@@ -8,7 +8,7 @@ import {
   newSessionId,
   type SessionInfo,
   sessionPath,
-} from "./conversations.ts";
+} from "./sessions.ts";
 import { listRoles } from "./roles.ts";
 import { selectFromList } from "./select.ts";
 import type { Entry } from "./log/schema.ts";

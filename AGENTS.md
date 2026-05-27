@@ -123,14 +123,15 @@ Provider + phases + config:
   model + a `@cliffy/keypress` loop) behind the TUI's `/roles` and `/open`.
 - `src/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
   `@std/dotenv`) so keys like `ANTHROPIC_API_KEY` need no manual export.
-- `src/conversations.ts` — the conversation-session store: per-project
-  `.pagu/sessions/<id>.log.md` (id = immutable ISO timestamp). Log entries are
-  the source of truth; a YAML **frontmatter** header holds metadata (optional
-  `name`, `created`) — last-modified comes from the filesystem mtime, not
-  stored. Title = `name` ?? first user message. `buildContext` resolves which
-  session a run uses; `AgentContext.switchSession`/`rename` let the TUI change
-  and name sessions mid-REPL (mutate the log array in place + repoint persist).
-  Note: `session.ts` is the _permission_ session; this is _conversations_.
+- `src/sessions.ts` — the **session store** (a session = one saved conversation
+  thread you reopen): per-project `.pagu/sessions/<id>.log.md` (id = immutable
+  ISO timestamp). Log entries are the source of truth; a YAML **frontmatter**
+  header holds metadata (optional `name`, `created`) — last-modified comes from
+  the filesystem mtime, not stored. Title = `name` ?? first user message.
+  `buildContext` resolves which session a run uses;
+  `AgentContext.switchSession`/ `rename` let the TUI change and name sessions
+  mid-REPL (mutate the log array in place + repoint persist). (Capability scope
+  is a separate concept — see `permissions/policy.ts`.)
 
 ## Feedback loops
 

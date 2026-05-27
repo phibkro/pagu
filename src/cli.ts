@@ -8,7 +8,7 @@ import {
 } from "./setup.ts";
 import { type Approver, runTask, type UI } from "./agent.ts";
 import { gitRoot } from "./repo.ts";
-import { listSessions } from "./conversations.ts";
+import { listSessions } from "./sessions.ts";
 
 /**
  * pagu CLI — the one-shot frontend onto the I/O-agnostic core

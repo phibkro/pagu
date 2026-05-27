@@ -24,7 +24,7 @@ import {
   newSessionId,
   serializeFrontmatter,
   sessionPath,
-} from "./conversations.ts";
+} from "./sessions.ts";
 import type { AgentContext, Approver, UI } from "./agent.ts";
 
 /**

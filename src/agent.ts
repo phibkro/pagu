@@ -12,7 +12,7 @@ import { shouldAutoApprove } from "./permissions/policy.ts";
 import type { SandboxKind } from "./runner/sandbox.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
-import type { SessionMeta } from "./conversations.ts";
+import type { SessionMeta } from "./sessions.ts";
 
 /**
  * The I/O-agnostic core loop. Flags, config, and a TUI are all just

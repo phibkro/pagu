@@ -9,7 +9,7 @@ import {
   serializeFrontmatter,
   sessionPath,
   sessionsDir,
-} from "./conversations.ts";
+} from "./sessions.ts";
 
 Deno.test("sessionsDir / sessionPath compose under .pagu/sessions", () => {
   assertEquals(sessionsDir("/proj"), "/proj/.pagu/sessions");
