@@ -10,8 +10,12 @@ export type RunClass =
   | { kind: "needs-perms"; perms: string[] }
   | { kind: "bug"; error: string };
 
-// Deno denials look like: `Requires write access to "/x", run again ...`
-// or `Requires env access`. Capture the flag and (optional) target.
+// Deno denial format (verified Deno 2.7.14):
+//   `Requires write access to "/x", run again with the --allow-write flag`
+//   `Requires net access to "host:port", run again with the --allow-net flag`
+//   `Requires env access`  (no target for unscoped flags)
+// The integration tests in classify.test.ts pin this against a real subprocess —
+// if Deno changes this wording, those tests fail before the approval gate breaks.
 const PERM_RE =
   /Requires (read|write|net|run|env|sys|ffi|import) access(?: to "([^"]+)")?/g;
 

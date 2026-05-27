@@ -1,6 +1,11 @@
 import { assertEquals } from "@std/assert";
 import { classifyRun } from "./classify.ts";
 
+// --- integration: real Deno subprocess denial format ---
+// These tests pin the exact Deno denial message format (verified Deno 2.7.14).
+// If a future Deno version changes the wording, these fail loudly before any
+// human sees wrong perms at the approval gate.
+
 Deno.test("exit 0 is ok", () => {
   assertEquals(classifyRun(0, ""), { kind: "ok" });
 });
@@ -39,3 +44,56 @@ Deno.test("repeated identical denials dedupe", () => {
     perms: ["allow-read=/etc"],
   });
 });
+
+Deno.test(
+  "integration: real Deno write denial is classified as needs-perms",
+  async () => {
+    const tmp = await Deno.makeTempDir({ prefix: "pagu-classify-" });
+    const target = `${tmp}/out.txt`;
+    const script = `${tmp}/script.ts`;
+    await Deno.writeTextFile(
+      script,
+      `await Deno.writeTextFile(${JSON.stringify(target)}, "hi");`,
+    );
+
+    const { code, stderr: stderrBytes } = await new Deno.Command("deno", {
+      args: ["run", "--no-prompt", script],
+      stderr: "piped",
+      stdout: "piped",
+    }).output();
+    const stderr = new TextDecoder().decode(stderrBytes);
+
+    await Deno.remove(tmp, { recursive: true });
+
+    const cls = classifyRun(code, stderr);
+    assertEquals(cls.kind, "needs-perms");
+    if (cls.kind !== "needs-perms") throw new Error("unreachable");
+    assertEquals(cls.perms, [`allow-write=${target}`]);
+  },
+);
+
+Deno.test(
+  "integration: real Deno net denial is classified as needs-perms",
+  async () => {
+    const tmp = await Deno.makeTempDir({ prefix: "pagu-classify-" });
+    const script = `${tmp}/script.ts`;
+    await Deno.writeTextFile(
+      script,
+      `await fetch("https://example.com:12345");`,
+    );
+
+    const { code, stderr: stderrBytes } = await new Deno.Command("deno", {
+      args: ["run", "--no-prompt", "--deny-net", script],
+      stderr: "piped",
+      stdout: "piped",
+    }).output();
+    const stderr = new TextDecoder().decode(stderrBytes);
+
+    await Deno.remove(tmp, { recursive: true });
+
+    const cls = classifyRun(code, stderr);
+    assertEquals(cls.kind, "needs-perms");
+    if (cls.kind !== "needs-perms") throw new Error("unreachable");
+    assertEquals(cls.perms, ["allow-net=example.com:12345"]);
+  },
+);
