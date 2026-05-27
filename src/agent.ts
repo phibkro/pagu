@@ -43,6 +43,10 @@ export interface UI {
 export interface AgentContext {
   provider: ProviderConfig;
   providerHost: string;
+  /** Switch provider/model at runtime; returns a status line to display. */
+  setProvider: (
+    change: { provider?: string; model?: string; baseURL?: string },
+  ) => { ok: boolean; message: string };
   phaseDir: string;
   agents: string;
   readPaths: string[];

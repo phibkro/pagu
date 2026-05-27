@@ -117,8 +117,37 @@ export async function buildContext(
       `⚠ provider "${cfg.provider}" expects an API key in $${apiKeyEnv}, but it is unset.`,
     );
   }
-  const provider = { model: cfg.model, baseURL, apiKey, format };
-  const providerHost = new URL(baseURL).host;
+  // Provider/host are switchable at runtime (the TUI's /provider, /model).
+  let liveProvider = { model: cfg.model, baseURL, apiKey, format };
+  let liveHost = new URL(baseURL).host;
+  const setProvider = (
+    change: { provider?: string; model?: string; baseURL?: string },
+  ): { ok: boolean; message: string } => {
+    if (change.provider) {
+      cfg.provider = change.provider;
+      cfg.baseURL = undefined; // adopt the new preset's wire settings
+      cfg.apiKeyEnv = undefined;
+      cfg.format = undefined;
+    }
+    if (change.baseURL) cfg.baseURL = change.baseURL;
+    if (change.model) cfg.model = change.model;
+    let r;
+    try {
+      r = resolveProvider(cfg);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+    const key = r.apiKeyEnv ? Deno.env.get(r.apiKeyEnv) : undefined;
+    liveProvider = {
+      model: cfg.model,
+      baseURL: r.baseURL,
+      apiKey: key,
+      format: r.format,
+    };
+    liveHost = new URL(r.baseURL).host;
+    const warn = r.apiKeyEnv && !key ? ` — ⚠ $${r.apiKeyEnv} unset` : "";
+    return { ok: true, message: `${cfg.provider} · ${cfg.model}${warn}` };
+  };
 
   // Repo mode: explicit --repo, or auto-detect + offer (remembered per repo).
   const repoRoot = await gitRoot(Deno.cwd());
@@ -225,8 +254,13 @@ export async function buildContext(
   ].join(" ");
 
   return {
-    provider,
-    providerHost,
+    get provider() {
+      return liveProvider;
+    },
+    get providerHost() {
+      return liveHost;
+    },
+    setProvider,
     phaseDir,
     agents,
     readPaths,

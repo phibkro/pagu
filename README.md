@@ -76,7 +76,8 @@ launch starts a **new** conversation by default; `--continue` resumes the latest
 and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
 `/open <n>`, `/fork`, and `/rename <name>` manage them live; `/history [n|all]`
 recalls past messages and `/clear` deletes the active conversation (after a
-confirm).
+confirm). Switch model/provider mid-session with `/model <name>` and
+`/provider <name>` (`/provider` alone lists them).
 
 Flags:
 

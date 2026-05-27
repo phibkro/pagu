@@ -1,5 +1,5 @@
 // effects: terminal frontend (REPL)
-import { loadConfig } from "./config.ts";
+import { loadConfig, PRESETS } from "./config.ts";
 import { applyArgs, buildContext, readLine } from "./setup.ts";
 import { type AgentContext, type Approver, runTask, type UI } from "./agent.ts";
 import {
@@ -59,6 +59,8 @@ function makeSpinner() {
 /** Slash commands, single source of truth (dispatch, /help, autocomplete). */
 const COMMANDS: Record<string, string> = {
   "/help": "show this",
+  "/provider": "list providers, or switch (e.g. /provider openai)",
+  "/model": "set the model (e.g. /model anthropic/claude-sonnet-4.5)",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
   "/open": "open conversation N from /sessions (e.g. /open 2)",
@@ -223,7 +225,13 @@ export async function tuiMain(): Promise<void> {
   const nav = { listing: [] as SessionInfo[] }; // last /sessions, for /open
   while (true) {
     const t = estimateTokens(ctx.log);
-    console.log(dim(`\n  ~${fmtTokens(t)} ctx · ${ctx.log.length} entries`));
+    console.log(
+      dim(
+        `\n  ~${
+          fmtTokens(t)
+        } ctx · ${ctx.log.length} entries · ${ctx.provider.model}`,
+      ),
+    );
     const raw = await readCommandLine(cyan("pagu> "));
     if (raw === null) break;
     const line = raw.trim();
@@ -255,6 +263,31 @@ async function handleCommand(
         ),
       );
       return true;
+    case "/provider": {
+      const [, name, model] = line.split(/\s+/);
+      if (!name) {
+        console.log(dim(`  providers: ${Object.keys(PRESETS).join(", ")}`));
+        console.log(
+          dim(`  current: ${ctx.provider.model} @ ${ctx.providerHost}`),
+        );
+        return true;
+      }
+      const r = ctx.setProvider({ provider: name, model });
+      console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
+      return true;
+    }
+    case "/model": {
+      const name = line.includes(" ")
+        ? line.slice(line.indexOf(" ") + 1).trim()
+        : "";
+      if (!name) {
+        console.log(dim("  usage: /model <name>"));
+        return true;
+      }
+      const r = ctx.setProvider({ model: name });
+      console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
+      return true;
+    }
     case "/sessions": {
       nav.listing = await listSessions(ctx.sessionBase);
       if (nav.listing.length === 0) {
