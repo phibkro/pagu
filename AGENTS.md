@@ -3,9 +3,10 @@
 Operating manual for an agent (or human) picking up this codebase cold.
 **Usage** lives in `README.md`. **`CONTEXT.md` is the single source of truth**
 for project design, rationale, threat model, roadmap, and the idea backlog — put
-durable project context there, not scattered across docs. This file is the _how
-we work here_ layer. (It's also the cross-tool AGENTS.md standard — and pagu
-reads it itself, so keep it concise.)
+durable project context there, not scattered across docs. **`docs/CONCEPTS.md`**
+is the mental-models reference (our nouns/verbs + why). This file is the _how we
+work here_ layer. (It's also the cross-tool AGENTS.md standard — and pagu reads
+it itself, so keep it concise.)
 
 ## What pagu is (the goal)
 

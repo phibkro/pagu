@@ -8,8 +8,8 @@
 > **This is the single source of truth for the project** — rationale, threat
 > model, design, roadmap, and the idea backlog. Durable project context goes
 > here, not scattered across docs. **`README.md`** is usage; **`AGENTS.md`** is
-> how-we-work (and points here). The **Roadmap** at the bottom tracks shipped /
-> open / backlog.
+> how-we-work; **`docs/CONCEPTS.md`** is the mental-models reference. The
+> **Roadmap** at the bottom tracks shipped / open / backlog.
 
 ## One-liner
 
