@@ -2,6 +2,10 @@
 import { chat, type ChatMessage } from "../provider/chat.ts";
 import { handleRead, readToolDef } from "../tools/read.ts";
 import { handleWrite, writeToolDef } from "../tools/write.ts";
+import {
+  handleInvokeSkill,
+  invokeSkillToolDef,
+} from "../tools/invoke-skill.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
@@ -59,14 +63,24 @@ try {
 }
 writeOutput(out);
 
+const skillScripts = input.skillScripts ?? [];
+const tools = skillScripts.length > 0
+  ? [readToolDef, writeToolDef, invokeSkillToolDef(skillScripts)]
+  : [readToolDef, writeToolDef];
+
 async function converse(): Promise<void> {
   for (let i = 0; i <= MAX_READS; i++) {
-    const res = await chat(
-      input.provider,
-      messages,
-      [readToolDef, writeToolDef],
-      onToken,
-    );
+    const res = await chat(input.provider, messages, tools, onToken);
+
+    const invokeCall = res.toolCalls.find((c) => c.name === "invoke_skill");
+    if (invokeCall) {
+      if (res.content) {
+        out.push({ kind: "message", role: "assistant", text: res.content });
+      }
+      const n = input.log.filter((e) => e.kind === "skill-invoke").length + 1;
+      out.push(handleInvokeSkill(invokeCall.args, `sk${n}`));
+      break;
+    }
 
     const writeCall = res.toolCalls.find((c) => c.name === "write");
     if (writeCall) {

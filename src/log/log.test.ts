@@ -48,6 +48,23 @@ Deno.test("script body with backticks survives (tilde fences)", () => {
   assertEquals(parseLog(serializeLog(e)), e);
 });
 
+Deno.test("skill-invoke round-trips with and without args", () => {
+  const withArgs: Entry[] = [{
+    kind: "skill-invoke",
+    id: "sk1",
+    script: "run-tests",
+    args: ["--filter", "unit"],
+  }];
+  assertEquals(parseLog(serializeLog(withArgs)), withArgs);
+
+  const noArgs: Entry[] = [{
+    kind: "skill-invoke",
+    id: "sk2",
+    script: "run-tests",
+  }];
+  assertEquals(parseLog(serializeLog(noArgs)), noArgs);
+});
+
 Deno.test("non-pagu prose is ignored", () => {
   const md = "# notes\n\nsome prose\n\n" +
     serializeLog([{ kind: "message", role: "assistant", text: "ok" }]);

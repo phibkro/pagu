@@ -43,10 +43,17 @@ export async function runScript(opts: {
   cwd?: string;
   /** OS sandbox to wrap the run in (default "none" — Deno floor only). */
   sandbox?: SandboxKind;
+  /** Arguments forwarded to the script (e.g. from a skill invocation). */
+  scriptArgs?: string[];
 }): Promise<RunResult> {
   const flags = opts.perms.map(toFlag);
   const ranWith = ["--no-prompt", ...flags];
-  const denoArgs = ["run", ...ranWith, opts.scriptPath];
+  const denoArgs = [
+    "run",
+    ...ranWith,
+    opts.scriptPath,
+    ...(opts.scriptArgs ?? []),
+  ];
   const kind = opts.sandbox ?? "none";
 
   // The script + a throwaway DENO_DIR live in the scratch dir; the granted

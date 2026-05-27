@@ -14,6 +14,9 @@ export interface PhaseInput {
   /** A description of what the authored scripts can actually do (read
    * scope, write/repo scope), so the agent understands its real reach. */
   capabilities?: string;
+  /** Active skill scripts available for invoke_skill tool calls.
+   * Only name and description are sent — the orchestrator owns the bodies. */
+  skillScripts?: Array<{ name: string; description: string }>;
 }
 
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */

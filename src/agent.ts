@@ -7,6 +7,7 @@ import {
   type Envelope,
   formatFlag,
   parsePermission,
+  withinEnvelope,
 } from "./permissions/envelope.ts";
 import { shouldAutoApprove } from "./permissions/policy.ts";
 import { formatAdvisory, runAdvisor } from "./advisor.ts";
@@ -25,6 +26,10 @@ import type { SessionMeta } from "./sessions.ts";
 
 type ScriptEntry = Extract<Entry, { kind: "script" }>;
 const isScript = (e: Entry): e is ScriptEntry => e.kind === "script";
+
+type SkillInvocationEntry = Extract<Entry, { kind: "skill-invoke" }>;
+const isSkillInvoke = (e: Entry): e is SkillInvocationEntry =>
+  e.kind === "skill-invoke";
 
 /** The one I/O seam for the human review gate (stdin / TUI prompt). Only
  * called when a proposal is NOT auto-approvable. The perms it would run
@@ -150,6 +155,10 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     provider: ctx.provider,
     agents: ctx.agents,
     capabilities: ctx.capabilities,
+    skillScripts: ctx.activeSkillScripts.map((ss) => ({
+      name: ss.name,
+      description: ss.description,
+    })),
   });
   const stream = ctx.ui.stream;
   const respond = () =>
@@ -184,6 +193,133 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
       // Show any chat text the model emitted this turn (it may precede a
       // proposed script as an explanation, or stand alone as the reply).
       showReply(produced);
+
+      // Skill invocation: agent named a pre-approved script. The orchestrator
+      // owns the body — resolve it, cage-test, auto-approve within ceiling,
+      // run. On a cage bug (pre-authored script, agent can't fix it) surface
+      // the error and stop rather than feeding it back for fixing.
+      const skillInvoke = produced.findLast(isSkillInvoke);
+      if (skillInvoke) {
+        const ss = ctx.activeSkillScripts.find(
+          (s) => s.name === skillInvoke.script,
+        );
+        if (!ss) {
+          ctx.ui.show(
+            `✗ invoke_skill: unknown script "${skillInvoke.script}"`,
+          );
+          ctx.log.push({
+            kind: "message",
+            role: "user",
+            text:
+              `invoke_skill failed: no active skill script named "${skillInvoke.script}". Available: ${
+                ctx.activeSkillScripts.map((s) => s.name).join(", ") || "none"
+              }.`,
+          });
+          ctx.persist();
+          continue;
+        }
+        ctx.ui.status(`caging skill script: ${ss.name}…`);
+        const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
+        const file = `${scratch}/${skillInvoke.id}.ts`;
+        await Deno.writeTextFile(file, ss.body);
+        const cageResult = await runScript({
+          scriptPath: file,
+          perms: [
+            ...ctx.readPaths.map((p) => `allow-read=${p}`),
+            `allow-write=${scratch}`,
+            ...ctx.denyFlags,
+          ],
+          cwd: ctx.repo ?? scratch,
+          sandbox: ctx.sandboxKind,
+        });
+        await Deno.remove(scratch, { recursive: true });
+
+        const cls = classifyRun(cageResult.exit, cageResult.stderr);
+        let skillPerms: string[];
+        if (cls.kind === "ok") {
+          skillPerms = ctx.readPaths.map((p) => `allow-read=${p}`);
+        } else if (cls.kind === "needs-perms") {
+          // Verify discovered perms are within the skill's declared ceiling
+          const discovered = cls.perms.map((s) =>
+            parsePermission(absolutizePerm(s, ctx.repo ?? Deno.cwd()))
+          );
+          const ceiling = ss.permissions.flatMap((p) => {
+            try {
+              return [parsePermission(p)];
+            } catch {
+              return [];
+            }
+          });
+          if (!withinEnvelope(discovered, { allow: ceiling })) {
+            ctx.ui.show(
+              `✗ skill "${ss.name}" needs perms outside its declared ceiling — not run`,
+            );
+            ctx.log.push({
+              kind: "decision",
+              script: skillInvoke.id,
+              verdict: "reject",
+              rationale: "discovered perms exceed skill ceiling",
+            });
+            ctx.persist();
+            return;
+          }
+          skillPerms = [
+            ...ctx.readPaths.map((p) => `allow-read=${p}`),
+            ...cls.perms.map((s) => absolutizePerm(s, ctx.repo ?? Deno.cwd())),
+          ];
+        } else {
+          ctx.ui.show(
+            `✗ skill "${ss.name}" failed cage self-test (pre-authored script — not sent back for fixing):\n${cls.error}`,
+          );
+          ctx.log.push({
+            kind: "decision",
+            script: skillInvoke.id,
+            verdict: "reject",
+            rationale: `cage bug: ${cls.error}`,
+          });
+          ctx.persist();
+          return;
+        }
+
+        ctx.ui.status(`running skill script: ${ss.name}…`);
+        ctx.log.push({
+          kind: "decision",
+          script: skillInvoke.id,
+          verdict: "approve",
+          rationale: `auto-approved skill invocation: ${ss.name}`,
+        });
+        ctx.persist();
+
+        const runScratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
+        const runFile = `${runScratch}/${skillInvoke.id}.ts`;
+        await Deno.writeTextFile(runFile, ss.body);
+        const result = await runScript({
+          scriptPath: runFile,
+          perms: [...skillPerms, ...ctx.denyFlags],
+          cwd: ctx.repo ?? runScratch,
+          sandbox: ctx.sandboxKind,
+          scriptArgs: skillInvoke.args,
+        });
+        await Deno.remove(runScratch, { recursive: true });
+
+        const output = result.stdout || result.stderr;
+        ctx.log.push({
+          kind: "result",
+          script: skillInvoke.id,
+          exit: result.exit,
+          ranWith: result.ranWith,
+          output,
+        });
+        ctx.persist();
+        ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
+        if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
+          ctx.ui.show(
+            "\n[net was granted — output would NOT auto-return to the agent]",
+          );
+          return;
+        }
+        continue; // loop: model sees result and can continue or wrap up
+      }
 
       let script = produced.findLast(isScript);
       if (!script) return; // pure chat turn — no action needed, done.

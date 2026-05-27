@@ -1,8 +1,9 @@
 // pure
 import type { Entry } from "./schema.ts";
 
-/** Matches a tilde-fenced `~~~pagu:<kind> attrs\n<body>\n~~~` block. */
-const BLOCK = /^~~~pagu:([a-z]+)(.*)\n([\s\S]*?)\n~~~$/gm;
+/** Matches a tilde-fenced `~~~pagu:<kind> attrs\n<body>\n~~~` block.
+ * Kind may contain lowercase letters and hyphens (e.g. "skill-invoke"). */
+const BLOCK = /^~~~pagu:([a-z-]+)(.*)\n([\s\S]*?)\n~~~$/gm;
 
 /** Parse `k=v` / `k="quoted v"` attrs from a block's opening line. */
 function parseAttrs(s: string): Record<string, string> {
@@ -38,6 +39,16 @@ export function parseLog(md: string): Entry[] {
       case "script":
         entries.push({ kind, id: a.id ?? "", lang: a.lang ?? "ts", body });
         break;
+      case "skill-invoke": {
+        const inv: import("./schema.ts").SkillInvocationEntry = {
+          kind: "skill-invoke",
+          id: a.id ?? "",
+          script: a.script ?? "",
+        };
+        if (body) inv.args = body.split("\n");
+        entries.push(inv);
+        break;
+      }
       case "perms":
         entries.push({
           kind,

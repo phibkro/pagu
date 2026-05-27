@@ -30,6 +30,10 @@ export function serializeEntry(e: Entry): string {
       open = head("script", { id: e.id, lang: e.lang });
       body = e.body;
       break;
+    case "skill-invoke":
+      open = head("skill-invoke", { id: e.id, script: e.script });
+      body = e.args ? e.args.join("\n") : "";
+      break;
     case "perms":
       open = head("perms", { script: e.script });
       body = e.perms.join("\n");

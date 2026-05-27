@@ -380,12 +380,10 @@ export async function buildContext(
 
     if (liveSkillScripts.length > 0) {
       const scriptLines = liveSkillScripts
-        .map((ss) =>
-          `  - ${ss.name}: ${ss.description} (read from: ${ss.path})`
-        )
+        .map((ss) => `  - ${ss.name}: ${ss.description}`)
         .join("\n");
       capabilities +=
-        ` Pre-approved skill scripts — read each file first, then propose its exact contents verbatim using the write tool. They auto-approve when the body matches exactly.\n${scriptLines}`;
+        ` Pre-approved skill scripts — call \`invoke_skill\` with the script name. Runs verbatim; pass dynamic inputs via args.\n${scriptLines}`;
     }
   };
 

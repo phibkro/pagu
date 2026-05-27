@@ -10,6 +10,7 @@ export type Entry =
   | Message
   | Observation
   | ScriptEntry
+  | SkillInvocationEntry
   | PermsEntry
   | Decision
   | ResultEntry;
@@ -28,6 +29,19 @@ export interface Observation {
   kind: "observation";
   source: string;
   content: string;
+}
+
+/** The agent chose to invoke a pre-approved skill script by name. The
+ * orchestrator resolves the body from activeSkillScripts — the agent never
+ * authors or copies the script content. args are passed to the runner at
+ * execution time; all dynamic behaviour is encoded as script inputs. */
+export interface SkillInvocationEntry {
+  kind: "skill-invoke";
+  id: string;
+  /** Name of the pre-approved skill script. */
+  script: string;
+  /** Optional arguments passed to the runner. */
+  args?: string[];
 }
 
 /** A script the model proposed (Author phase). Never executed by the agent. */
