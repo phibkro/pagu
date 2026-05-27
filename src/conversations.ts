@@ -1,5 +1,5 @@
 // effects: filesystem (session store); pure: path/id/frontmatter helpers
-import { join } from "jsr:@std/path@^1";
+import { join } from "@std/path";
 import { parseLog } from "./log/parse.ts";
 import type { Entry } from "./log/schema.ts";
 

@@ -1,5 +1,5 @@
 // effects: spawns git
-import { resolve } from "jsr:@std/path@^1";
+import { resolve } from "@std/path";
 import type { Permission } from "./envelope.ts";
 
 /**

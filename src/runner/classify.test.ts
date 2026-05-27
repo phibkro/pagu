@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals } from "@std/assert";
 import { classifyRun } from "./classify.ts";
 
 Deno.test("exit 0 is ok", () => {

@@ -142,7 +142,12 @@ Provider + phases + config:
   `absolutizePerm` before envelope checks.
 - `prompt()` returns `null` on piped stdin → use `readLine` (raw stdin).
 - Deno flakes only see **git-tracked** files → `git add` new files before a
-  build/`deno install`. Imports use full `jsr:` specifiers so global install
-  needs no `--config`.
+  build/`deno install`.
+- Imports resolve through `deno.json`'s **import map** (bare `@std/…`), so
+  versions are pinned in one place. But `deno install --global` **ignores
+  `deno.json`** (verified Deno 2.7.14: warns "config file will be ignored", then
+  fails `Import "@std/…" not a dependency`) — so the global install MUST pass
+  `--config deno.json` (run from the repo root). `deno run/check/test` discover
+  `deno.json` automatically; only `install` needs the flag.
 - Small models (e.g. qwen3.5:9b) write buggy first scripts; the cage
   compensates. A bigger model (OpenRouter/Anthropic) needs fewer rounds.

@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals } from "@std/assert";
 import { chat } from "./chat.ts";
 
 // Hand-rolled HTTP mock for the Anthropic Messages API. Run with:

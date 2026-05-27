@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { wrapForSandbox } from "./sandbox.ts";
 
 const DENO = ["run", "--no-prompt", "--allow-read=/x", "/tmp/s/s.ts"];

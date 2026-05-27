@@ -1,5 +1,5 @@
 // imperative shell: orchestrates effects; the decisions it calls are pure
-import { join, resolve } from "jsr:@std/path@^1";
+import { join, resolve } from "@std/path";
 import { spawnPhase } from "./phases/spawn.ts";
 import { runScript } from "./runner/run.ts";
 import { classifyRun } from "./runner/classify.ts";

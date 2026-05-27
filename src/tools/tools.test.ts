@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals } from "@std/assert";
 import { handleRead } from "./read.ts";
 import { handleWrite } from "./write.ts";
 

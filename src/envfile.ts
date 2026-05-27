@@ -1,6 +1,6 @@
 // effects: fs (.env detection, consent memory, loading into the process env)
-import { join, resolve } from "jsr:@std/path@^1";
-import { parse as parseEnv } from "jsr:@std/dotenv@^0.225";
+import { join, resolve } from "@std/path";
+import { parse as parseEnv } from "@std/dotenv";
 import { configDirFromEnv } from "./config.ts";
 
 /**

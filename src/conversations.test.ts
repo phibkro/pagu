@@ -1,4 +1,4 @@
-import { assertEquals, assertMatch } from "jsr:@std/assert@^1";
+import { assertEquals, assertMatch } from "@std/assert";
 import { serializeLog } from "./log/serialize.ts";
 import {
   latestSession,

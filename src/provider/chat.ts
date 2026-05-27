@@ -7,7 +7,7 @@
  * Hand-rolled (no SDK) to stay minimal and offline-capable. BYO key via
  * the Authorization header; omit for local providers.
  */
-import { TextLineStream } from "jsr:@std/streams@^1";
+import { TextLineStream } from "@std/streams";
 import { chatAnthropic } from "./anthropic.ts";
 
 export type Role = "system" | "user" | "assistant" | "tool";

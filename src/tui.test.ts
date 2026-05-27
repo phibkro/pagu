@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals } from "@std/assert";
 import { completeCommand, estimateTokens } from "./tui.ts";
 
 Deno.test("estimateTokens sums entry text at ~4 chars/token", () => {

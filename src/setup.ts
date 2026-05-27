@@ -1,5 +1,5 @@
 // effects: config/env/fs (buildContext); pure: applyArgs
-import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
+import { dirname, fromFileUrl, resolve } from "@std/path";
 import { serializeLog } from "./log/serialize.ts";
 import type { Entry } from "./log/schema.ts";
 import { type PaguConfig, resolveProvider } from "./config.ts";

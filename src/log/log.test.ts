@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@^1";
+import { assertEquals } from "@std/assert";
 import type { Entry } from "./schema.ts";
 import { serializeLog } from "./serialize.ts";
 import { parseLog } from "./parse.ts";

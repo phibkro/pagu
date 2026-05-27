@@ -1,5 +1,5 @@
 // effects: spawns deno subprocesses
-import { dirname, join } from "jsr:@std/path@^1";
+import { dirname, join } from "@std/path";
 import {
   type SandboxKind,
   type SandboxScope,

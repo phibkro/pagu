@@ -7,7 +7,7 @@
  *
  * Location: `$XDG_CONFIG_HOME/pagu/` or `$HOME/.config/pagu/`.
  */
-import { join } from "jsr:@std/path@^1";
+import { join } from "@std/path";
 
 export interface PaguConfig {
   /** Provider preset name (see PRESETS) or "custom" with an explicit baseURL. */

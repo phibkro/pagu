@@ -44,17 +44,19 @@ proposal and run.
 
 ## Install
 
+Run this **from the repo root** (so `deno.json` is found):
+
 ```sh
-deno install --global --force \
+deno install --global --force --config deno.json \
   --allow-run --allow-read --allow-write --allow-env \
   -n pagu ./src/cli.ts
 ```
 
-Then make sure **`~/.deno/bin` is on your `PATH`** (deno prints this on install)
-so `pagu` is runnable — e.g. add `export PATH="$HOME/.deno/bin:$PATH"` to your
-shell rc. The "config file will be ignored" warning is **expected and
-harmless**: pagu pins its imports with full `jsr:` specifiers, so it needs no
-config at install time.
+The **`--config deno.json` is required**: pagu's imports resolve through that
+file's import map, and `deno install --global` otherwise ignores `deno.json` (it
+would fail with `Import "@std/…" not a dependency`). Then make sure
+**`~/.deno/bin` is on your `PATH`** (deno prints this on install) so `pagu` is
+runnable — e.g. add `export PATH="$HOME/.deno/bin:$PATH"` to your shell rc.
 
 The orchestrator needs run/read/write; each phase subprocess still gets only its
 own scoped permissions regardless of what the orchestrator holds.
