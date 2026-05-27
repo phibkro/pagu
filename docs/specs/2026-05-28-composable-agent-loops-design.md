@@ -1,8 +1,9 @@
 # Composable agent loops — design (substrate, v1)
 
-> Status: design, pending grill-with-docs. Roadmap item #1 (CONTEXT.md → Idea
-> backlog). Authored via brainstorming; to be hardened by grill-with-docs, then
-> implemented via tdd.
+> Status: hardened via grill-with-docs (2026-05-28); ready for tdd. Roadmap item #1
+> (CONTEXT.md → Idea backlog). Authored via brainstorming. Grill resolved: turn is
+> atomic over the inner cage fix-round loop (unification deferred); denotational
+> framing adopted (⟦Step⟧/⟦Flow⟧/⟦loop⟧ + the `loop : Step → Step` closure law).
 
 ## Goal
 
@@ -17,26 +18,39 @@ as a **behavior-identical** structural refactor. No new user-facing loop ships i
 — it lays the foundation and proves it by reconstructing the current loop from the
 combinator. (Confirmed scope choice: substrate-first over shipping a concrete loop.)
 
-## The algebra (why these shapes)
+## The algebra (denotational — meaning first, operations and laws derived)
 
-A turn-step is a Kleisli arrow over the Task/Promise effect. The relevant operations
-map to standard algebra:
+Per `CONCEPTS.md`'s design method: define what each thing _means_ as a precise value;
+the operations and laws follow, lawful by construction (the same method that makes the
+log a fold, the envelope a predicate, a role `(prose, config)`).
 
-- **Sequencing distinct steps ↔ composition.** `author ▷ critic ▷ revise` is Kleisli
-  composition (`>=>`) — the `andThen` combinator.
-- **Fan-out ↔ product.** Combining steps into a tuple/list of results is the
-  **monoidal (applicative) product** (`&&&` / `traverse`). Note: "parallel" is an
-  *evaluation strategy* layered on the product (`Promise.all` vs. sequential await),
-  not the product itself.
-- **Iterate-to-stable ↔ fixpoint over a coproduct.** "Repeat a step until done" is
-  **not** plain composition. Each step yields `Continue | Done` (a sum), and the loop
-  is the fixpoint of compose-then-branch. **Making that continue/stop coproduct an
-  explicit type is the keystone of the substrate** — today it's hidden in control
-  flow (`"stop" | "loop"` from executors, pure-chat = done, `MAX_TURNS`).
+- **⟦Flow⟧** = the coproduct `continue | done` (the sum `1 + 1`). The keystone: today
+  the continue/stop decision is hidden in control flow (`"stop" | "loop"` from
+  executors, pure-chat = done, `MAX_TURNS`); the substrate makes it an explicit type.
+- **⟦Step⟧** = an effectful turn over the conversation: `ctx → Promise<Flow>` —
+  "perform one turn; signal whether the loop continues." (A Kleisli arrow over the
+  Task/Promise effect; carrier = `ctx`.)
+- **⟦loop(step, n)⟧** = the bounded fixpoint: run `step`; on `continue` recurse with
+  `n − 1`; on `done` (or `n = 0`) stop. A completed loop yields `done`.
 
-This is why v1's primitive is a step returning an explicit `Flow` coproduct, with
-`loop` as the fixpoint. `andThen` (composition) and `fanOut` (product) are the
-extensions the type is shaped to accept.
+Operations, derived from the meaning:
+
+- **`loop : Step → Step` — closed over the type.** A loop _is itself_ a composable
+  turn, so the combinator returns a `Step`, not a `void` runner. Closure is what makes
+  `loop(authorTurn) ▷ loop(criticTurn)` expressible later; a runner would take the loop
+  out of the algebra. This is the lawful-by-construction reason for the shape — not a
+  style call.
+- **`andThen : Step → Step → Step` ↔ composition** (Kleisli `>=>`): sequencing distinct
+  steps, `author ▷ critic ▷ revise`. Deferred (no caller yet).
+- **`fanOut` ↔ the monoidal (applicative) product** (`&&&` / `traverse`): K candidates.
+  "Parallel" is an _evaluation strategy_ layered on the product (`Promise.all` vs.
+  sequential await), not the product itself. Deferred (needs the immutable carrier).
+
+Laws (these become the tdd law-tests):
+
+- `loop` stops at the first `done` (the fixpoint terminates on `done`).
+- `loop(step, n)` runs `step` at most `n` times (the bound is respected).
+- `loop` of an immediately-`done` step runs it exactly once.
 
 ## Approach decision
 
@@ -109,6 +123,18 @@ index) becomes the **`loop`'s concern** — it knows the iteration count — rat
 the step's. `persist`, `showReply`, and `ctx.log.push` stay exactly where they are
 inside the turn (behavior-identical).
 
+### The turn is atomic over the inner cage fix-round loop
+
+pagu already has **two** loops: the outer turn loop (this substrate) and an inner
+**cage fix-round loop** — `executeScriptProposal` receives the `Responder`
+(`context.ts:47`) and calls it to feed cage-discovered bugs back to the model before a
+human sees the proposal. v1's `Step` is **atomic over that inner loop**: the turn-step
+calls `executeScriptProposal` exactly as today and the fix-round loop stays
+encapsulated inside the executor. Unifying the two is explicitly *not* in scope — the
+inner loop has a different carrier (one script proposal + cage results, not the
+conversation) and a different stop condition (cage-clean vs. agent-done), so collapsing
+them now would break behavior-identity and risk a leaky abstraction. See Deferred.
+
 ## Testing (verify the algebra, by law)
 
 `src/loop/` is a pure control core → unit-test with **fake steps** (no real I/O):
@@ -136,6 +162,10 @@ behavior change means no test changes beyond the new `loop` unit tests.
 - `andThen` implementation (await a real second loop, e.g. author→critic→revise).
 - `fanOut` / parallel candidates + the immutable-carrier purification it forces.
 - Multi-agent (independent actors) — the eventual payoff, unblocked by this substrate.
+- **Unifying the inner cage fix-round loop** under the same `loop` combinator. A
+  candidate once the substrate proves out, but it needs a different carrier
+  (proposal + cage results) and stop condition (cage-clean), so it's a deliberate
+  later step, not a v1 collapse.
 
 ## Invariants preserved
 
