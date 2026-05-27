@@ -49,6 +49,11 @@ const system = input.capabilities
 const messages = logToMessages(input.log, withAgents(system, input.agents));
 const out: Entry[] = [];
 
+const skillScripts = input.skillScripts ?? [];
+const tools = skillScripts.length > 0
+  ? [readToolDef, writeToolDef, invokeSkillToolDef(skillScripts)]
+  : [readToolDef, writeToolDef];
+
 try {
   await converse();
 } catch (e) {
@@ -62,11 +67,6 @@ try {
   throw e; // genuine bug — let it surface with its stack
 }
 writeOutput(out);
-
-const skillScripts = input.skillScripts ?? [];
-const tools = skillScripts.length > 0
-  ? [readToolDef, writeToolDef, invokeSkillToolDef(skillScripts)]
-  : [readToolDef, writeToolDef];
 
 async function converse(): Promise<void> {
   for (let i = 0; i <= MAX_READS; i++) {

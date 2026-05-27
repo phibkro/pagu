@@ -296,7 +296,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
         const result = await runScript({
           scriptPath: runFile,
           perms: [...skillPerms, ...ctx.denyFlags],
-          cwd: ctx.repo ?? runScratch,
+          cwd: ctx.repo ?? ctx.projectBase, // skill scripts run from project root
           sandbox: ctx.sandboxKind,
           scriptArgs: skillInvoke.args,
         });
