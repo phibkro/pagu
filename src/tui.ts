@@ -9,6 +9,7 @@ import {
   type SessionInfo,
   sessionPath,
 } from "./conversations.ts";
+import type { Entry } from "./log/schema.ts";
 
 /**
  * pagu TUI — a colored REPL frontend onto the same core as the CLI. A
@@ -68,6 +69,24 @@ const COMMANDS: Record<string, string> = {
 };
 const COMMAND_NAMES = Object.keys(COMMANDS);
 
+/** Rough token estimate (~4 chars/token) of the conversation so far, for
+ * the context-size readout. Cheap and good enough to gauge growth. */
+export function estimateTokens(log: Entry[]): number {
+  let chars = 0;
+  for (const e of log) {
+    if (e.kind === "message") chars += e.text.length;
+    else if (e.kind === "observation") {
+      chars += e.source.length + e.content.length;
+    } else if (e.kind === "script") chars += e.body.length;
+    else if (e.kind === "result") chars += e.output.length;
+    else if (e.kind === "decision") chars += e.rationale.length;
+  }
+  return Math.round(chars / 4);
+}
+
+const fmtTokens = (n: number) =>
+  n >= 1000 ? (n / 1000).toFixed(1) + "k" : `${n}`;
+
 function longestCommonPrefix(xs: string[]): string {
   if (xs.length === 0) return "";
   let p = xs[0];
@@ -100,8 +119,16 @@ async function readCommandLine(prompt: string): Promise<string | null> {
   if (!Deno.stdin.isTerminal()) return readLine(prompt);
   const dec = new TextDecoder();
   const out = (s: string) => Deno.stdout.writeSync(enc.encode(s));
-  out(prompt);
   let buf = "";
+  // Show the remaining completion as dim "ghost" text after the cursor
+  // (clear to end-of-line first to drop any previous ghost).
+  const drawGhost = () => {
+    out("\x1b[K");
+    const { line } = completeCommand(buf);
+    const g = line.length > buf.length ? line.slice(buf.length) : "";
+    if (g) out(dim(g) + `\x1b[${g.length}D`); // draw, then cursor back
+  };
+  out(prompt);
   Deno.stdin.setRaw(true);
   try {
     const bytes = new Uint8Array(64);
@@ -112,7 +139,7 @@ async function readCommandLine(prompt: string): Promise<string | null> {
         const code = ch.codePointAt(0)!;
         if (code === 0x1b) break; // start of an escape seq — ignore this read
         if (code === 0x03) { // Ctrl-C
-          out("\n");
+          out("\x1b[K\n");
           return null;
         }
         if (code === 0x04) { // Ctrl-D: EOF only on an empty line
@@ -120,29 +147,33 @@ async function readCommandLine(prompt: string): Promise<string | null> {
           continue;
         }
         if (ch === "\r" || ch === "\n") {
-          out("\n");
+          out("\x1b[K\n"); // drop the ghost, then commit the line
           return buf;
         }
         if (code === 0x7f || code === 0x08) { // backspace
           if (buf.length > 0) {
             buf = buf.slice(0, -1);
-            out("\b \b");
+            out("\b");
+            drawGhost();
           }
           continue;
         }
-        if (ch === "\t") { // Tab → complete a slash command
+        if (ch === "\t") { // Tab → accept the completion
           const { line, candidates } = completeCommand(buf);
           if (candidates.length > 0) {
             out(
-              "\n" + dim("  " + candidates.join("   ")) + "\n" + prompt + line,
+              "\x1b[K\n" + dim("  " + candidates.join("   ")) + "\n" + prompt +
+                line,
             );
           } else if (line !== buf) out(line.slice(buf.length));
           buf = line;
+          drawGhost();
           continue;
         }
         if (code < 0x20) continue; // ignore other control chars
         buf += ch;
         out(ch);
+        drawGhost();
       }
     }
   } finally {
@@ -188,7 +219,9 @@ export async function tuiMain(): Promise<void> {
   if (opts.task) await runTask(ctx, opts.task); // seed from argv if given
   const nav = { listing: [] as SessionInfo[] }; // last /sessions, for /open
   while (true) {
-    const raw = await readCommandLine(cyan("\npagu> "));
+    const t = estimateTokens(ctx.log);
+    console.log(dim(`\n  ~${fmtTokens(t)} ctx · ${ctx.log.length} entries`));
+    const raw = await readCommandLine(cyan("pagu> "));
     if (raw === null) break;
     const line = raw.trim();
     if (line === "") break;

@@ -1,5 +1,15 @@
 import { assertEquals } from "jsr:@std/assert@^1";
-import { completeCommand } from "./tui.ts";
+import { completeCommand, estimateTokens } from "./tui.ts";
+
+Deno.test("estimateTokens sums entry text at ~4 chars/token", () => {
+  // 8 + 12 = 20 chars of payload → ~5 tokens; non-text fields ignored.
+  const tokens = estimateTokens([
+    { kind: "message", role: "user", text: "12345678" }, // 8
+    { kind: "message", role: "assistant", text: "abcdefghijkl" }, // 12
+  ]);
+  assertEquals(tokens, 5);
+  assertEquals(estimateTokens([]), 0);
+});
 
 const NAMES = ["/help", "/log", "/clear", "/exit"];
 
