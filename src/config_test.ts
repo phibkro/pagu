@@ -30,16 +30,24 @@ Deno.test("ill-typed allow is rejected, base kept", () => {
   assertEquals(mergeConfig(base, { allow: ["ok", 5] }).allow, ["keep"]);
 });
 
-Deno.test("resolveProvider: preset, override, and unknown", () => {
-  // default ollama preset, no key
+Deno.test("resolveProvider: preset, override, anthropic format, unknown", () => {
+  // default ollama preset, no key, default (openai) format
   assertEquals(resolveProvider(DEFAULTS), {
     baseURL: "http://127.0.0.1:11434/v1",
     apiKeyEnv: undefined,
+    format: undefined,
   });
   // openrouter preset carries the key env var
   assertEquals(resolveProvider({ ...DEFAULTS, provider: "openrouter" }), {
     baseURL: "https://openrouter.ai/api/v1",
     apiKeyEnv: "OPENROUTER_API_KEY",
+    format: undefined,
+  });
+  // anthropic preset selects its native wire format
+  assertEquals(resolveProvider({ ...DEFAULTS, provider: "anthropic" }), {
+    baseURL: "https://api.anthropic.com",
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+    format: "anthropic",
   });
   // explicit overrides win over the preset
   assertEquals(
@@ -49,7 +57,7 @@ Deno.test("resolveProvider: preset, override, and unknown", () => {
       baseURL: "https://proxy/v1",
       apiKeyEnv: "PROXY_KEY",
     }),
-    { baseURL: "https://proxy/v1", apiKeyEnv: "PROXY_KEY" },
+    { baseURL: "https://proxy/v1", apiKeyEnv: "PROXY_KEY", format: undefined },
   );
   // unknown provider with no baseURL throws
   assertThrows(() => resolveProvider({ ...DEFAULTS, provider: "bogus" }));

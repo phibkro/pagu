@@ -32,6 +32,7 @@ proposal and run.
   endpoint. Out of the box: local **Ollama** (default, `qwen3.5:9b`). Also any
   compatible provider — **OpenRouter** (one key → 300+ models incl.
   Anthropic/OpenAI), OpenAI, Groq, LM Studio, vLLM — via config (below).
+  **Anthropic** is also supported natively (its own Messages API).
 
 ## Install
 
@@ -89,11 +90,17 @@ Zero-config works. To customize, drop files in `~/.config/pagu/` (or
 }
 ```
 
-`provider` is a preset (`ollama` / `openrouter` / `openai`); each preset knows
-its base URL and which **env var** holds the API key (`OPENROUTER_API_KEY`,
-`OPENAI_API_KEY`) — so secrets never live in the config file. Override a preset
-with `baseURL` / `apiKeyEnv` for any other OpenAI-compatible endpoint. Default
-is local `ollama` (no key, fully private).
+`provider` is a preset (`ollama` / `openrouter` / `openai` / `anthropic`); each
+knows its base URL and which **env var** holds the API key
+(`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) — so secrets never
+live in the config file. `anthropic` uses Anthropic's native Messages API; the
+rest use the OpenAI format. Override a preset with `baseURL` / `apiKeyEnv` /
+`format` for any other endpoint. Default is local `ollama` (no key, private).
+
+> **Anthropic note:** the `anthropic` preset uses an **API key**
+> (pay-as-you-go). Your Claude **Pro/Max subscription cannot be used** —
+> Anthropic prohibits subscription OAuth in third-party tools. Use an API key,
+> or reach Claude via `openrouter`.
 
 > **Privacy:** with a **cloud** provider, the agent's _observations_ (file
 > contents it reads) are sent to that provider. The sandboxed runner blocks

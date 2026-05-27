@@ -75,14 +75,14 @@ export async function buildContext(
   const cfg = opts.config;
   const phaseDir = fromFileUrl(new URL("./phases/", import.meta.url));
 
-  const { baseURL, apiKeyEnv } = resolveProvider(cfg);
+  const { baseURL, apiKeyEnv, format } = resolveProvider(cfg);
   const apiKey = apiKeyEnv ? Deno.env.get(apiKeyEnv) : undefined;
   if (apiKeyEnv && !apiKey) {
     console.error(
       `⚠ provider "${cfg.provider}" expects an API key in $${apiKeyEnv}, but it is unset.`,
     );
   }
-  const provider = { model: cfg.model, baseURL, apiKey };
+  const provider = { model: cfg.model, baseURL, apiKey, format };
   const providerHost = new URL(baseURL).host;
 
   // Repo mode: explicit --repo, or auto-detect + offer (remembered per repo).

@@ -6,6 +6,8 @@
  * Hand-rolled (no SDK) to stay minimal and offline-capable. BYO key via
  * the Authorization header; omit for local providers.
  */
+import { chatAnthropic } from "./anthropic.ts";
+
 export type Role = "system" | "user" | "assistant" | "tool";
 
 export interface ChatMessage {
@@ -35,6 +37,8 @@ export interface ProviderConfig {
   baseURL: string;
   /** Bearer token (resolved from an env var by the caller). Optional for local. */
   apiKey?: string;
+  /** Wire format: OpenAI Chat Completions (default) or Anthropic Messages. */
+  format?: "openai" | "anthropic";
 }
 
 interface OpenAIChatResponse {
@@ -47,7 +51,18 @@ interface OpenAIChatResponse {
   }>;
 }
 
-export async function chat(
+/** Dispatch to the right wire format. The single entry point frontends use. */
+export function chat(
+  cfg: ProviderConfig,
+  messages: ChatMessage[],
+  tools: ToolDef[] = [],
+): Promise<ChatResponse> {
+  return cfg.format === "anthropic"
+    ? chatAnthropic(cfg, messages, tools)
+    : chatOpenAI(cfg, messages, tools);
+}
+
+async function chatOpenAI(
   cfg: ProviderConfig,
   messages: ChatMessage[],
   tools: ToolDef[] = [],
