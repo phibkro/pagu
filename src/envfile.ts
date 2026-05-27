@@ -1,5 +1,6 @@
 // effects: fs (.env detection, consent memory, loading into the process env)
 import { resolve } from "jsr:@std/path@^1";
+import { parse as parseEnv } from "jsr:@std/dotenv@^0.225";
 import { configDirFromEnv } from "./config.ts";
 
 /**
@@ -10,30 +11,13 @@ import { configDirFromEnv } from "./config.ts";
  * `.env` could set arbitrary vars. With no TTY and no saved answer, skip.
  */
 
-/** Parse `KEY=value` lines (ignoring blanks/comments, an optional `export`
- * prefix, and surrounding quotes) and set them in the env. Pure parse +
- * Deno.env.set; returns the key names it set (for a status note). */
+/** Parse a `.env` body (via `@std/dotenv` — handles comments, quotes, the
+ * `export` prefix, multiline) and set each var in the process env. Returns
+ * the key names set (for a status note). */
 export function loadEnvInto(text: string): string[] {
-  const set: string[] = [];
-  for (const raw of text.split("\n")) {
-    const line = raw.trim().replace(/^export\s+/, "");
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    let val = line.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
-      val = val.slice(1, -1);
-    }
-    if (key) {
-      Deno.env.set(key, val);
-      set.push(key);
-    }
-  }
-  return set;
+  const vars = parseEnv(text);
+  for (const [k, v] of Object.entries(vars)) Deno.env.set(k, v);
+  return Object.keys(vars);
 }
 
 type EnvPrefs = Record<string, "load" | "skip">;
