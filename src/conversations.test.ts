@@ -3,7 +3,10 @@ import { serializeLog } from "./log/serialize.ts";
 import {
   latestSession,
   listSessions,
+  loadSession,
   newSessionId,
+  parseFrontmatter,
+  serializeFrontmatter,
   sessionPath,
   sessionsDir,
 } from "./conversations.ts";
@@ -45,6 +48,48 @@ Deno.test("listSessions: titles from first user message, newest first", async ()
 
     const latest = await latestSession(base);
     assertEquals(latest, sessionPath(base, "2026-05-27T12-00-00-000Z"));
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+});
+
+Deno.test("frontmatter round-trips; name + created parse back", () => {
+  const fm = serializeFrontmatter({
+    name: "refactor pass",
+    created: "2026-05-27T00:00:00.000Z",
+  });
+  const body = serializeLog([{ kind: "message", role: "user", text: "hi" }]);
+  const { meta, body: parsedBody } = parseFrontmatter(fm + body);
+  assertEquals(meta.name, "refactor pass");
+  assertEquals(meta.created, "2026-05-27T00:00:00.000Z");
+  // The body after the frontmatter still parses as a normal log.
+  assertEquals(parsedBody.includes("~~~pagu:message"), true);
+});
+
+Deno.test("parseFrontmatter tolerates a log with no frontmatter", () => {
+  const body = serializeLog([{ kind: "message", role: "user", text: "hi" }]);
+  const { meta, body: out } = parseFrontmatter(body);
+  assertEquals(meta, { created: "" });
+  assertEquals(out, body); // unchanged
+});
+
+Deno.test("a named session lists by its name, not the first message", async () => {
+  const base = await Deno.makeTempDir();
+  try {
+    await Deno.mkdir(sessionsDir(base), { recursive: true });
+    const id = "2026-05-27T09-00-00-000Z";
+    await Deno.writeTextFile(
+      sessionPath(base, id),
+      serializeFrontmatter({ name: "my project", created: "2026-05-27" }) +
+        serializeLog([{ kind: "message", role: "user", text: "do a thing" }]),
+    );
+    const [s] = await listSessions(base);
+    assertEquals(s.name, "my project");
+    assertEquals(s.title, "my project"); // name wins over first message
+
+    const loaded = await loadSession(sessionPath(base, id));
+    assertEquals(loaded.meta.name, "my project");
+    assertEquals(loaded.entries.length, 1);
   } finally {
     await Deno.remove(base, { recursive: true });
   }

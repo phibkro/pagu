@@ -8,8 +8,9 @@ import { buildEnvelope } from "./session.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import {
   latestSession,
-  loadLog,
+  loadSession,
   newSessionId,
+  serializeFrontmatter,
   sessionPath,
 } from "./conversations.ts";
 import type { AgentContext, Approver, UI } from "./agent.ts";
@@ -166,22 +167,29 @@ export async function buildContext(
   // the store; otherwise sessions live per-project under .pagu/sessions/:
   // --session opens one, --continue resumes the latest, default = new.
   const base = repo ?? Deno.cwd();
+  const now = new Date();
   let logPath: string;
   if (opts.logPath) logPath = resolve(opts.logPath);
   else if (opts.session) logPath = sessionPath(base, opts.session);
   else if (opts.cont) {
     logPath = (await latestSession(base)) ??
-      sessionPath(base, newSessionId(new Date()));
-  } else logPath = sessionPath(base, newSessionId(new Date()));
+      sessionPath(base, newSessionId(now));
+  } else logPath = sessionPath(base, newSessionId(now));
 
   // A stable log array (mutated in place on session switch) + a mutable
-  // path box, so `persist` and `switchSession` always target the active
-  // session. The directory is created lazily on first write.
-  const log: Entry[] = await loadLog(logPath);
-  const active = { path: logPath };
+  // {path, meta} box, so persist/switchSession/rename always target the
+  // active session. The directory is created lazily on first write; a new
+  // or legacy log gets a created stamp now.
+  const loaded = await loadSession(logPath);
+  const log: Entry[] = loaded.entries;
+  if (!loaded.meta.created) loaded.meta.created = now.toISOString();
+  const active = { path: logPath, meta: loaded.meta };
   const persist = () => {
     Deno.mkdirSync(dirname(active.path), { recursive: true });
-    Deno.writeTextFileSync(active.path, serializeLog(log));
+    Deno.writeTextFileSync(
+      active.path,
+      serializeFrontmatter(active.meta) + serializeLog(log),
+    );
   };
 
   return {
@@ -198,10 +206,15 @@ export async function buildContext(
     persist,
     sessionBase: base,
     currentLogPath: () => active.path,
-    switchSession: (path, entries) => {
+    switchSession: (path, entries, meta) => {
       active.path = path;
+      active.meta = meta;
       log.length = 0;
       log.push(...entries);
+    },
+    rename: (name) => {
+      active.meta = { ...active.meta, name };
+      persist();
     },
     ui,
     approve,

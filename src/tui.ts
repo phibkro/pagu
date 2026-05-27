@@ -4,7 +4,7 @@ import { applyArgs, buildContext, readLine } from "./setup.ts";
 import { type AgentContext, type Approver, runTask, type UI } from "./agent.ts";
 import {
   listSessions,
-  loadLog,
+  loadSession,
   newSessionId,
   type SessionInfo,
   sessionPath,
@@ -63,6 +63,7 @@ const COMMANDS: Record<string, string> = {
   "/new": "start a new conversation",
   "/open": "open conversation N from /sessions (e.g. /open 2)",
   "/fork": "branch this conversation into a new one",
+  "/rename": "name the active conversation (e.g. /rename refactor)",
   "/log": "show the active conversation's path + size",
   "/clear": "forget the active conversation (clears its log)",
   "/exit": "quit",
@@ -270,6 +271,7 @@ async function handleCommand(
       ctx.switchSession(
         sessionPath(ctx.sessionBase, newSessionId(new Date())),
         [],
+        { created: new Date().toISOString() },
       );
       console.log(dim("  started a new conversation"));
       return true;
@@ -282,7 +284,8 @@ async function handleCommand(
         console.log(dim("  usage: /open <n> — see /sessions for the numbers"));
         return true;
       }
-      ctx.switchSession(s.path, await loadLog(s.path));
+      const { meta, entries } = await loadSession(s.path);
+      ctx.switchSession(s.path, entries, meta);
       console.log(dim(`  opened: ${s.title}`));
       return true;
     }
@@ -291,9 +294,22 @@ async function handleCommand(
       ctx.switchSession(
         sessionPath(ctx.sessionBase, newSessionId(new Date())),
         entries,
+        { created: new Date().toISOString() },
       );
       ctx.persist(); // materialize the fork so it shows up in /sessions
       console.log(dim(`  forked into a new conversation (${entries.length})`));
+      return true;
+    }
+    case "/rename": {
+      const name = line.includes(" ")
+        ? line.slice(line.indexOf(" ") + 1).trim()
+        : "";
+      if (!name) {
+        console.log(dim("  usage: /rename <name>"));
+        return true;
+      }
+      ctx.rename(name);
+      console.log(dim(`  renamed to: ${name}`));
       return true;
     }
     case "/log":

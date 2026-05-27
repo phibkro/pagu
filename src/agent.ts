@@ -11,6 +11,7 @@ import {
 import { shouldAutoApprove } from "./session.ts";
 import type { Entry } from "./log/schema.ts";
 import type { ProviderConfig } from "./provider/chat.ts";
+import type { SessionMeta } from "./conversations.ts";
 
 /**
  * The I/O-agnostic core loop. Flags, config, and a TUI are all just
@@ -56,9 +57,11 @@ export interface AgentContext {
   sessionBase: string;
   /** Path of the active session's log file (changes on switchSession). */
   currentLogPath: () => string;
-  /** Switch the active session: repoint persist and reload the log in
-   * place. Does not persist; the caller decides when to save. */
-  switchSession: (path: string, entries: Entry[]) => void;
+  /** Switch the active session: repoint persist, swap metadata, and reload
+   * the log in place. Does not persist; the caller decides when to save. */
+  switchSession: (path: string, entries: Entry[], meta: SessionMeta) => void;
+  /** Set the active session's display name and persist it (frontmatter). */
+  rename: (name: string) => void;
   ui: UI;
   approve: Approver;
 }

@@ -67,10 +67,11 @@ Bare **`pagu`** in a terminal (or `pagu --tui`) launches an interactive REPL —
 type tasks one after another, with the same security model and a shared
 conversation log across turns (multi-turn context).
 
-**Conversations** are stored per-project under `./.pagu/sessions/` (gitignored).
-Each launch starts a **new** conversation by default; `--continue` resumes the
-latest and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
-`/open <n>`, and `/fork` manage them live.
+**Conversations** are stored per-project under `./.pagu/sessions/` (gitignored),
+each an `<id>.log.md` with a small YAML frontmatter header (name, created). Each
+launch starts a **new** conversation by default; `--continue` resumes the latest
+and `--list-sessions` shows them all. In the TUI, `/sessions`, `/new`,
+`/open <n>`, `/fork`, and `/rename <name>` manage them live.
 
 Flags:
 
