@@ -66,6 +66,16 @@ Deno.test("frontmatter round-trips; name + created parse back", () => {
   assertEquals(parsedBody.includes("~~~pagu:message"), true);
 });
 
+Deno.test("parseFrontmatter reads legacy unquoted ISO created (Date-coerced)", () => {
+  // Files written before quoting have `created: <iso>` unquoted → YAML types
+  // it as a Date; we coerce back to the ISO string so old logs still read.
+  const md = "---\nname: old\ncreated: 2026-05-27T03:08:53.346Z\n---\n\n" +
+    serializeLog([{ kind: "message", role: "user", text: "hi" }]);
+  const { meta } = parseFrontmatter(md);
+  assertEquals(meta.name, "old");
+  assertEquals(meta.created, "2026-05-27T03:08:53.346Z");
+});
+
 Deno.test("parseFrontmatter tolerates a log with no frontmatter", () => {
   const body = serializeLog([{ kind: "message", role: "user", text: "hi" }]);
   const { meta, body: out } = parseFrontmatter(body);

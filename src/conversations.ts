@@ -1,6 +1,7 @@
 // effects: filesystem (session store); pure: path/id/frontmatter helpers
 import { join } from "@std/path";
 import { parseLog } from "./log/parse.ts";
+import { frontmatter } from "./frontmatter.ts";
 import type { Entry } from "./log/schema.ts";
 
 /**
@@ -34,34 +35,34 @@ export interface SessionMeta {
 }
 
 /**
- * Parse a leading `---` frontmatter block (flat `key: value` lines) and
- * return the metadata plus the remaining body (the pagu log). Tolerates a
- * missing block — older logs have none. (Last-modified isn't stored; it's
- * read from the filesystem mtime, which is always accurate.)
+ * Read session metadata from a log's YAML frontmatter (via the shared
+ * `frontmatter` splitter), returning it plus the body. Tolerates a missing
+ * block — older logs have none. `created` is an ISO string; since YAML
+ * implicitly types an unquoted ISO date as a Date, coerce one back to its
+ * ISO string (so legacy unquoted logs still read). Last-modified isn't
+ * stored; it comes from the filesystem mtime, always accurate.
  */
 export function parseFrontmatter(
   md: string,
 ): { meta: SessionMeta; body: string } {
-  const meta: SessionMeta = { created: "" };
-  if (!md.startsWith("---\n")) return { meta, body: md };
-  const end = md.indexOf("\n---", 4);
-  if (end === -1) return { meta, body: md };
-  for (const line of md.slice(4, end).split("\n")) {
-    const i = line.indexOf(":");
-    if (i === -1) continue;
-    const k = line.slice(0, i).trim();
-    const v = line.slice(i + 1).trim();
-    if (k === "name") meta.name = v;
-    else if (k === "created") meta.created = v;
-  }
-  return { meta, body: md.slice(end + 4) }; // parseLog ignores leading prose
+  const { data, body } = frontmatter(md);
+  const created = data.created instanceof Date
+    ? data.created.toISOString()
+    : typeof data.created === "string"
+    ? data.created
+    : "";
+  const meta: SessionMeta = { created };
+  if (data.name != null) meta.name = String(data.name);
+  return { meta, body };
 }
 
-/** Render metadata as a frontmatter block (empty string if nothing to store). */
+/** Render metadata as a YAML frontmatter block (empty string if nothing to
+ * store). Values are quoted so YAML reads them back as strings — an unquoted
+ * ISO `created` would be parsed as a Date. */
 export function serializeFrontmatter(meta: SessionMeta): string {
   const lines: string[] = [];
-  if (meta.name) lines.push(`name: ${meta.name}`);
-  if (meta.created) lines.push(`created: ${meta.created}`);
+  if (meta.name) lines.push(`name: ${JSON.stringify(meta.name)}`);
+  if (meta.created) lines.push(`created: ${JSON.stringify(meta.created)}`);
   return lines.length ? `---\n${lines.join("\n")}\n---\n\n` : "";
 }
 
