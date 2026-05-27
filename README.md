@@ -42,6 +42,12 @@ deno install --global --force \
   -n pagu ./src/cli.ts
 ```
 
+Then make sure **`~/.deno/bin` is on your `PATH`** (deno prints this on install)
+so `pagu` is runnable — e.g. add `export PATH="$HOME/.deno/bin:$PATH"` to your
+shell rc. The "config file will be ignored" warning is **expected and
+harmless**: pagu pins its imports with full `jsr:` specifiers, so it needs no
+config at install time.
+
 The orchestrator needs run/read/write; each phase subprocess still gets only its
 own scoped permissions regardless of what the orchestrator holds.
 
