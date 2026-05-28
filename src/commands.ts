@@ -41,8 +41,12 @@ export const slashCommands: SlashCommand[] = [
     run: (ctx, args) => {
       const [name, model] = args.split(/\s+/).filter(Boolean);
       if (!name) {
-        ctx.ui.show(`providers: ${Object.keys(PRESETS).join(", ")}`);
-        ctx.ui.show(`current: ${ctx.provider.model} @ ${ctx.providerHost}`);
+        // One show with an embedded newline: in ACP each show() is a separate
+        // message chunk and chunks concatenate with no separator.
+        ctx.ui.show(
+          `providers: ${Object.keys(PRESETS).join(", ")}\n` +
+            `current: ${ctx.provider.model} @ ${ctx.providerHost}`,
+        );
         return;
       }
       result(ctx, ctx.setProvider({ provider: name, model }));
