@@ -1,8 +1,11 @@
 # ACP history replay on session/load — design (v1)
 
-> Status: design, pending grill-with-docs. Roadmap: CONTEXT.md → Open → "ACP —
-> remaining integration work" (history replay). Authored via brainstorming; to
-> be hardened by grill-with-docs, then implemented via tdd.
+> Status: hardened via grill-with-docs (2026-05-28); ready for tdd. Grill
+> verified the load path (`buildContext({session, cwd})` loads `ctx.log`,
+> depends on cwd fix `9e2936f`) and resolved: replay sends **directly** via
+> `conn.sessionUpdate` (awaited, message-granular), bypassing the new per-token
+> coalescing buffer (`d159484`). Roadmap: CONTEXT.md → Open → "ACP — remaining
+> integration work" (history replay). Authored via brainstorming.
 
 ## Goal
 
@@ -28,10 +31,17 @@ live. Fix: replay the loaded conversation as `session/update` notifications.
 
 ## The model
 
-`loadSession` already loads `ctx.log` (via `buildContext` with `session: id`).
-The fix is to map that log to `session/update` notifications and send them — a
-**pure mapper + effectful send** (FCIS), mirroring how `acpUI` already wraps
-`conn.sessionUpdate`.
+`loadSession` already loads `ctx.log` (via `buildContext` with `session: id` +
+`cwd` — verified: `setup.ts` resolves `sessionPath(base, id)` and
+`ctx.log =
+loadSession(path).entries`, and the cwd fix `9e2936f` makes `base`
+the editor's project). The fix is to map that log to `session/update`
+notifications and send them — a **pure mapper + effectful send** (FCIS).
+
+The send goes **directly through `conn.sessionUpdate`, `await`ed per message**
+(for ordering). It does **not** route through `acpUI.stream`, which now
+_coalesces_ per-token output (`d159484`); replay is **message-granular** (one
+update per message), so it bypasses the streaming buffer entirely.
 
 ## Design
 
