@@ -1,6 +1,7 @@
 // pure
 import type { ToolDef } from "../providers/chat.ts";
 import type { CommandInvocationEntry } from "../log/schema.ts";
+import type { CommandRule } from "./grammar.ts";
 /** Subset of DiscoveredTask sufficient for the tool listing. */
 type TaskListing = { program: string; args: string[]; description: string };
 
@@ -48,5 +49,57 @@ export function handleRunTask(
   id: string,
 ): CommandInvocationEntry {
   const { program, args } = parseCommand(String(toolArgs.command ?? ""));
+  return { kind: "command-invoke", id, program, args };
+}
+
+/** One rule's usage line for the tool description, e.g.
+ * `rg [-i --ignore-case -n …] <pattern> [paths]`. */
+function ruleUsage(r: CommandRule): string {
+  const head = [r.program, ...r.prefix].join(" ");
+  const flags = r.flags.map((f) => f.name).join(" ");
+  return flags ? `${head} [${flags}] + positionals` : head;
+}
+
+/**
+ * The `run_command` tool. Read-only commands (search/inspect) the agent may run
+ * with **validated free args** — auto-approved, no writes/network. Args are
+ * passed as separate argv tokens (no shell), and validated by the command
+ * grammar before running; bad args come back with a reason.
+ */
+export function runCommandToolDef(rules: CommandRule[]): ToolDef {
+  const programs = [...new Set(rules.map((r) => r.program))];
+  const usage = rules.map(ruleUsage).join("; ");
+  return {
+    name: "run_command",
+    description:
+      `Run a read-only command to search or inspect the project (auto-approved; ` +
+      `no writes, no network). Pass each flag, value, and path as a separate ` +
+      `args element (no shell). Available: ${usage}.`,
+    parameters: {
+      type: "object",
+      properties: {
+        program: {
+          type: "string",
+          enum: programs,
+          description: "the program to run",
+        },
+        args: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "argv tokens — each flag, value, and path a separate element",
+        },
+      },
+      required: ["program", "args"],
+    },
+  };
+}
+
+export function handleRunCommand(
+  toolArgs: Record<string, unknown>,
+  id: string,
+): CommandInvocationEntry {
+  const program = String(toolArgs.program ?? "");
+  const args = Array.isArray(toolArgs.args) ? toolArgs.args.map(String) : [];
   return { kind: "command-invoke", id, program, args };
 }

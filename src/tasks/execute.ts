@@ -11,13 +11,102 @@ import {
   matchesPolicy,
   storeInferred,
 } from "./policy.ts";
+import { findDefaultRule } from "./defaults.ts";
+import { type CommandRule, recognize } from "./grammar.ts";
 import type { AgentContext, CommandInvocationEntry } from "../context.ts";
+
+/** The runner body for a command invocation — orchestrator-generated, never
+ * authored by the agent (invariant #1). Runs the program with the given args. */
+function commandBody(program: string, args: string[]): string {
+  return `const r = await new Deno.Command(${JSON.stringify(program)}, {
+  args: ${JSON.stringify(args)},
+  cwd: Deno.cwd(),
+  stdout: "inherit",
+  stderr: "inherit",
+}).output();
+Deno.exit(r.code);
+`;
+}
+
+/**
+ * A read-only command (a default-rule match): args validated by the grammar,
+ * then run with a FIXED read-only ceiling — `allow-read=<scope>` + the program,
+ * no write, no net. The declared ceiling needs no cage discovery; the
+ * permission floor + OS sandbox bound what's possible if a flag was mis-vetted.
+ */
+async function runReadOnlyCommand(
+  entry: CommandInvocationEntry,
+  ctx: AgentContext,
+  rule: CommandRule,
+): Promise<"stop" | "loop"> {
+  const rec = recognize(
+    rule,
+    entry.args,
+    ctx.readPaths,
+    ctx.repo ?? ctx.projectBase,
+  );
+  if (!rec.ok) {
+    const cmd = `${entry.program} ${entry.args.join(" ")}`;
+    ctx.ui.show(`✗ run_command: "${cmd}" — ${rec.reason}`);
+    ctx.log.push({
+      kind: "message",
+      role: "user",
+      text: `run_command rejected: ${rec.reason}. Fix the arguments and ` +
+        `try again, or use the write tool.`,
+    });
+    ctx.persist();
+    return "loop";
+  }
+
+  ctx.log.push({
+    kind: "decision",
+    script: entry.id,
+    verdict: "approve",
+    rationale: `read-only command: ${entry.program} ${entry.args.join(" ")}`,
+  });
+  ctx.persist();
+  ctx.ui.status(`running: ${entry.program} ${entry.args.join(" ")}…`);
+
+  const scratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
+  const file = `${scratch}/${entry.id}.ts`;
+  await Deno.writeTextFile(file, commandBody(entry.program, entry.args));
+  const result = await runScript({
+    scriptPath: file,
+    perms: [
+      ...ctx.readPaths.map((p) => `allow-read=${p}`),
+      `allow-run=${entry.program}`,
+      ...ctx.denyFlags,
+    ],
+    cwd: ctx.repo ?? ctx.projectBase,
+    sandbox: ctx.sandboxKind,
+  });
+  await Deno.remove(scratch, { recursive: true });
+
+  const output = result.stdout || result.stderr;
+  const resultEntry = {
+    kind: "result" as const,
+    script: entry.id,
+    exit: result.exit,
+    ranWith: result.ranWith,
+    output,
+  };
+  ctx.log.push(resultEntry);
+  ctx.persist();
+  ctx.ui.entries?.([resultEntry]);
+  ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
+  return "loop";
+}
 
 /** Return "stop" to exit runTask, "loop" to continue to the next turn. */
 export async function executeCommandInvocation(
   entry: CommandInvocationEntry,
   ctx: AgentContext,
 ): Promise<"stop" | "loop"> {
+  // A built-in read-only command (free-arg grammar) takes the validated,
+  // fixed-ceiling path — no policy lookup or cage discovery.
+  const defaultRule = findDefaultRule(entry.program, entry.args);
+  if (defaultRule) return runReadOnlyCommand(entry, ctx, defaultRule);
+
   // Merge explicit entries with stale-filtered inferred ceiling
   const inferred = await (async () => {
     try {

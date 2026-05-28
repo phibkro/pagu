@@ -3,7 +3,13 @@ import { chat, type ChatMessage } from "../providers/chat.ts";
 import { handleRead, readToolDef } from "../read.ts";
 import { handleWrite, writeToolDef } from "../write/write.ts";
 import { handleInvokeSkill, invokeSkillToolDef } from "../skills/tool.ts";
-import { handleRunTask, runTaskToolDef } from "../tasks/tool.ts";
+import {
+  handleRunCommand,
+  handleRunTask,
+  runCommandToolDef,
+  runTaskToolDef,
+} from "../tasks/tool.ts";
+import { DEFAULT_RULES } from "../tasks/defaults.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
@@ -61,6 +67,7 @@ function isGitignored(filePath: string): boolean {
 const tools = [
   readToolDef,
   writeToolDef,
+  runCommandToolDef(DEFAULT_RULES),
   ...(skillScripts.length > 0 ? [invokeSkillToolDef(skillScripts)] : []),
   ...(allowedTasks.length > 0 ? [runTaskToolDef(allowedTasks)] : []),
 ];
@@ -90,6 +97,16 @@ async function converse(): Promise<void> {
       }
       const n = input.log.filter((e) => e.kind === "command-invoke").length + 1;
       out.push(handleRunTask(runTaskCall.args, `ci${n}`));
+      break;
+    }
+
+    const runCommandCall = res.toolCalls.find((c) => c.name === "run_command");
+    if (runCommandCall) {
+      if (res.content) {
+        out.push({ kind: "message", role: "assistant", text: res.content });
+      }
+      const n = input.log.filter((e) => e.kind === "command-invoke").length + 1;
+      out.push(handleRunCommand(runCommandCall.args, `ci${n}`));
       break;
     }
 
