@@ -166,12 +166,17 @@ export async function performRun(params: {
   const scratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
   const file = `${scratch}/${id}.ts`;
   await Deno.writeTextFile(file, body);
+
+  // Stream stdout live when the frontend supports it (TUI/ACP). The batch
+  // result still goes to the log regardless; only the display changes.
+  const streaming = !!ctx.ui.stream;
   const result = await runScript({
     scriptPath: file,
     perms: [...perms, ...ctx.denyFlags],
     cwd: cwdParam ?? ctx.repo ?? scratch,
     sandbox: ctx.sandboxKind,
     scriptArgs,
+    onStdout: streaming ? (chunk) => ctx.ui.stream!(chunk) : undefined,
   });
   await Deno.remove(scratch, { recursive: true });
 
@@ -186,7 +191,15 @@ export async function performRun(params: {
   ctx.log.push(resultEntry);
   ctx.persist();
   ctx.ui.entries?.([resultEntry]);
-  ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
+
+  // When streaming, stdout was shown live — show only the exit-status header
+  // to avoid reprinting it. Non-streaming (CLI) shows header + full output.
+  if (streaming && result.stdout) {
+    ctx.ui.show(`\n--- result (exit ${result.exit}) ---`);
+  } else {
+    ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
+  }
+
   if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
     ctx.ui.show(
       "\n[net was granted — output would NOT auto-return to the agent]",

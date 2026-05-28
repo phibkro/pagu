@@ -45,6 +45,25 @@ Deno.test("denies access outside the granted scope (nonzero exit)", async () => 
   }
 });
 
+Deno.test("onStdout callback receives chunks as script runs", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const script = `${dir}/s.ts`;
+    await Deno.writeTextFile(script, `console.log("streamed");`);
+    const chunks: string[] = [];
+    const r = await runScript({
+      scriptPath: script,
+      perms: [],
+      onStdout: (c) => chunks.push(c),
+    });
+    assertEquals(r.exit, 0);
+    assertEquals(r.stdout.trim(), "streamed"); // batch result unchanged
+    assertEquals(chunks.join("").trim(), "streamed"); // same content via callback
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("granting net appears in ranWith", async () => {
   const dir = await Deno.makeTempDir();
   try {

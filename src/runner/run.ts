@@ -45,6 +45,9 @@ export async function runScript(opts: {
   sandbox?: SandboxKind;
   /** Arguments forwarded to the script (e.g. from a skill invocation). */
   scriptArgs?: string[];
+  /** Called with each stdout chunk as it arrives. When present, stdout is
+   *  streamed incrementally; the full text is still returned in RunResult. */
+  onStdout?: (chunk: string) => void;
 }): Promise<RunResult> {
   const flags = opts.perms.map(toFlag);
   const ranWith = ["--no-prompt", ...flags];
@@ -69,18 +72,36 @@ export async function runScript(opts: {
     ? undefined
     : { DENO_DIR: join(scratch, ".deno") };
 
-  const { code, stdout, stderr } = await new Deno.Command(command, {
+  // Always use spawn() so we can drain stdout/stderr concurrently (avoids
+  // pipe-buffer deadlock) and optionally stream stdout chunks via onStdout.
+  const child = new Deno.Command(command, {
     args,
     cwd: opts.cwd,
     env,
     stdout: "piped",
     stderr: "piped",
-  }).output();
-  const dec = new TextDecoder();
+  }).spawn();
+
+  let stdoutText = "";
+  let stderrText = "";
+  const drainStdout = async () => {
+    for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
+      stdoutText += c;
+      opts.onStdout?.(c);
+    }
+  };
+  const drainStderr = async () => {
+    for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
+      stderrText += c;
+    }
+  };
+  await Promise.all([drainStdout(), drainStderr()]);
+  const { code } = await child.status;
+
   return {
     exit: code,
-    stdout: dec.decode(stdout),
-    stderr: dec.decode(stderr),
+    stdout: stdoutText,
+    stderr: stderrText,
     ranWith,
     sandbox: kind,
   };
