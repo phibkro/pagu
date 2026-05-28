@@ -1,9 +1,13 @@
 # ACP tool-call surfacing — design (v1)
 
-> Status: design, pending grill-with-docs. Roadmap: CONTEXT.md → Open → "ACP —
-> remaining integration work" (surface tool calls). Authored via brainstorming.
-> Grounded in the ACP spec (agentclientprotocol.com/protocol/tool-calls) + the
-> SDK types (`ToolCall`/`ToolCallUpdate`).
+> Status: hardened via grill-with-docs (2026-05-28); ready for tdd. Grill
+> confirmed `result.script === the action entry id` uniformly across all three
+> executors (skills/tasks/write), so the mapping needs no special-casing;
+> resolved live emission to the **append sites** (each executor surfaces its own
+> `result` via `ctx.ui.entries`, `agent.ts` surfaces produced actions — not a
+> fragile post-hoc search); `in_progress`-only for v1. Grounded in the ACP spec
+> (agentclientprotocol.com/protocol/tool-calls) + the SDK types
+> (`ToolCall`/`ToolCallUpdate`). Authored via brainstorming.
 
 ## Goal
 
@@ -82,21 +86,21 @@ entries?(produced: Entry[]): void;  // "these entries were just appended"
   through the token coalescer).
 - **CLI/TUI** omit it (optional → no-op; they already show actions as text).
 
-**Call sites (in `agent.ts`'s turn), flagged for grill against the code:**
+**Call sites (resolved against the code) — emit at the append site:**
 
-- After `respond()` produces entries → `ctx.ui.entries?.(produced)` surfaces the
+- `agent.ts` after `respond()` → `ctx.ui.entries?.(produced)` surfaces the
   `script`/`skill-invoke`/`command-invoke` (the `tool_call`).
-- The **`result` is appended inside the executor** (`executeScriptProposal`
-  etc.), not in `produced`. So after the executor returns, the turn surfaces the
-  new `result` from `ctx.log` → `ctx.ui.entries?.([result])` (the
-  `tool_call_update`). Keeping both emissions in `agent.ts` avoids spreading the
-  hook into every executor.
+- **Each executor**, right after it `ctx.log.push`es its `result`
+  (`skills/execute.ts:135`, `tasks/execute.ts:171`, `write/pipeline.ts:184`),
+  calls `ctx.ui.entries?.([result])` (the `tool_call_update`). The executors
+  already use `ctx.ui` (status/show), so this is consistent — and it avoids the
+  fragile post-hoc "find the last result" search the design first proposed.
 
 ### Where it lives
 
 `entryUpdate` in `src/frontends/acp.ts` (generalizing `historyUpdates`); the
 `entries?` method on the `UI` interface in `context.ts`; the call sites in
-`agent.ts`.
+`agent.ts` (produced actions) + the three executors (each emits its `result`).
 
 ## Testing
 
@@ -128,14 +132,16 @@ entries?(produced: Entry[]): void;  // "these entries were just appended"
 - Diff/terminal content types; `· read X` status-marker routing.
 - Cancellation (`session/cancel`) — separate slice.
 
-## Open for grill / tdd
+## Resolved by grill
 
-- Does `result.script` reference the `skill-invoke`/`command-invoke` id (uniform
-  pairing) or only a `script` id? Confirm against the runner/executor code.
-- Exact `agent.ts` call sites + that the `result` is reliably the last appended
-  entry after an executor returns.
-- Whether to also emit an initial `pending` `tool_call` at propose-time vs only
-  `in_progress` (live "running" indicator granularity).
+- **Pairing is uniform:** all three executors set `result.script = entry.id`
+  (`skills/execute.ts:137`, `tasks/execute.ts:173`, `write/pipeline.ts:186`), so
+  `result.script === the action id` for every action kind — no special-casing.
+- **Live emission at the append sites**, not a post-hoc search: each executor
+  emits its `result` via `ctx.ui.entries` (a port it already uses); `agent.ts`
+  emits the produced action entries.
+- **`in_progress`-only** status for v1; the separate `pending`-at-propose
+  granularity is deferred.
 
 ## Invariants preserved
 
