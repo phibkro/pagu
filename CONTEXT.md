@@ -66,17 +66,22 @@ a separate process triggered by **human approval** or a pre-vetted envelope.
 
 ### The capability ladder
 
-| tool           | what it does                             | approval path                            |
-| -------------- | ---------------------------------------- | ---------------------------------------- |
-| `read`         | inspect files/dirs                       | no side effects — always allowed         |
-| `write`        | author arbitrary scripts                 | **human gate** (y/n at every proposal)   |
-| `invoke_skill` | run a pre-authored skill script verbatim | auto-approved (verbatim match + ceiling) |
-| `run_task`     | run a named project task from policy     | auto-approved (policy match + ceiling)   |
+| tool           | what it does                                                             | approval path                                    |
+| -------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `read`         | inspect files/dirs                                                       | no side effects — always allowed                 |
+| `write`        | author arbitrary scripts                                                 | **human gate** (y/n at every proposal)           |
+| `invoke_skill` | run a pre-authored skill script verbatim                                 | auto-approved (verbatim match + ceiling)         |
+| `run_task`     | run a named project task from policy                                     | auto-approved (policy match + ceiling)           |
+| `run_command`  | run a vetted read-only command (search/inspect) with validated free args | auto-approved (grammar match, read-only ceiling) |
 
-`invoke_skill` and `run_task` expand the agent's effective capability without
-widening the blast radius: the orchestrator verifies the script body matches
-verbatim what was pre-approved, and the cage still validates permissions within
-the declared or inferred ceiling before executing.
+`invoke_skill`, `run_task`, and `run_command` expand the agent's effective
+capability without widening the blast radius: the orchestrator verifies the
+script body matches verbatim what was pre-approved, the cage validates
+permissions within the declared or inferred ceiling, and `run_command`'s args
+are validated against a per-command **grammar** (the safe argv sublanguage) and
+run with a fixed read-only ceiling (no write/net). `run_task` and `run_command`
+are two presentations over one command-policy spine (`recognize` subsumes
+`matchesPolicy`; exact match = the degenerate zero-free-arg grammar).
 
 Refinement (the cage): the agent _may_ run its proposed script in a **disposable
 cage** to self-test and self-correct before you see it. The cage grants
@@ -577,19 +582,23 @@ above.)
    turn boundary ≈ the effect site, so boundary-level handlers likely suffice.
    Pluggability is also the home for plugins / extensibility (new providers
    behind `chat()`, new frontends behind `UI`/`Approver`).
-3. **Read-only-command auto-approve gate → command grammar.** **Designed
-   2026-05-28** (`docs/specs/2026-05-28-command-grammar-design.md`); next to
-   implement. Auto-approve curated read-only commands (`rg`/`git log`/…,
-   `allow-read` + `allow-run`, **no write, no net**) with **agent-supplied args
-   validated by a formal grammar**. The design **subsumes** `run_task` (its
-   exact-enum = the degenerate zero-free-arg grammar — one command construct,
-   not two; folds in part of #4), and frames arg-safety as **LangSec**: a
-   regular sublanguage of safe argv invocations, recognised default-deny (the
-   no-shell architecture is what makes it regular). The "read-only" trap
-   (`--pre`, `find -delete`, abbreviation/bundling) is handled by canonical-flag
-   allowlist
-   - the law **free args ⇒ read-only ceiling**; the recogniser is a filter, not
-     the boundary (perms + sandbox + #5 bound what's possible).
+3. **Read-only-command auto-approve gate → command grammar. Shipped 2026-05-28**
+   (`docs/specs/2026-05-28-command-grammar-design.md`; `tasks/grammar.ts` +
+   `tasks/defaults.ts` + the `run_command` tool). Auto-approves curated
+   read-only commands (`rg`/`git log`/`git diff`, `allow-read` + `allow-run`,
+   **no write, no net**) with **agent-supplied args validated by a formal
+   grammar**. **Subsumes** `run_task` (its exact-enum = the degenerate
+   zero-free-arg grammar — `recognize` generalises `matchesPolicy`; folds in
+   part of #4). Arg-safety is **LangSec**: a regular sublanguage of safe argv
+   invocations, recognised default-deny (the no-shell architecture is what makes
+   it regular). The "read-only" trap (`--pre`, `find -delete`,
+   abbreviation/bundling) is handled by a canonical-flag allowlist + the law
+   **free args ⇒ read-only ceiling**; the recogniser is a filter, not the
+   boundary (perms + sandbox + #5 bound what's possible). Tested by example
+   slices + property invariants (totality, positive path generator, negative
+   flag injection). **Remaining (deferred):** user-extensible rules via config;
+   folder rename `tasks/`→`commands/`; write/net free-arg commands;
+   symlink-escape in path containment.
 4. **Command-architecture generalization (rule of three).** CLI (flags), TUI
    (slash + arrow-key pickers), and ACP (slash + `availableCommands`) are three
    presentations of the same operations. `src/commands.ts` (the `SlashCommand`

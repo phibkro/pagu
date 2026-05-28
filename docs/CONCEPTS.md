@@ -154,6 +154,34 @@ The metaphor earns its keep: it gives the user a correct mental model of what
 exists and when to delete it (when the task changes in a way that needs new
 permissions).
 
+### The command grammar — the safe sublanguage (LangSec)
+
+`run_task`'s exact-name match is the **degenerate** case of a more general idea:
+a **command grammar**. A `CommandRule` (`src/tasks/grammar.ts`) describes the
+safe sublanguage of one program's invocations — its allowlisted canonical flags
+(with typed values) and positionals (patterns are opaque-safe data; paths are
+contained to the read scope). `recognize(rule, args, …)` is the recogniser;
+exact match = a rule with no free args, so `recognize` **subsumes**
+`matchesPolicy`. `run_command` (the read-only tool) uses it to validate
+**agent-supplied free args** before running with a fixed read-only ceiling.
+
+This is **LangSec** (language-theoretic security): the danger of "let the agent
+run a program with arguments" is the **weird machine** — a permitted program
+driven into an escalated state by crafted args (`rg --pre sh`). The fix is to
+recognise a **formal grammar of the safe invocations** before acting,
+default-deny. Two facts make it sound: (1) **no shell** — we run argv arrays via
+`Deno.Command`, not bash (which isn't even context-free), so the language is a
+mere token sequence; (2) the safe sublanguage is **regular** (finite flags,
+bounded counts), so the recogniser is a fast token state machine — no regex
+backtracking, no ReDoS. Recognition is an **allowlist**, never a denylist:
+prefix abbreviation (`--pr`→`--pre`) and bundling (`-in`) defeat denylists but
+are rejected automatically by "must equal an allowlisted canonical flag." The
+load-bearing law: **free args ⇒ read-only ceiling** (no write/net) — the
+recogniser is a _filter_ that reduces what's asked; the permission floor + OS
+sandbox (+ the planned scoped-namespace tier) remain the boundary that bounds
+what's _possible_ if a flag was mis-vetted. Defense in depth, the same shape as
+everywhere else in pagu.
+
 ## The proposal–handler model: effects ≅ permissions ≅ types
 
 pagu's security model and its (planned) composable orchestration are the **same

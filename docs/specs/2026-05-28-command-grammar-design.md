@@ -1,10 +1,18 @@
 # Command grammar — unified command policy + read-only-command gate (design)
 
-> Status: **draft 2026-05-28** (authored via brainstorming → grill-with-docs;
-> not yet implemented). Resolves backlog #3 (read-only-command auto-approve
-> gate) and folds in part of #4 by **subsuming** `run_task`'s exact-enum policy
-> into one command construct. Grounded in `src/tasks/`, `docs/CONCEPTS.md`
-> (command policy as a type system; proposal–handler model), and LangSec.
+> Status: **implemented 2026-05-28** (via tdd; example slices drove the
+> recognizer's shape, property tests — fast-check — locked the invariants).
+> Resolves backlog #3 (read-only-command auto-approve gate) and folds in part of
+> #4 by **subsuming** `run_task`'s exact-enum policy into one command construct.
+> `recognize` (`tasks/grammar.ts`) is the safe-sublanguage recognizer;
+> `DEFAULT_RULES` (`tasks/defaults.ts`) the vetted rg/git rules; the
+> `run_command` tool feeds the existing `command-invoke` →
+> `executeCommandInvocation` spine, which runs default-rule matches read-only
+> (no cage — the ceiling is declared). Live-verified against Ollama (rg search →
+> auto-approved, exit 0). The unified tool interface settled as **two
+> presentations over one spine**: `run_task` (exact enum) + `run_command`
+> (structured free args), not a single tool — separate presentations, shared
+> dispatch.
 
 ## Goal
 
