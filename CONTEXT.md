@@ -585,3 +585,37 @@ Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
 constraints surface. ACP integration gaps (Open) are independent and can slot in
 anytime.
+
+### North Star (paradigm-level): pagu's core as an agent-workflow SDK
+
+The composability work above is in service of a larger aim — **expose the lawful
+compositional core as a programmatic SDK/library** so people author their own
+agent loops on it: implement→refine→iterate, explore (fan-out) → synthesize
+(merge), not just write→advise→run. The differentiator from graph frameworks
+(LangGraph et al.) is the pairing of a **lawful algebra** (typed combinators
+with laws) with pagu's **security envelope**: invariant #1 holds for SDK
+consumers too — every composed loop still routes effects through cage → gate →
+runner, and the gate-never-widen law makes third-party loops/extensions safe by
+construction. _"Compose any workflow; the blast radius stays statically
+enumerable."_
+
+**Deepening — separate declaration from evaluation.** Today's combinators are
+already lazy in the _final_ (function) encoding: `loop`/`andThen`/`pipeline`
+build an unrun `Step` value. Taking it further means an _initial/free_ encoding
+— a reified **workflow IR as inspectable data**
+(`Loop(w) | AndThen(w,w) | FanOut([w]) | Turn | …`) that you build then
+`interpret`. That makes a workflow capturable, serializable, **savable**, and
+dispatchable — and (the pagu payoff) **auditable before evaluation**: the blast
+radius of a _whole workflow_ becomes statically enumerable, not just a single
+script. Declaration/evaluation separation becomes a **security lever**, not just
+ergonomics. The orchestrator then becomes a **dispatcher** of workflow values;
+executable artifacts are captured + persisted + run when wanted — generalizing
+what pagu already does for one proposed script (authored → cage-tested → saved →
+run on approval) to whole workflows. Dovetails with the CQRS/event-store
+paradigm (the workflow is a value; its interpretation is the read side).
+
+**Discipline:** this is the _why_, not a next step. Keep shipping the increments
+(they fill out the algebra); reify to a workflow IR only when
+save/dispatch/audit needs are concrete; an SDK is a hard API-stability
+commitment — freeze the public surface (`context.ts` / `UI` / `Approver` / the
+combinators) only once the primitives have settled.
