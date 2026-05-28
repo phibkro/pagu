@@ -1,9 +1,11 @@
 // pure
 import type { Entry } from "./schema.ts";
 
-/** Matches a tilde-fenced `~~~pagu:<kind> attrs\n<body>\n~~~` block.
- * Kind may contain lowercase letters and hyphens (e.g. "skill-invoke"). */
-const BLOCK = /^~~~pagu:([a-z-]+)(.*)\n([\s\S]*?)\n~~~$/gm;
+/** Matches a tilde-fenced `~~~pagu:<kind> attrs\n<body>\n~~~` block. The fence
+ * is variable-length (≥3): the closing must match the opening length (`\1`), so
+ * a body line of fewer tildes can't close the block. Kind may contain lowercase
+ * letters and hyphens (e.g. "skill-invoke"). */
+const BLOCK = /^(~{3,})pagu:([a-z-]+)(.*)\n([\s\S]*?)\n\1$/gm;
 
 /** Parse `k=v` / `k="quoted v"` attrs from a block's opening line. */
 function parseAttrs(s: string): Record<string, string> {
@@ -22,9 +24,9 @@ export function parseLog(md: string): Entry[] {
   BLOCK.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = BLOCK.exec(md)) !== null) {
-    const kind = m[1];
-    const a = parseAttrs(m[2]);
-    const body = m[3];
+    const kind = m[2];
+    const a = parseAttrs(m[3]);
+    const body = m[4];
     switch (kind) {
       case "message":
         entries.push({

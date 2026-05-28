@@ -672,13 +672,17 @@ above.)
    deny-wins / allow-monotone / transitive). **Remaining targets:** ConfigLayer
    monoid (associativity + identity, permission-lattice merge), `classify`,
    `commands.ts` dispatch.
-   - **Finding (log codec doesn't escape its delimiters).** Round-trip holds
-     only on a constrained domain: a body line `~~~` collides with the fence, a
-     `\n` inside a joined list element (args/perms) or a space inside a ran-with
-     element splits wrong, and attr values can't contain `"`/newline. A model
-     message or read whose content contains `~~~` would corrupt the log. Real
-     latent bug; fix = escape delimiters in `serialize`/`parse` (touches the
-     event-store format — its own slice, deferred).
+   - **Finding (log codec fence collision) — FIXED 2026-05-28.** The property
+     surfaced a real latent bug: a body line `~~~` (e.g. markdown fences in
+     model output or a file read) was read as the closing fence and truncated
+     the log — data loss in the event store. Fixed with **variable-length
+     fences** (CommonMark-style): the serializer picks a `~` run longer than any
+     in the body and the parser matches the close by length (`\1`).
+     Backward-compatible (old `~~~` logs still parse). The round-trip property
+     now covers bodies with arbitrary `~` runs. Remaining domain constraints are
+     structural, not bugs: joined list elements (args/perms/ran-with) carry no
+     newline/space and attr values (ids/source/program) no `"`/newline — those
+     fields never hold such values by construction.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as

@@ -10,7 +10,17 @@ function attrs(pairs: Record<string, string>): string {
 
 function head(kind: string, pairs: Record<string, string>): string {
   const a = attrs(pairs);
-  return `~~~pagu:${kind}${a ? " " + a : ""}`;
+  return `pagu:${kind}${a ? " " + a : ""}`;
+}
+
+/** The longest run of consecutive `~` in a string (0 if none). */
+function longestTildeRun(s: string): number {
+  let max = 0, cur = 0;
+  for (const ch of s) {
+    cur = ch === "~" ? cur + 1 : 0;
+    if (cur > max) max = cur;
+  }
+  return max;
 }
 
 /** Serialize one entry to a tilde-fenced `pagu:<kind>` block. */
@@ -55,7 +65,10 @@ export function serializeEntry(e: Entry): string {
       body = e.output;
       break;
   }
-  return `${open}\n${body}\n~~~`;
+  // Use a fence longer than any `~` run in the body, so a body line of tildes
+  // (e.g. a markdown `~~~` fence in model output) can't be read as the close.
+  const fence = "~".repeat(Math.max(3, longestTildeRun(body) + 1));
+  return `${fence}${open}\n${body}\n${fence}`;
 }
 
 /** Serialize a whole log. Blocks separated by a blank line. */

@@ -76,6 +76,15 @@ Deno.test("skill-invoke round-trips with and without args", () => {
   assertEquals(parseLog(serializeLog(noArgs)), noArgs);
 });
 
+Deno.test("body containing a ~~~ fence line round-trips", () => {
+  const e: Entry[] = [{
+    kind: "message",
+    role: "user",
+    text: "before\n~~~\nafter",
+  }];
+  assertEquals(parseLog(serializeLog(e)), e);
+});
+
 Deno.test("non-pagu prose is ignored", () => {
   const md = "# notes\n\nsome prose\n\n" +
     serializeLog([{ kind: "message", role: "assistant", text: "ok" }]);
@@ -89,22 +98,20 @@ Deno.test("non-pagu prose is ignored", () => {
 // --- round-trip property over the round-trippable domain ---
 //
 // `parseLog ∘ serializeLog = id` is the codec's core law (the log is the event
-// store — a round-trip bug corrupts the conversation). The codec does NOT escape
-// its own delimiters, so the law holds on a constrained domain, encoded by the
-// generators below and documented here as the boundary:
-//   - bodies must not contain `~` (would collide with the `~~~` fences);
-//   - joined list elements (args/perms) must not contain `\n` (the split char),
-//     and ran-with elements no spaces (its split char) — and are non-empty
-//     (a single "" element joins to "" and parses back as []);
-//   - attr values must not contain `"`/newline (the opening line is single-line,
-//     values quote only on whitespace).
-// Inputs outside this domain are a known limitation (the codec should escape its
-// delimiters) — tracked as a finding, not fixed here.
+// store — a round-trip bug corrupts the conversation). Bodies may contain `~`
+// runs of any length (variable-length fences handle them — see serialize.ts).
+// The remaining domain constraints reflect the *structured* fields, whose values
+// never carry these chars by construction:
+//   - joined list elements (args/perms) contain no `\n` (the split char), and
+//     ran-with elements no spaces (its split char) — and are non-empty (a single
+//     "" element joins to "" and parses back as []);
+//   - attr values (ids, source, program …) contain no `"`/newline (the opening
+//     line is single-line; values quote only on whitespace).
 const join = (cs: string[], min: number) =>
   fc.array(fc.constantFrom(...cs), { minLength: min, maxLength: 14 }).map((a) =>
     a.join("")
   );
-const BODY = 'aB7 \n`"=/.:-é中'.split("");
+const BODY = 'aB7 \n`"=/.:-é中~'.split(""); // `~` included: fences are variable-length
 const ATTR = "aB7 `=/.:-é中".split(""); // no `"`, no newline
 const ELEM = 'aB7 `"=/.:-é中'.split(""); // arg/perm element: no newline
 const RW = "aB7`=/.:-é中".split(""); // ran-with element: no space either
