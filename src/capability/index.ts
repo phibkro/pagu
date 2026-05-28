@@ -67,6 +67,18 @@ export interface Exec {
   outcome: "stop" | "loop";
 }
 
+/**
+ * Read-only view of Exec for terminal handlers (autoApprove, run). The
+ * gate-never-widen law: handlers may read body/perms but not replace them.
+ * `Exec ⊆ ReadonlyExec` (mutable fields satisfy readonly), so
+ * `Step<ReadonlyExec> ⊆ Step<Exec>` via contravariance — terminal handlers
+ * declared as Step<ReadonlyExec> slot into Step<Exec> pipelines without casts.
+ */
+export type ReadonlyExec = Omit<Exec, "body" | "perms"> & {
+  readonly body: string;
+  readonly perms: readonly string[];
+};
+
 // ── Cage mechanics ───────────────────────────────────────────────────────────
 
 /**
@@ -158,7 +170,7 @@ export async function performRun(params: {
   ctx: AgentContext;
   id: string;
   body: string;
-  perms: string[];
+  perms: readonly string[];
   scriptArgs?: string[];
   cwd?: string;
 }): Promise<"stop" | "loop"> {
@@ -210,11 +222,15 @@ export async function performRun(params: {
   return "loop";
 }
 
-// ── Shared Step<Exec> handlers ───────────────────────────────────────────────
+// ── Shared Step<ReadonlyExec> terminal handlers ──────────────────────────────
+// Typed as Step<ReadonlyExec> so the compiler enforces gate-never-widen:
+// handlers can read body/perms but cannot replace them. Step<ReadonlyExec>
+// satisfies Step<Exec> via contravariance (Exec ⊆ ReadonlyExec) so these slot
+// into Step<Exec> pipelines without casts.
 
 /** Log the approve decision + set running status; always continues. Shared
  * by skill/task/command (write keeps its own approve with the human gate). */
-export const autoApprove: Step<Exec> = (exec) => {
+export const autoApprove: Step<ReadonlyExec> = (exec) => {
   exec.ctx.ui.status(`running: ${exec.title}…`);
   exec.ctx.log.push({
     kind: "decision",
@@ -227,7 +243,7 @@ export const autoApprove: Step<Exec> = (exec) => {
 };
 
 /** Terminal run handler: call performRun, set outcome, always halt. */
-export const run: Step<Exec> = async (exec) => {
+export const run: Step<ReadonlyExec> = async (exec) => {
   exec.outcome = await performRun({
     ctx: exec.ctx,
     id: exec.id,

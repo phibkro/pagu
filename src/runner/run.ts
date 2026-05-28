@@ -32,13 +32,13 @@ function toFlag(p: string): string {
 }
 
 /** Did the granted set include any network capability? */
-function grantsNet(perms: string[]): boolean {
+function grantsNet(perms: readonly string[]): boolean {
   return perms.some((p) => /^(--)?allow-(net|all)\b/.test(p));
 }
 
 export async function runScript(opts: {
   scriptPath: string;
-  perms: string[];
+  perms: readonly string[];
   /** Working directory for the run (typically a disposable scratch dir). */
   cwd?: string;
   /** OS sandbox to wrap the run in (default "none" — Deno floor only). */
@@ -109,7 +109,7 @@ export async function runScript(opts: {
 
 /** Resolve granted write perms to existing mount points: bind the target,
  * or its parent dir when the target file doesn't exist yet. */
-function resolveWritable(scratch: string, perms: string[]): string[] {
+function resolveWritable(scratch: string, perms: readonly string[]): string[] {
   const mounts = new Set<string>([scratch]);
   for (const p of perms) {
     const m = /^(?:--)?allow-write=(.+)$/.exec(p);
