@@ -443,8 +443,12 @@ portable tier-1 floor around it (no regression).
   `@agentclientprotocol/sdk` (`AgentSideConnection`, ndJSON over Deno-native web
   streams). **Declines the client's `terminal/*`/`fs/write` for execution** —
   the runner stays the only exec path (invariant #1); ACP carries conversation +
-  approval UX only. Deferred: session/cancel (needs cancellable `runTask`),
-  images/audio, MCP, remote transport.
+  approval UX only. `session/new`|`load` honor the client's workspace `cwd`
+  (2026-05-28) so repo + read-allowlist detection follows the editor's project.
+  **v1 is partial** — chat + approval work, but history replay on load,
+  slash-command advertisement, cancellation, and tool-call surfacing remain (see
+  Open → "ACP — remaining integration work"). Still deferred: images/audio, MCP,
+  remote transport.
 - **Composable agent loops — substrate (v1)** (`src/loop.ts`) — the agent loop
   is now a composable value, not a hand-written `for`. Denotation:
   `⟦Flow⟧ =
@@ -507,6 +511,20 @@ portable tier-1 floor around it (no regression).
 - **Permission modes** — named envelope bundles generalizing repo mode.
 - **A credential-injecting egress proxy** so net-granted scripts never see raw
   secrets.
+- **ACP — remaining integration work.** v1 runs in editors but is partial:
+  - **History replay on `session/load`** — `loadSession` rebuilds the context
+    (loads the log) but never re-sends the prior conversation as
+    `session/update` notifications, so a reloaded Zed thread shows empty. Replay
+    the log on load.
+  - **Advertise slash commands** — surface pagu's commands (`/model`, `/roles`,
+    `/skills`, `/advisor`, …) via ACP `availableCommands` so the editor offers
+    them, and route the chosen command through the same handlers the TUI uses.
+  - **Cooperative cancellation** (`session/cancel`) — currently a no-op; needs a
+    cancellable `runTask` (ties to the loop substrate — a cancel signal the loop
+    checks between turns).
+  - **Surface tool calls** — map `read`/`write`/`run_task`/`invoke_skill`
+    actions to ACP `tool_call` / `tool_call_update` so the editor shows what the
+    agent is doing, not just streamed text.
 - GUI / computer-use.
 
 ### Idea backlog (speculative / paradigm-level)
@@ -552,7 +570,18 @@ above.)
    turn boundary ≈ the effect site, so boundary-level handlers likely suffice.
    Pluggability is also the home for plugins / extensibility (new providers
    behind `chat()`, new frontends behind `UI`/`Approver`).
+3. **Read-only-command auto-approve gate** — an application of the handler
+   pipeline (#2). Auto-approve a proposal when its _only_ effect is running a
+   curated, read-only command (`rg`/`grep`/`git log`/…) with read-only perms —
+   `allow-run=<safe cmd>` + `allow-read`, **no write, no net**. Safe by
+   construction: the absent write/net grants bound the blast radius (the cage
+   already rehearses no-net/scratch), so it never widens the envelope
+   (gate-never-widen). Note: `ls`/`cat`/`head`/`tail` are already the `read`
+   tool's job — the real win is content **search** the `read` tool can't do.
+   Cautions: "read-only" is sneaky (`find -delete`, `tee`, redirections, arg
+   injection) → the list must be curated and arg-constrained.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
-constraints surface.
+constraints surface. ACP integration gaps (Open) are independent and can slot in
+anytime.
