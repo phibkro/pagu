@@ -9,6 +9,7 @@ import type { ProviderConfig } from "./providers/index.ts";
 import type { SessionMeta } from "./config/index.ts";
 import type { SkillScript } from "./skills/index.ts";
 import type { CommandEntry, DiscoveredTask } from "./tasks/index.ts";
+import type { CommandRule } from "./tasks/grammar.ts";
 
 // ── Entry type aliases used across capability modules ──────────────────────
 
@@ -82,6 +83,9 @@ export interface AgentContext {
   commandEntries: CommandEntry[];
   /** Discovered project tasks (for the run_task tool listing). */
   discoveredTasks: DiscoveredTask[];
+  /** Default read-only command rules whose program is installed here — the
+   * run_command tool advertises these (legal ∩ available). */
+  availableCommandRules: CommandRule[];
   /** Pre-approved scripts from active skills. */
   activeSkillScripts: SkillScript[];
   /** Replace the active skill group at runtime (the TUI's /skills). */

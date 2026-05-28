@@ -1,6 +1,7 @@
 // effects: stdio (stdin/stdout)
 import type { Entry } from "../log/schema.ts";
 import type { ProviderConfig } from "../providers/chat.ts";
+import type { CommandRule } from "../tasks/grammar.ts";
 
 /** What a phase subprocess receives on stdin. The log carries all prior
  * context (including the user's task as the latest message), so a phase
@@ -21,6 +22,8 @@ export interface PhaseInput {
   allowedTasks?: Array<
     { program: string; args: string[]; description: string }
   >;
+  /** Read-only command rules available for run_command (installed here). */
+  commandRules?: CommandRule[];
   /** Gitignored paths the agent must not read. Deno --deny-read breaks
    * readDir of the parent, so we enforce this at the application layer
    * in respond.ts instead of via a Deno flag. Absolute paths. */

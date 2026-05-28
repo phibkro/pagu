@@ -1,6 +1,11 @@
 import { assertEquals } from "@std/assert";
 import { parsePermission } from "../permissions/index.ts";
-import { DEFAULT_RULES, findDefaultRule } from "./defaults.ts";
+import {
+  availableRules,
+  DEFAULT_RULES,
+  findDefaultRule,
+  programOnPath,
+} from "./defaults.ts";
 import { recognize } from "./grammar.ts";
 
 const ROOT = "/repo";
@@ -56,6 +61,20 @@ Deno.test("findDefaultRule: picks by program + prefix", () => {
   assertEquals(findDefaultRule("git", ["diff"])?.prefix, ["diff"]);
   assertEquals(findDefaultRule("rg", ["foo"])?.program, "rg");
   assertEquals(findDefaultRule("npm", ["run"]), undefined);
+});
+
+Deno.test("availableRules: keeps only rules whose program is present", () => {
+  const got = availableRules(DEFAULT_RULES, (p) => p === "rg"); // git "absent"
+  assertEquals(new Set(got.map((r) => r.program)), new Set(["rg"]));
+});
+
+Deno.test("programOnPath: false for a nonexistent program", async () => {
+  assertEquals(await programOnPath("pagu-no-such-binary-zzz"), false);
+});
+
+Deno.test("programOnPath: true for a program on PATH", async () => {
+  // deno is always on PATH when these tests run.
+  assertEquals(await programOnPath("deno"), true);
 });
 
 // The law: every default rule has free args, so each must be read-only —

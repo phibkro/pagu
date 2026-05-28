@@ -1,5 +1,6 @@
-// pure: the vetted default command rules + lookup. Each is read-only
-// (ceiling carries no write/net) so its free args are safe by the grammar law.
+// pure: the default command rules + lookup + availability filter.
+// effects: programOnPath (PATH probe). Each rule is read-only (ceiling carries
+// no write/net) so its free args are safe by the grammar law.
 import type { CommandRule } from "./grammar.ts";
 
 /**
@@ -68,4 +69,40 @@ export function findDefaultRule(
   return DEFAULT_RULES.find(
     (r) => r.program === program && r.prefix.every((p, i) => args[i] === p),
   );
+}
+
+/** Keep only rules whose program is present (advertise = legal ∩ available).
+ * Pure — the presence predicate is injected so it stays testable. */
+export function availableRules(
+  rules: CommandRule[],
+  present: (program: string) => boolean,
+): CommandRule[] {
+  return rules.filter((r) => present(r.program));
+}
+
+/** True if `program` is an executable on PATH. Scans (no exec) so checking
+ * presence never runs the program. */
+export async function programOnPath(program: string): Promise<boolean> {
+  const sep = Deno.build.os === "windows" ? ";" : ":";
+  const exts = Deno.build.os === "windows"
+    ? (Deno.env.get("PATHEXT")?.split(";") ?? [".EXE"])
+    : [""];
+  for (const dir of (Deno.env.get("PATH") ?? "").split(sep)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      try {
+        if ((await Deno.stat(`${dir}/${program}${ext}`)).isFile) return true;
+      } catch { /* not in this dir */ }
+    }
+  }
+  return false;
+}
+
+/** The default rules whose program is installed on this machine. */
+export async function presentDefaultRules(): Promise<CommandRule[]> {
+  const present = new Set<string>();
+  for (const p of new Set(DEFAULT_RULES.map((r) => r.program))) {
+    if (await programOnPath(p)) present.add(p);
+  }
+  return availableRules(DEFAULT_RULES, (p) => present.has(p));
 }

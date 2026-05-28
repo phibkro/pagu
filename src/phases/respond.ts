@@ -9,7 +9,6 @@ import {
   runCommandToolDef,
   runTaskToolDef,
 } from "../tasks/tool.ts";
-import { DEFAULT_RULES } from "../tasks/defaults.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
@@ -55,6 +54,7 @@ const out: Entry[] = [];
 
 const skillScripts = input.skillScripts ?? [];
 const allowedTasks = input.allowedTasks ?? [];
+const commandRules = input.commandRules ?? [];
 const gitignored = input.gitignored ?? [];
 
 /** True if path is gitignored (exact match or nested under a gitignored dir). */
@@ -67,7 +67,7 @@ function isGitignored(filePath: string): boolean {
 const tools = [
   readToolDef,
   writeToolDef,
-  runCommandToolDef(DEFAULT_RULES),
+  ...(commandRules.length > 0 ? [runCommandToolDef(commandRules)] : []),
   ...(skillScripts.length > 0 ? [invokeSkillToolDef(skillScripts)] : []),
   ...(allowedTasks.length > 0 ? [runTaskToolDef(allowedTasks)] : []),
 ];

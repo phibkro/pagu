@@ -24,6 +24,7 @@ import {
   type DiscoveredTask,
 } from "../tasks/policy.ts";
 import { discoverTasks } from "../tasks/discovery.ts";
+import { presentDefaultRules } from "../tasks/defaults.ts";
 import type { ProviderConfig } from "../providers/chat.ts";
 import {
   latestSession,
@@ -594,6 +595,10 @@ export async function buildContext(
     );
   }
 
+  // Read-only commands to advertise: the defaults whose program is installed
+  // here (don't list `rg` if ripgrep is absent — the agent would waste a turn).
+  const availableCommandRules = await presentDefaultRules();
+
   const active = { path: logPath, meta: loaded.meta };
   const persist = () => {
     Deno.mkdirSync(dirname(active.path), { recursive: true });
@@ -636,6 +641,7 @@ export async function buildContext(
       return liveGitignored;
     },
     discoveredTasks: liveDiscoveredTasks,
+    availableCommandRules,
     get activeSkillScripts() {
       return liveSkillScripts;
     },

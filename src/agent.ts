@@ -61,6 +61,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     })),
     gitignored: ctx.gitignored,
     allowedTasks: buildAllowedTasks(ctx),
+    commandRules: ctx.availableCommandRules,
   });
 
   const respond: Responder = () =>
