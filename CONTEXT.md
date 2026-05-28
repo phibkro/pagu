@@ -455,10 +455,23 @@ portable tier-1 floor around it (no regression).
   `Step`, not a runner. `runTask` is reconstructed as
   `loop(turn, MAX_TURNS)(ctx)`, behavior-identical (full suite + live run
   green). The turn is **atomic over the inner cage fix-round loop** (unification
-  deferred). `andThen` (composition) and `fanOut` (monoidal product, + immutable
-  carrier) are deferred extensions the type accommodates — pulled in when a real
-  second loop needs them. See
-  `docs/specs/2026-05-28-composable-agent-loops-design.md`.
+  deferred). `andThen` (composition) is now **implemented** (the handler
+  pipeline below is its first caller, at the `Proposal` carrier); `fanOut`
+  (monoidal product,
+  - immutable carrier) remains deferred. See
+    `docs/specs/2026-05-28-composable-agent-loops-design.md`.
+- **Composable handler pipeline (v1)** (`src/write/pipeline.ts`) —
+  `write/execute.ts` is now `pipeline([cage, approve, run])` over
+  `Step<Proposal>`: the proposal–handler model made concrete (`docs/CONCEPTS.md`
+  — effects ≅ permissions ≅ types). Each stage is a named, insertable handler; a
+  **gate** halts (returns `done`). Reuses the loop substrate's generic `Step<C>`
+  and implements `andThen` + `pipeline` in `src/loop.ts`. Behavior-identical
+  (full suite + a live run on both the auto-approve→run and reject→short-circuit
+  paths). Keystone law: **handlers tighten, never widen** (a future plugin is
+  safe by the same lattice law as role composition; the set of handlers is the
+  TCB). Deferred: config-driven pluggability (where the law gets type-enforced)
+  and generalizing to the `skills`/`tasks` executors. See
+  `docs/specs/2026-05-28-composable-handler-pipeline-design.md`.
 
 ### Roles — decided behavior (shipped; intended, surfaced — not bugs)
 
@@ -498,12 +511,13 @@ portable tier-1 floor around it (no regression).
 
 ### Idea backlog (speculative / paradigm-level)
 
-**Next up: #2, the composable handler pipeline.** The loop substrate (v1)
-shipped 2026-05-28 (`src/loop.ts`; see Shipped). The next slice makes
-`write/execute.ts`'s hardcoded `cage → review → advisor → approve → run` stack a
-**composable handler pipeline** — grounded in the proposal–handler model
-(`docs/CONCEPTS.md`: effects ≅ permissions ≅ types), with its keystone law:
-**handlers tighten, never widen.**
+**Next up: the handler-pipeline follow-ons.** Both the loop substrate and the
+composable handler pipeline (v1) shipped 2026-05-28 (`src/loop.ts`,
+`src/write/pipeline.ts`; see Shipped). The seam is in; the next slices are its
+increments — **config-driven pluggability** (insert custom handlers; the point
+where the gate-never-widen law gets _type-enforced_) and **generalizing** the
+handler pipeline to the `skills`/`tasks` executors. (Then back to #1: `fanOut` /
+multi-agent.)
 
 To knock out one at a time — not commitments. Designed through the compositional
 lens (see `AGENTS.md` → Values: functional/compositional core, composition over
@@ -525,20 +539,20 @@ above.)
    queued: unifying the inner cage fix-round loop under a shared inner-loop
    combinator (would gain a second instance if author→critic is ever revived).
 2. **Composable handler pipeline — the proposal–handler model made explicit.**
-   Make `write/execute.ts`'s hardcoded `cage → review → advisor → approve → run`
-   stack composable: each stage an insertable `Step → Step` **handler** (a
-   **gate** if it can refuse), so new behavior (policy gates, logging, a critic,
-   plugins) drops in without editing the core. Grounded in `docs/CONCEPTS.md`'s
-   proposal– handler model (effects ≅ permissions ≅ types; the envelope is the
-   signature, the cage the checker). **Keystone law: handlers tighten, never
-   widen** — a plugin is safe by the same lattice law that makes role
-   composition safe, so invariant #1 survives a pluggable model (the set of
-   handlers is the TCB). Value-level first, named in effect-handler vocabulary;
-   algebraic effect handlers (operation- granularity interception) only if a
-   real need surfaces — pagu's one-action-per- turn shape means the turn
-   boundary ≈ the effect site, so boundary-level handlers likely suffice. This
-   is also the home for the old #2 (plugins / extensibility: new providers
+   Core (v1) **shipped** 2026-05-28 (`src/write/pipeline.ts`):
+   `write/execute.ts` is `pipeline([cage, approve, run])` over `Step<Proposal>`;
+   each stage a named, insertable handler; a **gate** halts. Implements
+   `andThen`/`pipeline` in `src/loop.ts`. Remaining increments: **config-driven
+   pluggability** (insert custom/plugin handlers — the point where the
+   gate-never-widen law gets _type-enforced_, since a plugin is safe by the same
+   lattice law as role composition; the set of handlers is the TCB) and
+   **generalizing** the pipeline to the `skills`/`tasks` executors. Stays
+   value-level; algebraic effect handlers (operation-granularity interception)
+   only if a real need surfaces — pagu's one-action-per-turn shape means the
+   turn boundary ≈ the effect site, so boundary-level handlers likely suffice.
+   Pluggability is also the home for plugins / extensibility (new providers
    behind `chat()`, new frontends behind `UI`/`Approver`).
 
-Suggested order **2 → 1** (the handler pipeline is next; re-sequence freely as
-constraints surface).
+Suggested order: the handler-pipeline increments (pluggability, generalize to
+skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
+constraints surface.

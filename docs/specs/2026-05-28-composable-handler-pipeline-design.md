@@ -1,7 +1,12 @@
 # Composable handler pipeline — design (v1)
 
-> Status: hardened via grill-with-docs (2026-05-28); ready for tdd. Grill
-> resolved: the carrier carries `discovered` + `initialBody` (deriving
+> Status: **implemented 2026-05-28** (via tdd) — `andThen`/`pipeline` in
+> `src/loop.ts` (law-tested), the `cage`/`approve`/`run` handlers + `Proposal`
+> in `src/write/pipeline.ts`, `execute.ts` the thin assembly; behavior-identical
+> (166 tests + live run on both the auto-approve→run and reject→short-circuit
+> paths). As-built followed the design, adding a small `fullPerms` helper to DRY
+> the derived perms. Hardened via grill-with-docs (2026-05-28). Grill resolved:
+> the carrier carries `discovered` + `initialBody` (deriving
 > `perms`/`discoveredPerms` in-handler, as the code does), not a single `perms`
 > field — required for behavior-identity. Roadmap item #2 (CONTEXT.md → Idea
 > backlog → "composable handler pipeline"). Authored via brainstorming; to be

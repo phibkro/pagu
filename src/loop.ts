@@ -19,3 +19,22 @@ export function loop<C>(step: Step<C>, maxTurns: number): Step<C> {
     return "done";
   };
 }
+
+/**
+ * Sequence two steps (Kleisli composition over the Flow coproduct): run `a`;
+ * if it halts (`done`), skip `b`; otherwise run `b` and return its flow.
+ * Short-circuit on `done` = "a gate refused → don't run the rest."
+ */
+export function andThen<C>(a: Step<C>, b: Step<C>): Step<C> {
+  return async (c: C): Promise<Flow> => (await a(c)) === "done" ? "done" : b(c);
+}
+
+/**
+ * Compose a list of steps left-to-right with `andThen`: run each in turn,
+ * short-circuiting at the first `done`. The identity is an always-`continue`
+ * step, so `pipeline([])` is a no-op that continues.
+ */
+export function pipeline<C>(steps: Step<C>[]): Step<C> {
+  const cont: Step<C> = () => Promise.resolve("continue");
+  return steps.reduce(andThen, cont);
+}

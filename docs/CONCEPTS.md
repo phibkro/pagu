@@ -192,13 +192,15 @@ unconditionally." A pluggable handler/plugin is therefore safe by the _same_ law
 that makes role composition safe, and invariant #1 survives a pluggable model:
 the **set of handlers is the TCB**, each named and inspectable.
 
-**Status:** today the pipeline (`cage → review → advisor → approve → run` in
-`write/execute.ts`) is a _hardcoded_ handler stack — the model names what the
-code already is implicitly. Making it a **composable** handler pipeline (each
-stage an insertable `Step → Step` handler, gates included) is the planned next
-step — the value-level form first, with these names; algebraic effect handlers
-are the lawful spine underneath, reached for only if operation-granularity
-interception ever earns its keep. (See `CONTEXT.md` → Roadmap.)
+**Status:** the `write` pipeline is now a **composable** handler pipeline (v1,
+shipped 2026-05-28): `write/execute.ts` is `pipeline([cage, approve, run])` over
+`Step<Proposal>` (`src/write/pipeline.ts`), reusing the loop substrate's generic
+`Step<C>` + `andThen`. Each handler is named and insertable; a gate is a handler
+that can halt. Still value-level — config-driven pluggability (the point where
+the gate-never-widen law gets type-enforced) and generalizing to the
+`skills`/`tasks` executors are the next increments; algebraic effect handlers
+(operation-granularity interception) are the lawful spine underneath, reached
+for only if a real need surfaces. (See `CONTEXT.md` → Roadmap.)
 
 ## Derived state and inference chains
 

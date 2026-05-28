@@ -89,7 +89,11 @@ path):
   envelope permission diff, LCS-based iteration diff, `--allow-run` target
   check; `advisor.ts`: optional pre-approval add-on — sends
   `{task, script, perms}` to a configurable model, returns structured
-  `[advisory]` flags, fails open.
+  `[advisory]` flags, fails open. `pipeline.ts`: the capability pipeline as
+  composable **handlers** (`cage`, `approve`-gate, `run`) over `Step<Proposal>`
+  — `execute.ts` is the thin assembly (`pipeline([cage, approve, run])`).
+  Handlers may gate/narrow, never widen the envelope (the proposal–handler
+  model, see `docs/CONCEPTS.md`).
 - `src/skills/` — `skill.ts`: skill loader — discovers `.pagu/skills/<name>/`
   directories, reads `SKILL.md` (frontmatter + instructions, agentskills.io spec
   — requires `name` and `description` fields matching directory name) and
@@ -140,8 +144,10 @@ Orchestrator:
   (`continue | done` coproduct), `Step<C>` (`C → Promise<Flow>`, a turn), and
   `loop : Step → Step` (the bounded fixpoint, closed over the type so a loop is
   itself a composable turn). Generic over the carrier so it imports nothing —
-  tested by law. `andThen`/`fanOut` are deferred extensions the type
-  accommodates.
+  tested by law. `andThen` (Kleisli composition, short-circuit on `done`) +
+  `pipeline` (the `andThen`-fold) are implemented — the handler pipeline
+  (`src/write/pipeline.ts`) is their first caller, at `C = Proposal`. `fanOut`
+  (monoidal product) is still deferred.
 
 Primary adapters (frontends):
 
