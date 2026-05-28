@@ -7,6 +7,7 @@ import type { SandboxKind } from "./runner/index.ts";
 import type { Entry } from "./log/index.ts";
 import type { ProviderConfig } from "./providers/index.ts";
 import type { SessionMeta } from "./config/index.ts";
+import type { HandlerPlugin } from "./capability/index.ts";
 import type { SkillScript } from "./skills/index.ts";
 import type { CommandEntry, DiscoveredTask } from "./tasks/index.ts";
 import type { CommandRule } from "./tasks/grammar.ts";
@@ -88,6 +89,8 @@ export interface AgentContext {
   availableCommandRules: CommandRule[];
   /** Pre-approved scripts from active skills. */
   activeSkillScripts: SkillScript[];
+  /** Loaded before-approve handlers; empty when none configured. */
+  activeHandlers: HandlerPlugin[];
   /** Replace the active skill group at runtime (the TUI's /skills). */
   setSkills: (names: string[]) => Promise<{ ok: boolean; message: string }>;
   /** Advisory reviewer config — present = enabled, absent = disabled. */

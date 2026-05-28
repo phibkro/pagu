@@ -18,6 +18,7 @@ import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
 import { loadRoles, type Role } from "./roles.ts";
 import { loadSkills, type Skill, type SkillScript } from "../skills/skill.ts";
+import { loadHandlers } from "../capability/handlers.ts";
 import {
   buildExplicitEntries,
   type CommandEntry,
@@ -275,6 +276,7 @@ export async function buildContext(
   let liveAdvisorConfig: ProviderConfig | undefined;
   let liveSkillScripts: SkillScript[] = [];
   let liveSkills: Skill[] = [];
+  let liveHandlers: import("../capability/index.ts").HandlerPlugin[] = [];
   let liveCommandEntries: CommandEntry[] = [];
   let liveGitignored: string[] = [];
   const liveDiscoveredTasks: DiscoveredTask[] = await discoverTasks(
@@ -446,6 +448,10 @@ export async function buildContext(
     await loadRoles(opts.roles, projectBase),
     await loadSkills(opts.skills, projectBase),
   );
+
+  // Load before-approve handlers from the resolved config stack.
+  const handlerPaths = cfg.handlers?.["before-approve"] ?? [];
+  liveHandlers = await loadHandlers(handlerPaths);
 
   // Switch provider/model at runtime (the TUI's /provider, /model). Mutates
   // cfg directly so a preset switch resets the wire settings (which a layer
@@ -646,6 +652,9 @@ export async function buildContext(
       return liveSkillScripts;
     },
     setSkills,
+    get activeHandlers() {
+      return liveHandlers;
+    },
     get advisorConfig() {
       return liveAdvisorConfig;
     },

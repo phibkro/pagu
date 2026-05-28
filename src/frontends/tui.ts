@@ -264,6 +264,16 @@ export async function tuiMain(): Promise<void> {
       (ctx.repo ? dim(`\n  repo      ${ctx.repo} (auto-approve)`) : ""),
   );
   console.log(dim(`  log       ${ctx.currentLogPath()}`));
+  if (ctx.activeHandlers.length > 0) {
+    const handlerLine = ctx.activeHandlers
+      .map((h) =>
+        h.permissions.length > 0
+          ? `${h.name} (subprocess: ${h.permissions.join(", ")})`
+          : `${h.name} (in-process)`
+      )
+      .join(" · ");
+    console.log(dim(`  handlers  ${handlerLine}`));
+  }
   console.log(dim(`  sandbox   ${ctx.sandboxKind}`));
   console.log(dim("  /help for commands; empty line or Ctrl-D to exit\n"));
 

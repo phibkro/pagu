@@ -4,7 +4,13 @@ import {
   parsePermission,
   withinEnvelope,
 } from "../permissions/index.ts";
-import { autoApprove, cageOnce, type Exec, run } from "../capability/index.ts";
+import {
+  autoApprove,
+  cageOnce,
+  type Exec,
+  run,
+  runHandlerStep,
+} from "../capability/index.ts";
 import { pipeline } from "../loop.ts";
 import {
   filterStaleInferred,
@@ -76,7 +82,8 @@ async function runWithDefaultRule(
     return Promise.resolve("continue" as const);
   };
 
-  await pipeline([grammarGate, autoApprove, run])(exec);
+  const handlers = ctx.activeHandlers.map((h) => runHandlerStep(h, ctx));
+  await pipeline([grammarGate, ...handlers, autoApprove, run])(exec);
   return exec.outcome;
 }
 
@@ -221,7 +228,10 @@ async function runWithPolicy(
     return "done" as const;
   };
 
-  await pipeline([policyGate, taskCeilingGate, autoApprove, run])(exec);
+  const handlers = ctx.activeHandlers.map((h) => runHandlerStep(h, ctx));
+  await pipeline([policyGate, taskCeilingGate, ...handlers, autoApprove, run])(
+    exec,
+  );
   return exec.outcome;
 }
 

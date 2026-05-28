@@ -4,6 +4,7 @@ import {
   cageWithinCeiling,
   type Exec,
   run,
+  runHandlerStep,
 } from "../capability/index.ts";
 import { pipeline } from "../loop.ts";
 import type { AgentContext, SkillInvocationEntry } from "../context.ts";
@@ -106,6 +107,9 @@ export async function executeSkillInvocation(
     return "continue" as const;
   };
 
-  await pipeline([resolveBody, ceilingGate, autoApprove, run])(exec);
+  const handlers = ctx.activeHandlers.map((h) => runHandlerStep(h, ctx));
+  await pipeline([resolveBody, ceilingGate, ...handlers, autoApprove, run])(
+    exec,
+  );
   return exec.outcome;
 }

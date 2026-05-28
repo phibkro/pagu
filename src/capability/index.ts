@@ -16,7 +16,7 @@ import { classifyRun, type RunClass, runScript } from "../runner/index.ts";
 import type { AgentContext } from "../context.ts";
 import type { Entry } from "../log/index.ts";
 import type { ToolDef } from "../providers/index.ts";
-import type { Step } from "../loop.ts";
+import type { Flow, Step } from "../loop.ts";
 
 export type { RunClass };
 
@@ -48,6 +48,43 @@ export interface Capability<Data> {
 
 /** Type-erased form for the registry (heterogeneous array of capabilities). */
 export type AnyCapability = Capability<unknown>;
+
+// ── Pluggable handlers ───────────────────────────────────────────────────────
+
+/** Serializable view of Exec that crosses the handler subprocess boundary. */
+export interface ExecView {
+  id: string;
+  body: string;
+  perms: readonly string[];
+  title: string;
+}
+
+/** JSON sent to a handler-phase subprocess over stdin. */
+export interface HandlerPhaseInput {
+  handlerPath: string;
+  exec: ExecView;
+}
+
+/** JSON the handler-phase subprocess writes to stdout. */
+export interface HandlerPhaseOutput {
+  decision: "continue" | "done";
+  rationale?: string;
+}
+
+/**
+ * A loaded before-approve handler. `fn` is called in-process when permissions
+ * is empty; the subprocess path is taken when permissions contains extras.
+ */
+export interface HandlerPlugin {
+  name: string;
+  description: string;
+  /** Absolute path to the handler file — used for subprocess invocation. */
+  path: string;
+  /** Declared permission ceiling. Empty = in-process; non-empty = subprocess. */
+  permissions: string[];
+  /** The handler function — type-safe gate-never-widen via ReadonlyExec. */
+  fn: Step<ReadonlyExec>;
+}
 
 // ── Exec: the carrier threaded through a capability pipeline ─────────────────
 
@@ -254,3 +291,87 @@ export const run: Step<ReadonlyExec> = async (exec) => {
   });
   return "done";
 };
+
+// ── Handler hybrid dispatch ───────────────────────────────────────────────────
+
+/** The orchestrator's own permission flags (no net by default). Handlers
+ *  declaring only these run in-process; any extra flag triggers a subprocess. */
+const ORCHESTRATOR_FLAGS = new Set(["read", "write", "run", "env"]);
+
+/**
+ * True if the handler's declared permissions include flags the orchestrator
+ * doesn't hold — meaning an isolated subprocess is required.
+ */
+export function needsSubprocess(permissions: string[]): boolean {
+  return permissions.some((p) => {
+    const flag = p.replace(/^(?:--)?allow-/, "").split("=")[0];
+    return !ORCHESTRATOR_FLAGS.has(flag);
+  });
+}
+
+/**
+ * Wrap a HandlerPlugin as a Step<Exec>. In-process when needsSubprocess is
+ * false; subprocess (spawnHandlerPhase) when extra permissions are declared.
+ * The ctx parameter is used only for the subprocess path.
+ */
+export function runHandlerStep(
+  h: HandlerPlugin,
+  ctx: AgentContext,
+): Step<Exec> {
+  return (exec: Exec): Promise<Flow> => {
+    if (!needsSubprocess(h.permissions)) {
+      return h.fn(exec);
+    }
+    return spawnHandlerPhase(h, exec, ctx);
+  };
+}
+
+/** Spawn an isolated handler-phase subprocess with the declared ceiling.
+ *  Uses raw JSON I/O (not the respond-phase Entry[] protocol). */
+async function spawnHandlerPhase(
+  h: HandlerPlugin,
+  exec: Exec,
+  ctx: AgentContext,
+): Promise<Flow> {
+  const { join } = await import("@std/path");
+  const view: ExecView = {
+    id: exec.id,
+    body: exec.body,
+    perms: exec.perms,
+    title: exec.title,
+  };
+  const input = JSON.stringify(
+    { handlerPath: h.path, exec: view } satisfies HandlerPhaseInput,
+  );
+  const child = new Deno.Command("deno", {
+    args: [
+      "run",
+      "--no-prompt",
+      ...ctx.readPaths.map((p) => `--allow-read=${p}`),
+      ...h.permissions,
+      join(ctx.phaseDir, "handler.ts"),
+    ],
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "piped",
+  }).spawn();
+  const writer = child.stdin.getWriter();
+  await writer.write(new TextEncoder().encode(input));
+  await writer.close();
+  let stdout = "";
+  const drainOut = async () => {
+    for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
+      stdout += c;
+    }
+  };
+  const drainErr = async () => {
+    for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
+      ctx.ui.stream?.(c);
+    }
+  };
+  await Promise.all([drainOut(), drainErr()]);
+  const { code } = await child.status;
+  if (code !== 0) throw new Error(`handler ${h.name} exited ${code}`);
+  const out = JSON.parse(stdout) as HandlerPhaseOutput;
+  return out.decision;
+}

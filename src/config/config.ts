@@ -29,6 +29,8 @@ export interface PaguConfig {
   advisorProvider?: string;
   /** Model for the advisor (falls back to the main model). */
   advisorModel?: string;
+  /** Pluggable handler paths, keyed by injection slot. */
+  handlers?: { "before-approve"?: string[] };
 }
 
 /**
@@ -50,6 +52,7 @@ export interface ConfigLayer {
   advisorProvider?: string;
   advisorModel?: string;
   allowedTasks?: string[];
+  handlers?: { "before-approve"?: string[] };
 }
 
 /** Provider presets. Most speak OpenAI Chat Completions; anthropic uses its
@@ -152,6 +155,14 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
     ) {
       out.allowedTasks = p.allowedTasks as string[];
     }
+    if (
+      p.handlers && typeof p.handlers === "object" && !Array.isArray(p.handlers)
+    ) {
+      const h = p.handlers as Record<string, unknown>;
+      if (isStringArray(h["before-approve"])) {
+        out.handlers = { "before-approve": h["before-approve"] };
+      }
+    }
   }
   return out;
 }
@@ -199,6 +210,13 @@ export function mergeLayer(a: ConfigLayer, b: ConfigLayer): ConfigLayer {
   if (advisorModel !== undefined) out.advisorModel = advisorModel;
   const allowedTasks = unionLists(a.allowedTasks, b.allowedTasks);
   if (allowedTasks !== undefined) out.allowedTasks = allowedTasks;
+  const beforeApprove = unionLists(
+    a.handlers?.["before-approve"],
+    b.handlers?.["before-approve"],
+  );
+  if (beforeApprove !== undefined) {
+    out.handlers = { "before-approve": beforeApprove };
+  }
   return out;
 }
 
@@ -229,6 +247,15 @@ export function toLayer(data: Record<string, unknown>): ConfigLayer {
   }
   if (typeof data.advisorModel === "string") l.advisorModel = data.advisorModel;
   if (isStringArray(data.allowedTasks)) l.allowedTasks = data.allowedTasks;
+  if (
+    data.handlers && typeof data.handlers === "object" &&
+    !Array.isArray(data.handlers)
+  ) {
+    const h = data.handlers as Record<string, unknown>;
+    if (isStringArray(h["before-approve"])) {
+      l.handlers = { "before-approve": h["before-approve"] };
+    }
+  }
   return l;
 }
 
