@@ -592,7 +592,12 @@ above.)
    centrally, see `docs/CONCEPTS.md`); the generalization is a **command core +
    per-frontend presentation adapters**, folding in `/roles`/`/skills` (the
    picker-vs-listing split) and the TUI-native vs generalized distinction.
-   Design as its own slice when a third real need pushes on it.
+   Design as its own slice when a third real need pushes on it. Also the home
+   for **effect-performing commands** (vs today's pure config-mutation) — e.g.
+   `/model` querying the provider's list-models endpoint for settable names.
+   Safe re: #1 (human-initiated read to the already-trusted provider host), but
+   it's a category shift (the first command with a network effect, run in the
+   orchestrator) — model it as an effect/handler, don't bolt it on.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
