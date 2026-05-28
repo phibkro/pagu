@@ -1,5 +1,13 @@
-import { assertEquals } from "@std/assert";
-import { andThen, type Flow, loop, pipeline, type Step } from "./loop.ts";
+import { assertEquals, assertRejects } from "@std/assert";
+import fc from "fast-check";
+import {
+  andThen,
+  fanOut,
+  type Flow,
+  loop,
+  pipeline,
+  type Step,
+} from "./loop.ts";
 
 // The loop combinator, tested by law with fake steps (no real I/O). A Step's
 // carrier is irrelevant to loop — these use a trivial carrier and count runs.
@@ -80,4 +88,91 @@ Deno.test("pipeline runs steps in order, short-circuiting at the first done", as
   ])(null);
   assertEquals(ran, ["a", "b"]); // c skipped after b halts
   assertEquals(flow, "done");
+});
+
+// --- fanOut: eager-parallel fold of the Flow monoid ---
+
+// A pure branch returning a predetermined flow, bumping an out-of-band counter
+// (NOT carrier mutation — preserves the read-only contract). The carrier is
+// the counter array index space; branches never touch it.
+type Spec = { flow: Flow };
+const branchFrom = (spec: Spec, tick: () => void): Step<null> => () => {
+  tick();
+  return Promise.resolve(spec.flow);
+};
+const specArb = fc.record({ flow: fc.constantFrom<Flow>("continue", "done") });
+
+Deno.test("fanOut: identity — empty branches returns continue", async () => {
+  assertEquals(await fanOut<null>([])(null), "continue");
+});
+
+Deno.test("fanOut: result agrees with pipeline (keystone, oracle=pipeline)", () => {
+  fc.assert(
+    fc.asyncProperty(fc.array(specArb, { maxLength: 8 }), async (specs) => {
+      const noop = () => {};
+      const fanFlow = await fanOut(specs.map((s) => branchFrom(s, noop)))(null);
+      const pipeFlow = await pipeline(specs.map((s) => branchFrom(s, noop)))(
+        null,
+      );
+      return fanFlow === pipeFlow;
+    }),
+  );
+});
+
+Deno.test("fanOut: runs ALL branches; pipeline runs <= N (execution difference)", () => {
+  fc.assert(
+    fc.asyncProperty(
+      fc.array(specArb, { minLength: 1, maxLength: 8 }),
+      async (specs) => {
+        let fanCount = 0;
+        let pipeCount = 0;
+        await fanOut(specs.map((s) => branchFrom(s, () => fanCount++)))(null);
+        await pipeline(specs.map((s) => branchFrom(s, () => pipeCount++)))(
+          null,
+        );
+        const firstDone = specs.findIndex((s) => s.flow === "done");
+        const expectedPipe = firstDone === -1 ? specs.length : firstDone + 1;
+        // fanOut runs every branch; pipeline stops at (and including) first done.
+        return fanCount === specs.length && pipeCount === expectedPipe &&
+          pipeCount <= fanCount;
+      },
+    ),
+  );
+});
+
+Deno.test("fanOut: associative — flattening preserves the result", () => {
+  fc.assert(
+    fc.asyncProperty(
+      fc.array(specArb, { maxLength: 5 }),
+      fc.array(specArb, { maxLength: 5 }),
+      async (xs, ys) => {
+        const noop = () => {};
+        const flat = await fanOut(
+          [...xs, ...ys].map((s) => branchFrom(s, noop)),
+        )(null);
+        const nested = await fanOut([
+          fanOut(xs.map((s) => branchFrom(s, noop))),
+          fanOut(ys.map((s) => branchFrom(s, noop))),
+        ])(null);
+        return flat === nested;
+      },
+    ),
+  );
+});
+
+Deno.test("fanOut: commutative — branch order doesn't change the result", () => {
+  fc.assert(
+    fc.asyncProperty(specArb, specArb, async (a, b) => {
+      const noop = () => {};
+      const ab = await fanOut([branchFrom(a, noop), branchFrom(b, noop)])(null);
+      const ba = await fanOut([branchFrom(b, noop), branchFrom(a, noop)])(null);
+      return ab === ba;
+    }),
+  );
+});
+
+Deno.test("fanOut: fail-closed — a throwing branch rejects", async () => {
+  const ok: Step<null> = () => Promise.resolve("continue");
+  const boom: Step<null> = () => Promise.reject(new Error("boom"));
+  await assertRejects(() => fanOut([ok, boom, ok])(null), Error, "boom");
 });

@@ -10,6 +10,13 @@ release milestone, newest first.
 
 ### Added
 
+- **`fanOut` combinator** (`src/loop.ts`) — the eager-parallel fold of the
+  `Flow` monoid, dual to `pipeline`'s lazy-sequential fold; shares the
+  `continue` identity. Runs all branches concurrently (`Promise.allSettled`),
+  `done` if any is `done`, fail-closed on throw. Race-freedom is a call-site
+  responsibility (fan out over read-only carriers). Completes the loop algebra
+  ahead of the API freeze. 6 laws property-tested with `pipeline` as the oracle.
+  (`feat(loop)`)
 - **Config-driven pluggable handlers** — a `before-approve` injection slot in
   the skill/task/command pipelines. Handlers are TS modules (`name`,
   `description`, `permissions[]`, default `Step<ReadonlyExec>`); declared in

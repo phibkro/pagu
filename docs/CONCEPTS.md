@@ -125,13 +125,15 @@ is a **lawful merge**.
   `⟦Step<C>⟧ = C → Promise<Flow>` (an effectful turn yielding the coproduct
   `⟦Flow⟧ = continue | done`), and `⟦loop⟧` is the bounded fixpoint over that
   coproduct. `loop : Step → Step` is **closed over the type** — a loop is itself
-  a composable turn — which is what will let loops combine (`andThen` =
-  sequential composition; `fanOut` = the **eager-parallel fold of the `Flow`
-  monoid**, dual to `pipeline`'s lazy-sequential fold) as the substrate grows.
-  (`fanOut` is derived from the monoidal product via the diagonal, but isn't the
-  bare categorical tensor: `Step<C> = C → Flow` is an effectful _predicate_, not
-  a carrier-transforming arrow, so what combines is the `Flow` answers, not the
-  carrier types.) `runTask` is just `loop(turn)`.
+  a composable turn — which is what lets loops combine: `andThen` = sequential
+  composition; `fanOut` (shipped 2026-05-29) = the **eager-parallel fold of the
+  `Flow` monoid**, dual to `pipeline`'s lazy-sequential fold. (`fanOut` is
+  derived from the monoidal product via the diagonal, but isn't the bare
+  categorical tensor: `Step<C> = C → Flow` is an effectful _predicate_, not a
+  carrier-transforming arrow, so what combines is the `Flow` answers, not the
+  carrier types. Both `andThen` and `fanOut` fold the same `Flow` "or" monoid —
+  `andThen` lazily/sequentially, `fanOut` eagerly/in-parallel — sharing the
+  `continue` identity.) `runTask` is just `loop(turn)`.
 
 ## Command policy as a type system
 
