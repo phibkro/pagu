@@ -664,10 +664,21 @@ above.)
    the tdd skill's test-level guidance.)
 8. **Test-type audit.** Revisit the existing suite and match each test to the
    right level (example / property / integration / e2e) for what it verifies —
-   add property tests for the law-shaped pure cores (envelope lattice,
-   ConfigLayer monoid, log codec) that currently lean on examples; keep
-   effectful coverage on the real thing. Maintenance, not paradigm — slot in
-   opportunistically.
+   add property tests for the law-shaped pure cores that currently lean on
+   examples; keep effectful coverage on the real thing. Maintenance, not
+   paradigm — slot in opportunistically. **Started 2026-05-28:** property tests
+   added for the **log codec** round-trip (`parseLog ∘ serializeLog = id`) and
+   the **envelope** containment-lattice laws (reflexive / `all`-is-top /
+   deny-wins / allow-monotone / transitive). **Remaining targets:** ConfigLayer
+   monoid (associativity + identity, permission-lattice merge), `classify`,
+   `commands.ts` dispatch.
+   - **Finding (log codec doesn't escape its delimiters).** Round-trip holds
+     only on a constrained domain: a body line `~~~` collides with the fence, a
+     `\n` inside a joined list element (args/perms) or a space inside a ran-with
+     element splits wrong, and attr values can't contain `"`/newline. A model
+     message or read whose content contains `~~~` would corrupt the log. Real
+     latent bug; fix = escape delimiters in `serialize`/`parse` (touches the
+     event-store format — its own slice, deferred).
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as

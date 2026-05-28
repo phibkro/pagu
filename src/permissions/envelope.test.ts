@@ -1,7 +1,9 @@
 import { assertEquals, assertThrows } from "@std/assert";
+import fc from "fast-check";
 import {
   covers,
   parsePermission,
+  type Permission,
   type PermissionSet,
   within,
   withinEnvelope,
@@ -108,5 +110,73 @@ Deno.test("within: scratch-readonly envelope", () => {
       envelope,
     ),
     false,
+  );
+});
+
+// --- containment-lattice laws (property-based) ---
+//
+// The envelope check is the security boundary, so its algebra must hold for any
+// permissions, not just the hand-picked cases above. Nested paths exercise the
+// read/write containment branch; `all` exercises top.
+const pathG = fc.array(fc.constantFrom("a", "b", "c"), {
+  minLength: 1,
+  maxLength: 3,
+}).map((s) => "/" + s.join("/"));
+const permG: fc.Arbitrary<Permission> = fc.oneof(
+  fc.record({
+    flag: fc.constantFrom(
+      "read" as const,
+      "write" as const,
+      "net" as const,
+      "run" as const,
+      "env" as const,
+    ),
+    scope: fc.option(pathG, { nil: undefined }),
+  }).map((r) => r.scope === undefined ? { flag: r.flag } : r),
+  fc.constant({ flag: "all" as const }),
+);
+
+Deno.test("covers is reflexive — every permission covers itself (property)", () => {
+  fc.assert(fc.property(permG, (p) => covers(p, p) === true));
+});
+
+Deno.test("allow-all is top — covers any request (property)", () => {
+  fc.assert(
+    fc.property(
+      fc.array(permG, { maxLength: 5 }),
+      (reqs) => within(reqs, [{ flag: "all" }]) === true,
+    ),
+  );
+});
+
+Deno.test("deny wins — a request equal to a deny is never within (property)", () => {
+  fc.assert(
+    fc.property(
+      permG,
+      (p) => withinEnvelope([p], { allow: [p], deny: [p] }) === false,
+    ),
+  );
+});
+
+Deno.test("adding allows never revokes — monotone (property)", () => {
+  fc.assert(
+    fc.property(
+      fc.array(permG, { maxLength: 4 }),
+      fc.array(permG, { maxLength: 4 }),
+      fc.array(permG, { maxLength: 4 }),
+      (reqs, a, b) => {
+        if (within(reqs, a)) assertEquals(within(reqs, [...a, ...b]), true);
+        return true;
+      },
+    ),
+  );
+});
+
+Deno.test("covers is transitive (property)", () => {
+  fc.assert(
+    fc.property(permG, permG, permG, (a, b, c) => {
+      if (covers(a, b) && covers(b, c)) assertEquals(covers(a, c), true);
+      return true;
+    }),
   );
 });

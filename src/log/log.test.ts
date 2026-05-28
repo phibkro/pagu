@@ -1,4 +1,5 @@
 import { assertEquals } from "@std/assert";
+import fc from "fast-check";
 import type { Entry } from "./schema.ts";
 import { serializeLog } from "./serialize.ts";
 import { parseLog } from "./parse.ts";
@@ -83,4 +84,95 @@ Deno.test("non-pagu prose is ignored", () => {
     role: "assistant",
     text: "ok",
   }]);
+});
+
+// --- round-trip property over the round-trippable domain ---
+//
+// `parseLog ∘ serializeLog = id` is the codec's core law (the log is the event
+// store — a round-trip bug corrupts the conversation). The codec does NOT escape
+// its own delimiters, so the law holds on a constrained domain, encoded by the
+// generators below and documented here as the boundary:
+//   - bodies must not contain `~` (would collide with the `~~~` fences);
+//   - joined list elements (args/perms) must not contain `\n` (the split char),
+//     and ran-with elements no spaces (its split char) — and are non-empty
+//     (a single "" element joins to "" and parses back as []);
+//   - attr values must not contain `"`/newline (the opening line is single-line,
+//     values quote only on whitespace).
+// Inputs outside this domain are a known limitation (the codec should escape its
+// delimiters) — tracked as a finding, not fixed here.
+const join = (cs: string[], min: number) =>
+  fc.array(fc.constantFrom(...cs), { minLength: min, maxLength: 14 }).map((a) =>
+    a.join("")
+  );
+const BODY = 'aB7 \n`"=/.:-é中'.split("");
+const ATTR = "aB7 `=/.:-é中".split(""); // no `"`, no newline
+const ELEM = 'aB7 `"=/.:-é中'.split(""); // arg/perm element: no newline
+const RW = "aB7`=/.:-é中".split(""); // ran-with element: no space either
+const bodyG = join(BODY, 0);
+const attrG = join(ATTR, 1);
+const elemsG = fc.array(join(ELEM, 1), { maxLength: 4 });
+const rwG = fc.array(join(RW, 1), { maxLength: 4 });
+
+const entryG: fc.Arbitrary<Entry> = fc.oneof(
+  fc.record({
+    kind: fc.constant("message" as const),
+    role: fc.constantFrom("user" as const, "assistant" as const),
+    text: bodyG,
+  }),
+  fc.record({
+    kind: fc.constant("observation" as const),
+    source: attrG,
+    content: bodyG,
+  }),
+  fc.record({
+    kind: fc.constant("script" as const),
+    id: attrG,
+    lang: attrG,
+    body: bodyG,
+  }),
+  fc.record({
+    kind: fc.constant("command-invoke" as const),
+    id: attrG,
+    program: attrG,
+    args: elemsG,
+  }),
+  fc.oneof(
+    fc.record({
+      kind: fc.constant("skill-invoke" as const),
+      id: attrG,
+      script: attrG,
+      args: fc.array(join(ELEM, 1), { minLength: 1, maxLength: 4 }),
+    }),
+    fc.record({
+      kind: fc.constant("skill-invoke" as const),
+      id: attrG,
+      script: attrG,
+    }),
+  ),
+  fc.record({
+    kind: fc.constant("perms" as const),
+    script: attrG,
+    perms: elemsG,
+  }),
+  fc.record({
+    kind: fc.constant("decision" as const),
+    script: attrG,
+    verdict: fc.constantFrom("approve" as const, "reject" as const),
+    rationale: bodyG,
+  }),
+  fc.record({
+    kind: fc.constant("result" as const),
+    script: attrG,
+    exit: fc.integer(),
+    ranWith: rwG,
+    output: bodyG,
+  }),
+);
+
+Deno.test("log round-trips for any entry sequence (property)", () => {
+  fc.assert(
+    fc.property(fc.array(entryG, { maxLength: 6 }), (log) => {
+      assertEquals(parseLog(serializeLog(log)), log);
+    }),
+  );
 });
