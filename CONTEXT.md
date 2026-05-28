@@ -651,18 +651,31 @@ above.)
    - **WASM (speculative).** Capability-scoped by construction — the strongest
      "only threaded-through resources exist" model, and a possible portable
      fallback; open question is running the Deno-TS runner under wasm.
-6. **A `Capability` port (run/invoke + discover/list).** `skills`, `tasks`, and
-   `commands` each have the **same four-part shape**: _discover/list_ available
-   actions, _advertise_ them as a tool, _validate within a ceiling_ (verbatim /
-   policy / grammar), _execute_ → a `*-invoke` entry. Three instances now (rule
-   of three) → a lawful `Capability` interface (all validators obey
-   narrow-never-widen, so it's lawful, not a leaky common base). This is the
-   **dispatch-side** sibling of #4's presentation generalization (and of #2's
-   execution-side handler pipeline). Also the home for the **availability law**
-   already applied to `run_command` (advertise = legal ∩ environment-available —
-   `presentDefaultRules`): every capability's advertised set should intersect
-   its declared/legal set with what the environment actually offers. Design as
-   its own slice; don't force a common interface that leaks.
+6. **A `Capability` port (discover / list / execute).** `skills`, `tasks`, and
+   `commands` share the **same shape**: _discover_ (infer available actions from
+   the env), _list_ (present them to the agent as a tool), _validate within a
+   ceiling_ (verbatim / policy / grammar), _execute_ → a `*-invoke` entry.
+   Vocabulary sharpened this session: **discover ≠ list ≠ execute** (three
+   phases, three locations).
+   - **Execute half — designed 2026-05-28**
+     (`docs/specs/2026-05-28-capability-execution-pipeline-design.md`; hardened
+     via grill, **ready for tdd**). Collapse the cage→validate→run→result
+     boilerplate into a shared `cageOnce + autoApprove + run` trio in a new
+     `src/capability/` module; each capability = `pipeline([...gates, run])`
+     with a per-capability gate. Subsumes #2's "generalize the handler pipeline
+     to skills/tasks." Refactor-under-green (behavior-identical), one capability
+     at a time.
+   - **Front-end half (discover/list/registry) — deferred**, with two findings
+     from this session's look: (1) a `Capability` descriptor is **split by the
+     process boundary** — `toolDef`/`toEntry` run in the **respond subprocess**,
+     `execute` in the **orchestrator** (`agent.ts`), `discover` in **setup.ts**;
+     a single in-memory descriptor can't span all three (data crosses as phase
+     input, dispatch logic lives on both sides). (2) Home of the **availability
+     law** (advertise = legal ∩ environment-available — `presentDefaultRules`).
+     Best designed **after** the execute half lands (the registry's execute-side
+     references the post-refactor shape — designing now = moving target).
+     Sibling of #4's presentation generalization. Design its own slice; don't
+     force a leaky common interface.
 7. **Model-based / stateful property testing of the session+loop state
    machine.** The property analog of e2e (`fc.commands`): generate random
    operation sequences (`new → prompt → fork → load → rename → prompt …`) and
