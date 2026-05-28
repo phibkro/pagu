@@ -1,57 +1,61 @@
 # Config-driven pluggable handlers (design)
 
-> Status: **draft 2026-05-29** (brainstorming → to be hardened by grill-with-docs,
-> then tdd). Resolves the config-driven pluggability increment of backlog #2 and
-> the v1 milestone item of the same name. `ReadonlyExec` (gate-never-widen layer 2)
-> is the prerequisite and shipped 2026-05-29.
+> Status: **draft 2026-05-29** (brainstorming → grilling → tdd). Resolves the
+> config-driven pluggability increment of backlog #2 and the v1 milestone item of the
+> same name. `ReadonlyExec` (gate-never-widen layer 2) is the prerequisite and shipped
+> 2026-05-29.
 
 ## Goal
 
 Make the capability handler pipeline user-extensible through configuration, while
 preserving the invariant: **the set of handlers is the TCB**. Every handler that can
-run must be enumerable, auditable, and type-safe by construction. A plugin is safe by
-the same lattice law as role composition — it may gate/narrow but never widen.
+run must be enumerable, auditable, and permission-scoped by construction.
 
 ## Scope
 
 **In:** Handler module interface, `before-approve` injection slot, config.json +
-role-frontmatter declaration, loading in `buildContext`, pipeline insertion for the
-three Exec-based capabilities (skill, task, command), TUI startup display.
+role-frontmatter declaration, loading in `buildContext`, hybrid execution model
+(in-process or handler-phase subprocess), TUI startup display.
 
-**Out (v1):** Post-result observers, the write capability (`Proposal` carrier differs;
+**Out (v1):** Post-result observers, the write capability (`Proposal` carrier;
 human gate already mandatory), external package distribution (deferred until API
 freeze), a second injection slot.
 
 ## Slot: `before-approve`
 
 One named injection point in v1: **`before-approve`** — inserted between the last
-per-capability gate and `autoApprove`/`approve`:
+per-capability gate and `autoApprove`:
 
 ```
-skill:       [resolveBody, ceilingGate,         ...plugins, autoApprove, run]
-run_command: [grammarGate,                       ...plugins, autoApprove, run]
-run_task:    [policyGate, taskCeilingGate,       ...plugins, autoApprove, run]
+skill:       [resolveBody, ceilingGate,         ...handlers, autoApprove, run]
+run_command: [grammarGate,                       ...handlers, autoApprove, run]
+run_task:    [policyGate, taskCeilingGate,       ...handlers, autoApprove, run]
 write:       [cage, approve, run]   ← excluded v1; human gate already mandatory
 ```
 
-At this point in the pipeline `exec.body` and `exec.perms` are fully resolved by the
-preceding gates. Plugins see the final `(body, perms)` pair and decide: continue or
-halt.
+At this point `exec.body` and `exec.perms` are fully resolved. Handlers see the final
+`(body, perms)` pair and decide: continue or halt.
 
 ## Handler module interface
 
-A handler is a TypeScript file with three named exports:
+A handler is a TypeScript file with four named exports:
 
 ```typescript
 // .pagu/handlers/slack-notify.ts
-// For local handlers, import relative to the repo root. When pagu is
-// published to JSR the path will be "jsr:@phibkro/pagu/capability".
+// Imports for local development. When pagu is on JSR: "jsr:@phibkro/pagu/capability"
 import type { ReadonlyExec } from "../src/capability/index.ts";
 import type { Flow } from "../src/loop.ts";
 
 export const name = "slack-notify";
 export const description = "Posts to #ops-alerts before any net-granted run";
 
+/** Declared permission ceiling. Empty array → runs in-process with orchestrator
+ *  permissions. Non-empty → runs as an isolated handler-phase subprocess with
+ *  exactly these permissions. */
+export const permissions: string[] = ["allow-net=hooks.slack.com"];
+
+/** The handler function — called in-process when permissions is empty,
+ *  or called inside the handler-phase subprocess when permissions is non-empty. */
 export default async function (exec: ReadonlyExec): Promise<Flow> {
   if (exec.perms.some((p) => /allow-net/.test(p))) {
     await fetch("https://hooks.slack.com/...", {
@@ -69,38 +73,41 @@ The `HandlerPlugin` interface (exported from `src/capability/index.ts`):
 export interface HandlerPlugin {
   name: string;
   description: string;
+  /** Absolute path to the handler file — used for subprocess invocation. */
+  path: string;
+  /** Declared permission ceiling. Empty = in-process; non-empty = subprocess. */
+  permissions: string[];
+  /** The handler function — used for in-process execution and as the
+   *  subprocess entrypoint (called by phases/handler.ts). */
   fn: Step<ReadonlyExec>;
 }
 ```
 
 **Type safety:** `fn` is `Step<ReadonlyExec>`. The compiler enforces gate-never-widen:
 `exec.perms = [...]` and `exec.perms.push(...)` both fail to compile inside a handler.
-`Step<ReadonlyExec>` satisfies `Step<Exec>` via contravariance (`Exec ⊆ ReadonlyExec`),
-so plugins slot into `Step<Exec>` pipelines without casts.
+`Step<ReadonlyExec>` satisfies `Step<Exec>` via contravariance, so handlers slot into
+`Step<Exec>` pipelines without casts.
 
 **Validation at load time:** `buildContext` checks that each loaded module exports
-`name: string`, `description: string`, and `default: function`. Any mismatch → fail
-loud (throw). A handler that can't be loaded is a broken TCB, not a graceful
-degradation.
+`name: string`, `description: string`, `permissions: string[]`, and `default: function`.
+Any mismatch → fail loud (throw). A handler that can't be loaded is a broken TCB.
 
-**Failure semantics:** if a handler's default function _throws_ at runtime (rather than
-returning `"done"`), the error propagates to `runTask`'s catch block and shows
-`✗ handler <name>: <error>`. The capability does not run. Fail-closed — a broken
-handler blocks execution; it does not silently permit it.
+**Failure semantics:** if a handler's function _throws_ (rather than returning
+`"done"`), the error propagates to `runTask`'s catch block:
+`✗ handler <name>: <error>`. The capability does not run. Fail-closed.
 
 ## Configuration
 
-Handler paths are declared under `handlers: { before-approve: [...] }`. This wrapping
-key is forward-compatible — adding a second slot in a future slice doesn't change the
-top-level key structure.
+Handler paths are declared under `handlers: { "before-approve": [...] }` — nested so
+future slots slot in without changing the top-level key structure.
 
 **`config.json`** (system `~/.config/pagu/config.json` or project `.pagu/config.json`):
 ```json
 {
   "handlers": {
     "before-approve": [
-      "./.pagu/handlers/audit.ts",
-      "./.pagu/handlers/slack-notify.ts"
+      ".pagu/handlers/audit.ts",
+      ".pagu/handlers/slack-notify.ts"
     ]
   }
 }
@@ -111,73 +118,152 @@ top-level key structure.
 ---
 handlers:
   before-approve:
-    - ./.pagu/handlers/compliance.ts
+    - .pagu/handlers/compliance.ts
 ---
 
 This role enables the compliance check handler...
 ```
 
-Both fold into `ConfigLayer` at `handlers: { beforeApprove: string[] }` (camelCase in
-TypeScript; kebab-case `before-approve` in JSON/YAML). Set-union across layers. Paths
-are resolved relative to the **declaring file's directory**: a config.json path
-resolves against that config.json's parent directory; a role frontmatter path resolves
-against the role file's directory (`.pagu/roles/` or `~/.config/pagu/roles/`). Dedup
-by resolved absolute path before loading — the same absolute path declared in both a
-config.json and a role loads the handler only once.
+Both fold into `ConfigLayer.handlers?.["before-approve"]?: string[]`. `mergeLayer`
+union-merges the inner array (one extra block alongside `allow` and `write`). Both
+`mergeConfig` (JSON) and `toLayer` (role frontmatter) need a matching nested-array
+check.
 
-**Merge law:** same as `allow` paths — set-union in load order, no deduplication
-across roles (duplicate paths load the same handler twice; the implementation should
-dedup by resolved absolute path). System config handlers fire before project config
-handlers; earlier roles before later ones within each scope.
+**Path resolution:** paths resolve against the **process cwd** (same as `allow` paths
+— `setup.ts` uses `resolve(p)` with no base). Absolute paths always work. Dedup by
+resolved absolute path — the same handler appearing in multiple configs loads once.
 
 ## Loading (`buildContext`)
-
-After the full config stack is resolved, in `src/config/setup.ts`:
 
 ```typescript
 const handlerPaths = cfg.handlers?.["before-approve"] ?? [];
 const activeHandlers: HandlerPlugin[] = [];
-// configBase = the declaring file's directory (passed through from the config loader)
-for (const handlerPath of dedup(handlerPaths.map(p => resolve(configBase, p)))) {
-  const mod = await import(handlerPath);
+for (const p of dedup(handlerPaths.map(resolve))) {
+  const mod = await import(p);
   if (
     typeof mod.name !== "string" || !mod.name ||
     typeof mod.description !== "string" || !mod.description ||
+    !Array.isArray(mod.permissions) ||
     typeof mod.default !== "function"
   ) {
-    throw new Error(
-      `handler ${handlerPath}: must export name (string), description (string), and default (function). Got: ${JSON.stringify({ name: mod.name, description: mod.description, default: typeof mod.default })}`
-    );
+    throw new Error(`handler ${p}: must export name, description, permissions[], and default fn`);
   }
-  activeHandlers.push({ name: mod.name, description: mod.description, fn: mod.default });
+  activeHandlers.push({
+    name: mod.name,
+    description: mod.description,
+    path: p,
+    permissions: mod.permissions as string[],
+    fn: mod.default as Step<ReadonlyExec>,
+  });
 }
 ```
 
-`activeHandlers` is stored on `AgentContext` alongside `activeSkillScripts`. The TUI
-and ACP both read it for display.
+`activeHandlers` is stored on `AgentContext` alongside `activeSkillScripts`.
 
-## Pipeline insertion
+## Execution model — hybrid (in-process or handler phase)
 
-The Exec-based executors receive `ctx.activeHandlers` and splice it between the last
-per-capability gate and `autoApprove`:
+The orchestrator decides per-handler based on its declared `permissions`:
 
 ```typescript
-const pluginSteps = ctx.activeHandlers.map((h) => h.fn);
-// skill:
-pipeline([resolveBody, ceilingGate, ...pluginSteps, autoApprove, run])(exec);
-// run_command:
-pipeline([grammarGate, ...pluginSteps, autoApprove, run])(exec);
-// run_task:
-pipeline([policyGate, taskCeilingGate, ...pluginSteps, autoApprove, run])(exec);
+async function runHandler(h: HandlerPlugin, exec: Exec, ctx: AgentContext): Promise<Flow> {
+  const orchestratorPerms = new Set(["read", "write", "run", "env"]);
+  const needsExtra = h.permissions.some(p => {
+    const flag = p.replace(/^allow-/, "");
+    return !orchestratorPerms.has(flag.split("=")[0]);
+  });
+
+  if (!needsExtra) {
+    return h.fn(exec);  // in-process — no cold start, orchestrator permissions
+  }
+  return spawnHandlerPhase(h, exec, ctx);  // isolated subprocess with declared ceiling
+}
 ```
 
-When `activeHandlers` is empty the pipeline is identical to the current code — no
-behaviour change, no performance cost.
+### In-process path
+
+When `permissions` is empty or all declared permissions are already held by the
+orchestrator (`read`, `write`, `run`, `env`): call `h.fn(exec)` directly. No subprocess
+spawn, no cold start. Type-safety from `Step<ReadonlyExec>`. Use cases: file-audit
+logging, local condition checks.
+
+### Subprocess path — `phases/handler.ts`
+
+When `permissions` contains extras (e.g. `allow-net=hooks.slack.com`): spawn a new
+short-lived handler phase with exactly the declared permissions. This is a new phase
+alongside `phases/respond.ts`, using the same `spawnPhase` infrastructure.
+
+**`ExecView`** — the serializable subset that crosses the process boundary:
+
+```typescript
+export interface ExecView {
+  id: string;
+  body: string;
+  perms: readonly string[];
+  title: string;
+}
+```
+
+**`HandlerPhaseInput`** and **`HandlerPhaseOutput`** (in `phases/ipc.ts`):
+
+```typescript
+export interface HandlerPhaseInput {
+  handlerPath: string;
+  exec: ExecView;
+}
+export interface HandlerPhaseOutput {
+  decision: "continue" | "done";
+  rationale?: string;
+}
+```
+
+**`phases/handler.ts`** (the subprocess entrypoint):
+
+```typescript
+// effects: handler phase — runs a user handler in an isolated process
+import { readInput, writeOutput } from "./ipc.ts";
+import type { HandlerPhaseInput, HandlerPhaseOutput } from "./ipc.ts";
+
+const { handlerPath, exec } = await readInput() as HandlerPhaseInput;
+const mod = await import(handlerPath);
+
+// Minimal ReadonlyExec adapter from ExecView — ctx is unavailable in subprocess
+const pseudoExec = { ...exec, ctx: undefined!, rationale: "", outcome: "loop" as const };
+const decision: "continue" | "done" = await mod.default(pseudoExec);
+writeOutput({ decision } satisfies HandlerPhaseOutput);
+```
+
+**`spawnHandlerPhase`** in the orchestrator:
+
+```typescript
+async function spawnHandlerPhase(
+  h: HandlerPlugin,
+  exec: Exec,
+  ctx: AgentContext,
+): Promise<Flow> {
+  const view: ExecView = { id: exec.id, body: exec.body, perms: exec.perms, title: exec.title };
+  const [result] = await spawnPhase({
+    entry: join(ctx.phaseDir, "handler.ts"),
+    flags: [
+      ...ctx.readPaths.map(p => `--allow-read=${p}`),
+      ...h.permissions,
+    ],
+    input: { handlerPath: h.path, exec: view } satisfies HandlerPhaseInput,
+    onStderr: ctx.ui.stream ? c => ctx.ui.stream!(c) : undefined,
+  });
+  // spawnPhase returns Entry[]; handler phase returns a single HandlerPhaseOutput
+  return (result as unknown as HandlerPhaseOutput).decision;
+}
+```
+
+**Stderr side-channel** — the handler subprocess can write progress to stderr; the
+orchestrator's `ui.stream` forwards it live, same as the respond phase.
+
+**Cold start note:** handler subprocesses pay the ~50–100ms Deno cold-start per
+invocation. Acceptable for the security gain; the future WASM tier would eliminate
+this (handler runs as a WASM module — no process spawn). This is the natural next
+tier behind `detectSandbox`.
 
 ## TCB enumeration (TUI + ACP)
-
-The active handler set must be visible — "the set of handlers is the TCB" only
-means something if the user can audit it.
 
 **TUI startup header** (only shown when handlers are active):
 ```
@@ -185,50 +271,51 @@ pagu — chat, or ask for an action
   provider  ollama · qwen3.5:9b
   reads     /repo
   repo      /repo (auto-approve)
-  handlers  slack-notify · compliance-check
+  handlers  audit (in-process) · slack-notify (subprocess: allow-net=…)
   sandbox   sandbox-exec
 ```
 
-**ACP** — `available_commands_update` or a separate session notification surface the
-active handler names so editor clients know what's running.
+Show the execution mode so the user can audit whether each handler is isolated.
 
-**Log** — no new entry type needed. A handler that halts produces a `pagu:decision
-verdict=reject rationale="handler <name>: <reason>"`, which already appears in the
-audit trail. A handler that continues leaves no trace (correct — it's an observer, not
-an actor).
+**Log** — no new entry type. A halting handler produces:
+`pagu:decision verdict=reject rationale="handler slack-notify: net run blocked"`.
+A continuing handler leaves no trace.
 
 ## `AgentContext` additions
 
 ```typescript
-/** Pre-loaded before-approve handlers; empty array when none configured. */
 activeHandlers: HandlerPlugin[];
-/** Replace the active handler set at runtime (future /handlers TUI command).
- *  v1: stub — present on the interface for forward-compatibility but not wired
- *  to any TUI command yet. Returns { ok: false, message: "not yet implemented" }. */
 setHandlers?: (paths: string[]) => Promise<{ ok: boolean; message: string }>;
+// ↑ v1 stub — returns { ok: false, message: "not yet implemented" }
 ```
-
-`setHandlers` is optional in v1 — included as a forward-compatibility stub so the TUI
-can later add a `/handlers` command analogous to `/roles` and `/skills`.
 
 ## Testing
 
-- **Unit** — `HandlerPlugin` shape validation: fixture modules with missing/wrong
-  exports confirm fail-loud behaviour. A handler that returns `"done"` on a condition
-  confirms the pipeline halts.
-- **Integration** — inject a handler directly into `ctx.activeHandlers` in the
-  existing capability tests: `activeHandlers: [{ name: "test", description: "...", fn: always_continue }]`.
-  Existing tests pass with empty `activeHandlers` (no-op path).
-- **Property** — the gate-never-widen invariant: a handler that attempts `exec.perms = [...]`
-  fails to compile (type-level test; verified by `deno check`).
+- **Unit** — shape validation (missing exports fail loud); in-process handler returning
+  `"done"` halts the pipeline; empty `activeHandlers` is a no-op.
+- **Integration** — subprocess handler with `permissions: ["allow-net=example.com"]`
+  spawns correctly and its decision is respected. Use a fixture handler that writes its
+  decision to a temp file for assertion.
+- **Property** — type-level: `exec.perms = [...]` fails to compile in a handler body
+  (verified by `deno check`).
 
 ## Migration (refactor-under-green)
 
-1. Add `HandlerPlugin` interface and `activeHandlers: HandlerPlugin[]` to
-   `src/capability/index.ts` and `AgentContext`. CI green.
-2. Add `handlers.beforeApprove: string[]` to `ConfigLayer` and `PaguConfig` in
-   `src/config/config.ts`; parse from config.json and role frontmatter in setup.ts.
+1. Add `HandlerPlugin`, `ExecView`, `HandlerPhaseInput/Output` to
+   `src/capability/index.ts` and `src/phases/ipc.ts`. Add `activeHandlers` to
+   `AgentContext`. CI green.
+2. Add nested `handlers["before-approve"]` to `ConfigLayer` in `src/config/config.ts`;
+   wire `mergeLayer`, `mergeConfig`, `toLayer`. CI green.
+3. Load handlers in `buildContext`; surface in TUI startup line. CI green.
+4. Add `src/phases/handler.ts` (subprocess entrypoint) + `spawnHandlerPhase` helper.
    CI green.
-3. Load handlers in `buildContext`; surface in TUI startup. CI green.
-4. Insert `pluginSteps` in skills, tasks executors. CI green.
-5. Add unit tests for shape validation and pipeline halt behaviour. CI green.
+5. Insert `runHandler` wrapper in skill/task/command executors. CI green.
+6. Tests for shape validation, in-process halt, subprocess spawn. CI green.
+
+## Future tier (WASM / microVM)
+
+The hybrid decision point (`needsExtra?`) is the natural slot for a third tier:
+`none → in-process`, `net/extra → subprocess`, `full-isolation → WASM/microVM`. The
+`spawnHandlerPhase` function becomes `dispatchHandler(tier, h, exec, ctx)`. Adding
+the WASM tier means adding a branch; the existing tiers are unchanged. This maps
+directly to backlog #5 (scoped-isolation sandbox tiers).
