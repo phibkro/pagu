@@ -226,7 +226,9 @@ Configuration deep module (`buildContext` is the public interface):
 - **Live-verify** real changes against Ollama (default provider). The no-stdin
   recipe (auto-approves in repo mode, so it's self-contained):
   ```sh
-  R=$(mktemp -d); (cd "$R" && git init -q && for f in a b c; do echo x>$f.txt; done && git add -A && git -c user.email=t@t -c user.name=t commit -qm i)
+  # NB: keep the repo OUT of /tmp — the bwrap sandbox mounts a fresh --tmpfs
+  # over /tmp, which shadows a repo placed there (spurious "No such file").
+  R=$(mktemp -d -p "$HOME"); (cd "$R" && git init -q && for f in a b c; do echo x>$f.txt; done && git add -A && git -c user.email=t@t -c user.name=t commit -qm i)
   cd "$R" && pagu 'count the .txt files and write the number to count.txt' --repo </dev/null
   ```
 - The **cage self-test** is the product's own feedback loop: a proposal's bugs
