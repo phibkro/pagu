@@ -642,11 +642,38 @@ above.)
    - **WASM (speculative).** Capability-scoped by construction — the strongest
      "only threaded-through resources exist" model, and a possible portable
      fallback; open question is running the Deno-TS runner under wasm.
+6. **A `Capability` port (run/invoke + discover/list).** `skills`, `tasks`, and
+   `commands` each have the **same four-part shape**: _discover/list_ available
+   actions, _advertise_ them as a tool, _validate within a ceiling_ (verbatim /
+   policy / grammar), _execute_ → a `*-invoke` entry. Three instances now (rule
+   of three) → a lawful `Capability` interface (all validators obey
+   narrow-never-widen, so it's lawful, not a leaky common base). This is the
+   **dispatch-side** sibling of #4's presentation generalization (and of #2's
+   execution-side handler pipeline). Also the home for the **availability law**
+   already applied to `run_command` (advertise = legal ∩ environment-available —
+   `presentDefaultRules`): every capability's advertised set should intersect
+   its declared/legal set with what the environment actually offers. Design as
+   its own slice; don't force a common interface that leaks.
+7. **Model-based / stateful property testing of the session+loop state
+   machine.** The property analog of e2e (`fc.commands`): generate random
+   operation sequences (`new → prompt → fork → load → rename → prompt …`) and
+   assert invariants after each step — e.g. **permissions never widen across a
+   session**, **the log is always replayable**, **every approved run is within
+   the envelope**. Worth it because the session surface is stateful and the
+   interaction space is combinatorially large. (See `AGENTS.md` feedback loops +
+   the tdd skill's test-level guidance.)
+8. **Test-type audit.** Revisit the existing suite and match each test to the
+   right level (example / property / integration / e2e) for what it verifies —
+   add property tests for the law-shaped pure cores (envelope lattice,
+   ConfigLayer monoid, log codec) that currently lean on examples; keep
+   effectful coverage on the real thing. Maintenance, not paradigm — slot in
+   opportunistically.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
 constraints surface. ACP integration gaps (Open) are independent and can slot in
-anytime; #5's enforcement-layer tiers are likewise independent.
+anytime; #5's enforcement-layer tiers, #6's `Capability` port, and #7/#8's
+testing work are likewise independent.
 
 ### North Star (paradigm-level): pagu's core as an agent-workflow SDK
 
