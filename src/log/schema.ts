@@ -85,4 +85,7 @@ export interface ResultEntry {
   exit: number;
   ranWith: string[]; // the exact flags the runner used
   output: string;
+  /** OS sandbox tier that wrapped the run — present for runs after this was
+   *  added to the schema; absent in older session logs. */
+  sandbox?: "bwrap" | "sandbox-exec" | "none";
 }

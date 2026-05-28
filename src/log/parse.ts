@@ -74,15 +74,23 @@ export function parseLog(md: string): Entry[] {
           rationale: body,
         });
         break;
-      case "result":
-        entries.push({
+      case "result": {
+        const re: import("./schema.ts").ResultEntry = {
           kind,
           script: a.script ?? "",
           exit: Number(a.exit ?? "0"),
           ranWith: a["ran-with"] ? a["ran-with"].split(" ") : [],
           output: body,
-        });
+        };
+        if (
+          a.sandbox === "bwrap" || a.sandbox === "sandbox-exec" ||
+          a.sandbox === "none"
+        ) {
+          re.sandbox = a.sandbox;
+        }
+        entries.push(re);
         break;
+      }
         // Unknown pagu kinds are skipped (forward-compatibility).
     }
   }

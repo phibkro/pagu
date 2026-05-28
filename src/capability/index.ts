@@ -187,6 +187,7 @@ export async function performRun(params: {
     exit: result.exit,
     ranWith: result.ranWith,
     output,
+    sandbox: result.sandbox,
   };
   ctx.log.push(resultEntry);
   ctx.persist();

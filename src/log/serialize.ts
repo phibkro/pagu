@@ -56,14 +56,17 @@ export function serializeEntry(e: Entry): string {
       open = head("decision", { script: e.script, verdict: e.verdict });
       body = e.rationale;
       break;
-    case "result":
-      open = head("result", {
+    case "result": {
+      const rAttrs: Record<string, string> = {
         script: e.script,
         exit: String(e.exit),
         "ran-with": e.ranWith.join(" "),
-      });
+      };
+      if (e.sandbox !== undefined) rAttrs.sandbox = e.sandbox;
+      open = head("result", rAttrs);
       body = e.output;
       break;
+    }
   }
   // Use a fence longer than any `~` run in the body, so a body line of tildes
   // (e.g. a markdown `~~~` fence in model output) can't be read as the close.
