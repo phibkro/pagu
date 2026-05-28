@@ -1,8 +1,7 @@
 # Capability lifecycle
 
-How a single capability invocation travels from user input through the
-registry, subprocess boundary, and sandboxed runner back to the conversation
-log.
+How a single capability invocation travels from user input through the registry,
+subprocess boundary, and sandboxed runner back to the conversation log.
 
 **Key boundaries**
 
@@ -74,8 +73,8 @@ sequenceDiagram
 **The net-output gate** (inside `performRun`, `src/capability/index.ts`) is
 where output gating falls out of the runner's permissions: if the runner was
 granted network access, the output might have exfiltrated data, so it does not
-auto-return into the agent's context — the human sees a note and the loop
-stops. Network-less runs auto-return safely.
+auto-return into the agent's context — the human sees a note and the loop stops.
+Network-less runs auto-return safely.
 
 **The respond phase permissions** are invariant #1: `respondFlags()` in
 `agent.ts` is the sole place they are constructed, and `agent.test.ts` asserts
