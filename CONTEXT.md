@@ -601,10 +601,40 @@ above.)
    it's a category shift (the first command with a network effect, run in the
    orchestrator) — model it as an effect/handler, don't bolt it on.
 
+5. **Scoped-isolation sandbox tiers (the GrapheneOS model).** One principle —
+   _hide the mechanism from the actor; scope by construction_ — at two layers.
+   **Prompt layer: shipped 2026-05-28** (`src/phases/respond.ts`): the model is
+   told its _affordances_ ("you have a `write` tool that runs on the machine
+   with real effect"), not the cage ("you cannot run it yourself / a separate
+   sandboxed process / scratch dir") — the negative framing made small models
+   _under-claim_ ("I can't access the filesystem"). The model talks to a port
+   (its tools); it is unaware of the adapter (sandbox), exactly like a
+   GrapheneOS app that believes it has normal storage while the OS silently
+   scopes what it sees. **Enforcement layer (backlog):** make the boundary a
+   property of the _environment_, not a checklist of `--allow-*` flags — thread
+   only the allowed dirs/files _into_ an isolated view, so out-of-scope paths
+   simply don't exist (vs today's name-then-deny). This strengthens invariant #2
+   (boundary = environment _and_ perms) and makes "blast radius statically
+   enumerable" literal (the radius = the threaded-through mounts); it also kills
+   two gotchas — "Deno reports denied paths as referenced" and `absolutizePerm`
+   fragility. As **tiers** behind `detectSandbox` (degrade to `none`/`bwrap`, so
+   no regression — invariant #5):
+   - **Known hosts → native isolation.** Extend the current `bwrap` wrap to
+     bind-mount the _read_ scope too (Linux mount namespaces); `sandbox-exec`
+     (macOS); Windows AppContainer / Job Objects (currently Open). External
+     binaries we shell out to, like `bwrap` today — not code deps.
+   - **Remote infra → microVM.** The real use case: run pagu in remote
+     infrastructure with granular access to a VPS (Firecracker / krun / Apple's
+     container framework; virtiofs threads only the allowed dirs into the
+     guest). Full-kernel isolation where the host isn't trusted to begin with.
+   - **WASM (speculative).** Capability-scoped by construction — the strongest
+     "only threaded-through resources exist" model, and a possible portable
+     fallback; open question is running the Deno-TS runner under wasm.
+
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
 constraints surface. ACP integration gaps (Open) are independent and can slot in
-anytime.
+anytime; #5's enforcement-layer tiers are likewise independent.
 
 ### North Star (paradigm-level): pagu's core as an agent-workflow SDK
 
