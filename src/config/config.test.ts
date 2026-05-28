@@ -1,5 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { join } from "@std/path";
+import fc from "fast-check";
 import {
   composeLayers,
   type ConfigLayer,
@@ -32,39 +33,43 @@ function normalize(l: ConfigLayer): ConfigLayer {
   const n = { ...l };
   if (n.allow) n.allow = [...new Set(n.allow)].sort();
   if (n.write) n.write = [...new Set(n.write)].sort();
+  if (n.allowedTasks) n.allowedTasks = [...new Set(n.allowedTasks)].sort();
   return n;
 }
 const eqLayer = (a: ConfigLayer, b: ConfigLayer) =>
   assertEquals(normalize(a), normalize(b));
 
-function randLayer(): ConfigLayer {
-  const r = Math.random;
-  const opt = <T>(v: T): T | undefined => (r() < 0.6 ? v : undefined);
-  const subset = (xs: string[]) => xs.filter(() => r() < 0.5);
-  const l: ConfigLayer = {};
-  const p = opt(["ollama", "openai", "anthropic"][Math.floor(r() * 3)]);
-  if (p) l.provider = p;
-  const m = opt(["a", "b", "c"][Math.floor(r() * 3)]);
-  if (m) l.model = m;
-  if (r() < 0.7) l.allow = subset(["/x", "/y", "/z"]);
-  if (r() < 0.5) l.write = subset(["/w", "/v"]);
-  return l;
-}
+// A layer with an arbitrary subset of fields present (requiredKeys: [] omits
+// absent ones rather than setting undefined), exercising every field the merge
+// handles — scalars and all three grant lists. Lists are dup-free.
+const grant = (xs: string[]) =>
+  fc.uniqueArray(fc.constantFrom(...xs), { maxLength: xs.length });
+const layerG: fc.Arbitrary<ConfigLayer> = fc.record({
+  provider: fc.constantFrom("ollama", "openai"),
+  model: fc.constantFrom("a", "b"),
+  baseURL: fc.constantFrom("u1", "u2"),
+  apiKeyEnv: fc.constantFrom("K1", "K2"),
+  format: fc.constantFrom("openai" as const, "anthropic" as const),
+  allow: grant(["/x", "/y", "/z"]),
+  write: grant(["/w", "/v"]),
+  advisor: fc.boolean(),
+  advisorProvider: fc.constantFrom("ollama", "openai"),
+  advisorModel: fc.constantFrom("a", "b"),
+  allowedTasks: grant(["t1", "t2"]),
+}, { requiredKeys: [] });
 
-Deno.test("mergeLayer monoid: identity (left and right)", () => {
-  for (let i = 0; i < 200; i++) {
-    const x = randLayer();
+Deno.test("mergeLayer monoid: identity — left and right (property)", () => {
+  fc.assert(fc.property(layerG, (x) => {
     eqLayer(mergeLayer({}, x), x);
     eqLayer(mergeLayer(x, {}), x);
-  }
+  }));
   assertEquals(mergeLayer({}, {}), {}); // identity ⋄ identity = identity
 });
 
-Deno.test("mergeLayer monoid: associativity", () => {
-  for (let i = 0; i < 300; i++) {
-    const a = randLayer(), b = randLayer(), c = randLayer();
+Deno.test("mergeLayer monoid: associativity (property)", () => {
+  fc.assert(fc.property(layerG, layerG, layerG, (a, b, c) => {
     eqLayer(mergeLayer(mergeLayer(a, b), c), mergeLayer(a, mergeLayer(b, c)));
-  }
+  }));
 });
 
 Deno.test("mergeLayer: scalars last-win, grants union (order-independent set)", () => {
