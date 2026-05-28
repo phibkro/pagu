@@ -657,25 +657,21 @@ above.)
    ceiling_ (verbatim / policy / grammar), _execute_ → a `*-invoke` entry.
    Vocabulary sharpened this session: **discover ≠ list ≠ execute** (three
    phases, three locations).
-   - **Execute half — designed 2026-05-28**
-     (`docs/specs/2026-05-28-capability-execution-pipeline-design.md`; hardened
-     via grill, **ready for tdd**). Collapse the cage→validate→run→result
-     boilerplate into a shared `cageOnce + autoApprove + run` trio in a new
-     `src/capability/` module; each capability = `pipeline([...gates, run])`
-     with a per-capability gate. Subsumes #2's "generalize the handler pipeline
-     to skills/tasks." Refactor-under-green (behavior-identical), one capability
-     at a time.
-   - **Front-end half (discover/list/registry) — deferred**, with two findings
-     from this session's look: (1) a `Capability` descriptor is **split by the
-     process boundary** — `toolDef`/`toEntry` run in the **respond subprocess**,
-     `execute` in the **orchestrator** (`agent.ts`), `discover` in **setup.ts**;
-     a single in-memory descriptor can't span all three (data crosses as phase
-     input, dispatch logic lives on both sides). (2) Home of the **availability
-     law** (advertise = legal ∩ environment-available — `presentDefaultRules`).
-     Best designed **after** the execute half lands (the registry's execute-side
-     references the post-refactor shape — designing now = moving target).
-     Sibling of #4's presentation generalization. Design its own slice; don't
-     force a leaky common interface.
+   - **Execute half — shipped 2026-05-28** (`src/capability/index.ts`: shared
+     `cageOnce`/`cageWithinCeiling`/`performRun`/`autoApprove`/`run`;
+     `write/pipeline.ts`, `skills/execute.ts`, `tasks/execute.ts` all route
+     through shared handlers).
+   - **Front-end half (discover/list/registry) — shipped 2026-05-28**
+     (`src/capability/registry.ts`). `Capability<Data>` interface with
+     `data`/`isAvailable`/`toolDef`/`toEntry`/`execute`; four capability objects
+     (`writeCapability`, `skillCapability`, `runCommandCapability`,
+     `runTaskCapability`) using `satisfies Capability<Data>` to preserve literal
+     `entryKind` types; `as const` registry array with derived `ActionEntry` /
+     `isActionEntry`. `agent.ts` dispatch: 3 branches → 1 registry `find`.
+     `respond.ts`: 4 if-blocks → 1 `capData` loop. `respond: Responder` added to
+     `AgentContext` (DI'd by orchestrator, same pattern as `approve`). `Proposal`
+     carrier: 8 → 5 fields. Open item: named phase input seam (`respond.ts` still
+     needs a one-line pairing per new capability until fields go generic).
 7. **Model-based / stateful property testing of the session+loop state
    machine.** The property analog of e2e (`fc.commands`): generate random
    operation sequences (`new → prompt → fork → load → rename → prompt …`) and
