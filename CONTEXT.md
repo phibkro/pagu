@@ -669,9 +669,10 @@ above.)
      `entryKind` types; `as const` registry array with derived `ActionEntry` /
      `isActionEntry`. `agent.ts` dispatch: 3 branches → 1 registry `find`.
      `respond.ts`: 4 if-blocks → 1 `capData` loop. `respond: Responder` added to
-     `AgentContext` (DI'd by orchestrator, same pattern as `approve`). `Proposal`
-     carrier: 8 → 5 fields. Open item: named phase input seam (`respond.ts` still
-     needs a one-line pairing per new capability until fields go generic).
+     `AgentContext` (DI'd by orchestrator, same pattern as `approve`).
+     `Proposal` carrier: 8 → 5 fields. Open item: named phase input seam
+     (`respond.ts` still needs a one-line pairing per new capability until
+     fields go generic).
 7. **Model-based / stateful property testing of the session+loop state
    machine.** The property analog of e2e (`fc.commands`): generate random
    operation sequences (`new → prompt → fork → load → rename → prompt …`) and
@@ -747,6 +748,31 @@ testing work are likewise independent. New items: #9 (intent line) and #10
 one-session UI task; #12 (type-enforced gate-never-widen) is the prerequisite
 for #2's pluggability milestone; #13 (grammar enum) is a small targeted
 addition.
+
+### v1 milestone definition
+
+v1 is a true milestone, not MVP. It means: multi-platform, security-verified,
+stable programmatic API, production-quality ACP, egress security. The items
+below are the gate; the backlog ideas continue past v1.
+
+| Item | What it requires | Status |
+|------|-----------------|--------|
+| **macOS sandbox verified** | Run the live-verify recipe on real Mac hardware; assert `sandbox: "sandbox-exec"` in result entries | open |
+| **Windows sandbox** | AppContainer or Job Objects wrapping the runner; `detectSandbox` tier for Windows | open |
+| **WASM runner (investigate)** | Assess running the Deno-TS runner under WASM for portable capability-scoped isolation; decision: adopt or explicitly defer | open |
+| **Remote microVM execution** | Run pagu in remote infra with granular VPS access (Firecracker / krun / Apple container framework; virtiofs threads only the allowed dirs into the guest) | open |
+| **Egress security — Claw Patrol** | Integrate a credential-injecting egress proxy so net-granted scripts never see raw secrets; tested end-to-end | open |
+| **Stable programmatic API** | Freeze the public surface (`context.ts` / `UI` / `Approver` / `Capability<Data>` / the loop combinators); SDK consumers can build their own loops without touching internals | open |
+| **ACP — full coverage** | `/roles` and `/skills` over ACP (no TUI-only picker fallback); verified with Zed + at least one other editor | open |
+| **Provider coverage** | Verify model tool-call format against Anthropic, OpenAI, Gemini, and at least one local (Ollama); automated smoke test per provider | open |
+| **Model compatibility tests** | Automated eval: standard task set → score proposal quality + cage-fix rounds; baseline for regression detection | open |
+| **gitignore read protection** | Close the read gap: per-file allowlisting, content redaction, or narrower granted read scope so secrets don't reach the model even without net | open |
+| **Phase input schema validation** | Zod or equivalent at `readInput()` — makes the process-boundary contract explicit and catches orchestrator bugs | open |
+| **CHANGELOG + git-cliff** | Automated changelog generation from conventional commits (`cliff.toml` config) as part of the release flow | open |
+
+Suggested sequencing: security verification (macOS + gitignore) → provider
+coverage + model tests → ACP full coverage → programmatic API freeze →
+remote/egress/WASM (parallel tracks) → Windows.
 
 ### North Star (paradigm-level): pagu's core as an agent-workflow SDK
 
