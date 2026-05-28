@@ -168,14 +168,16 @@ Deno.exit(r.code);
   await Deno.remove(runScratch, { recursive: true });
 
   const output = result.stdout || result.stderr;
-  ctx.log.push({
-    kind: "result",
+  const resultEntry = {
+    kind: "result" as const,
     script: entry.id,
     exit: result.exit,
     ranWith: result.ranWith,
     output,
-  });
+  };
+  ctx.log.push(resultEntry);
   ctx.persist();
+  ctx.ui.entries?.([resultEntry]); // surface the tool_call_update
   ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
   if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
     ctx.ui.show(

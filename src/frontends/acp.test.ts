@@ -5,6 +5,7 @@ import {
   type AcpConn,
   acpUI,
   commandsUpdate,
+  entryUpdate,
   historyUpdates,
 } from "./acp.ts";
 import type { SlashCommand } from "../commands.ts";
@@ -121,28 +122,27 @@ Deno.test("acpUI coalesces rapid stream chunks into one update", async () => {
 
 // --- historyUpdates (replay on session/load) ---
 
-Deno.test("historyUpdates maps messages to user/agent chunks, skipping the rest", () => {
+Deno.test("historyUpdates maps messages and actions, skipping bookkeeping", () => {
   const log = [
     { kind: "message", role: "user", text: "hi" },
     { kind: "message", role: "assistant", text: "hey" },
     { kind: "script", id: "s1", lang: "ts", body: "console.log(1);" },
+    { kind: "perms", id: "s1", perms: [] }, // bookkeeping — skipped
   ] as unknown as Parameters<typeof historyUpdates>[0];
   const u = historyUpdates(log, "sess-1");
-  assertEquals(u.length, 2); // script entry skipped
-  assertEquals(u[0], {
-    sessionId: "sess-1",
-    update: {
-      sessionUpdate: "user_message_chunk",
-      content: { type: "text", text: "hi" },
-    },
-  });
-  assertEquals(u[1], {
-    sessionId: "sess-1",
-    update: {
-      sessionUpdate: "agent_message_chunk",
-      content: { type: "text", text: "hey" },
-    },
-  });
+  assertEquals(u.length, 3); // 2 messages + 1 tool_call; perms skipped
+  assertEquals(
+    (u[0].update as { sessionUpdate: string }).sessionUpdate,
+    "user_message_chunk",
+  );
+  assertEquals(
+    (u[1].update as { sessionUpdate: string }).sessionUpdate,
+    "agent_message_chunk",
+  );
+  assertEquals(
+    (u[2].update as { sessionUpdate: string }).sessionUpdate,
+    "tool_call",
+  );
 });
 
 Deno.test("commandsUpdate advertises bare command names", () => {
@@ -161,4 +161,47 @@ Deno.test("commandsUpdate advertises bare command names", () => {
       ],
     },
   });
+});
+
+// --- entryUpdate (tool-call surfacing) ---
+
+Deno.test("entryUpdate maps a script to an in-progress tool_call", () => {
+  const e = {
+    kind: "script",
+    id: "s1",
+    lang: "ts",
+    body: "x",
+  } as unknown as Parameters<typeof entryUpdate>[0];
+  assertEquals(entryUpdate(e, "sess-1"), {
+    sessionId: "sess-1",
+    update: {
+      sessionUpdate: "tool_call",
+      toolCallId: "s1",
+      title: "Run script s1",
+      kind: "execute",
+      status: "in_progress",
+    },
+  });
+});
+
+Deno.test("acpUI.entries surfaces actions/results as tool calls, skipping messages", () => {
+  const { conn, updates } = fakeConn({
+    outcome: "selected",
+    optionId: "allow",
+  });
+  acpUI(conn, "sess-1").entries!(
+    [
+      { kind: "message", role: "assistant", text: "hi" }, // streams — skipped
+      { kind: "script", id: "s1", lang: "ts", body: "x" },
+      { kind: "result", script: "s1", exit: 1, ranWith: [], output: "boom" },
+    ] as unknown as Parameters<typeof historyUpdates>[0],
+  );
+  assertEquals(updates.length, 2); // message skipped
+  assertEquals(
+    (updates[0].update as { sessionUpdate: string }).sessionUpdate,
+    "tool_call",
+  );
+  const upd = updates[1].update as { sessionUpdate: string; status: string };
+  assertEquals(upd.sessionUpdate, "tool_call_update");
+  assertEquals(upd.status, "failed"); // exit 1
 });

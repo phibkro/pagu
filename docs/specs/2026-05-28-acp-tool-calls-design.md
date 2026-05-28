@@ -1,13 +1,14 @@
 # ACP tool-call surfacing — design (v1)
 
-> Status: hardened via grill-with-docs (2026-05-28); ready for tdd. Grill
-> confirmed `result.script === the action entry id` uniformly across all three
-> executors (skills/tasks/write), so the mapping needs no special-casing;
-> resolved live emission to the **append sites** (each executor surfaces its own
-> `result` via `ctx.ui.entries`, `agent.ts` surfaces produced actions — not a
-> fragile post-hoc search); `in_progress`-only for v1. Grounded in the ACP spec
-> (agentclientprotocol.com/protocol/tool-calls) + the SDK types
-> (`ToolCall`/`ToolCallUpdate`). Authored via brainstorming.
+> Status: **implemented 2026-05-28** (via tdd). One `entryUpdate` mapper
+> (messages + actions + results) reused by replay (`historyUpdates`) and live
+> (the `UI.entries` hook; acpUI maps action/result, CLI/TUI no-op); the three
+> executors emit their `result`, `agent.ts` emits produced actions. Verified
+> live: a script-running prompt emits `tool_call: in_progress` →
+> `tool_call_update: completed`. Hardened via grill: confirmed
+> `result.script === the action entry id` uniformly (skills/tasks/write), so no
+> special-casing; live emission at the append sites; `in_progress`-only for v1.
+> Grounded in the ACP spec + SDK types. Authored via brainstorming.
 
 ## Goal
 

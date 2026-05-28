@@ -46,30 +46,76 @@ export function commandsUpdate(
 }
 
 /**
- * Map a conversation log to the `session/update` notifications that replay it on
- * `session/load`, so a reopened editor thread isn't empty. Pure: messages become
- * user/agent message chunks (message-granular — sent directly, not through the
- * streaming coalescer); non-message entries are skipped in v1 (thinking + tool
- * calls are a separate rich-content slice).
+ * Map one log entry to the `session/update` that surfaces it, or null to skip.
+ * Stateless (the log links `result.script` → the action id), so it serves both
+ * replay (map the whole log) and live (map produced entries). Messages become
+ * message chunks; actions become tool calls; results update them.
  */
-export function historyUpdates(
-  log: Entry[],
+export function entryUpdate(
+  e: Entry,
   sessionId: string,
-): SessionNotification[] {
-  const out: SessionNotification[] = [];
-  for (const e of log) {
-    if (e.kind !== "message") continue;
-    out.push({
-      sessionId,
-      update: {
+): SessionNotification | null {
+  const wrap = (
+    update: SessionNotification["update"],
+  ): SessionNotification => ({
+    sessionId,
+    update,
+  });
+  switch (e.kind) {
+    case "message":
+      return wrap({
         sessionUpdate: e.role === "user"
           ? "user_message_chunk"
           : "agent_message_chunk",
         content: { type: "text", text: e.text },
-      },
-    });
+      });
+    case "script":
+      return wrap({
+        sessionUpdate: "tool_call",
+        toolCallId: e.id,
+        title: `Run script ${e.id}`,
+        kind: "execute",
+        status: "in_progress",
+      });
+    case "skill-invoke":
+      return wrap({
+        sessionUpdate: "tool_call",
+        toolCallId: e.id,
+        title: `Skill: ${e.script}`,
+        kind: "execute",
+        status: "in_progress",
+      });
+    case "command-invoke":
+      return wrap({
+        sessionUpdate: "tool_call",
+        toolCallId: e.id,
+        title: `Task: ${e.program} ${e.args.join(" ")}`.trim(),
+        kind: "execute",
+        status: "in_progress",
+      });
+    case "result":
+      return wrap({
+        sessionUpdate: "tool_call_update",
+        toolCallId: e.script,
+        status: e.exit === 0 ? "completed" : "failed",
+        content: [{
+          type: "content",
+          content: { type: "text", text: e.output },
+        }],
+      });
+    default:
+      return null; // decision / observation / perms — not surfaced
   }
-  return out;
+}
+
+// Replay: map the whole log through entryUpdate (messages + tool calls).
+export function historyUpdates(
+  log: Entry[],
+  sessionId: string,
+): SessionNotification[] {
+  return log
+    .map((e) => entryUpdate(e, sessionId))
+    .filter((u): u is SessionNotification => u !== null);
 }
 
 /**
@@ -129,6 +175,15 @@ export function acpUI(conn: AcpConn, sessionId: string, flushMs = 50): UI {
       buf += text;
       if (buf.length >= 1024) flush();
       else if (timer === undefined) timer = setTimeout(flush, flushMs);
+    },
+    // Surface produced actions as tool calls. Messages are skipped — they
+    // already stream live via `stream`. Sent directly (discrete, not coalesced).
+    entries: (produced: Entry[]) => {
+      for (const e of produced) {
+        if (e.kind === "message") continue;
+        const u = entryUpdate(e, sessionId);
+        if (u) void conn.sessionUpdate(u);
+      }
     },
   };
 }

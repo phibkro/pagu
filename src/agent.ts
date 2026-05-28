@@ -94,6 +94,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     ctx.log.push(...produced);
     ctx.persist();
     showReply(produced);
+    ctx.ui.entries?.(produced); // surface actions (tool calls) to the frontend
 
     const skillInvoke = produced.findLast(isSkillInvoke);
     if (skillInvoke) {

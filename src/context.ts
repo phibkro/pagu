@@ -40,6 +40,9 @@ export interface UI {
   status(msg: string): void;
   show(msg: string): void;
   stream?(chunk: string): void;
+  /** Entries just appended to the log — lets a frontend surface actions
+   * (the ACP frontend maps them to tool calls; CLI/TUI omit it). */
+  entries?(produced: Entry[]): void;
 }
 
 /** A function that runs the respond phase and returns the entries it produced.

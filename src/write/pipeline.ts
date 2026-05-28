@@ -181,14 +181,16 @@ export const run: Handler = async (p) => {
   await Deno.remove(scratch, { recursive: true });
 
   const output = result.stdout || result.stderr;
-  p.ctx.log.push({
-    kind: "result",
+  const resultEntry = {
+    kind: "result" as const,
     script: p.script.id,
     exit: result.exit,
     ranWith: result.ranWith,
     output,
-  });
+  };
+  p.ctx.log.push(resultEntry);
   p.ctx.persist();
+  p.ctx.ui.entries?.([resultEntry]); // surface the tool_call_update
   p.ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
   if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
     p.ctx.ui.show(

@@ -515,7 +515,10 @@ portable tier-1 floor around it (no regression).
 - **ACP — remaining integration work.** v1 runs in editors but is partial.
   **Shipped** 2026-05-28: history replay on `session/load` (`historyUpdates` +
   `loadSession`); config slash commands (`/model`/`/provider`/`/advisor`
-  advertised via `available_commands_update` + routed; `src/commands.ts`).
+  advertised via `available_commands_update` + routed; `src/commands.ts`);
+  **tool-call surfacing** (`script`/`skill-invoke`/`command-invoke` →
+  `tool_call`, `result` → `tool_call_update`, live + replay, via one
+  `entryUpdate` mapper + the `UI.entries` hook; `src/frontends/acp.ts`).
   Remaining:
   - **`/roles` & `/skills` over ACP** — their no-args path is a TUI-only
     `selectFromList` picker; need a with-args-shared + ACP-text-listing split
@@ -524,10 +527,9 @@ portable tier-1 floor around it (no regression).
   - **Cooperative cancellation** (`session/cancel`) — currently a no-op; needs a
     cancellable `runTask` (ties to the loop substrate — a cancel signal the loop
     checks between turns).
-  - **Surface tool calls** — map `read`/`write`/`run_task`/`invoke_skill`
-    actions to ACP `tool_call` / `tool_call_update` so the editor shows what the
-    agent is doing, not just streamed text. (= the rich-content slice with
-    thinking, `agent_thought_chunk`.)
+  - **Thinking** → `agent_thought_chunk` — needs provider-layer reasoning
+    separation (parse qwen's `<think>` / surface `reasoning_content`),
+    model-specific. Also: diff/terminal tool-call content, `· read X` markers.
   - Live-verify the slash-command **invocation format** Zed sends (literal
     `/name …` text is assumed; adjust routing if it sends bare names).
 - GUI / computer-use.
