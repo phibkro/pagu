@@ -61,6 +61,24 @@ the blast radius statically enumerable._
   defaults, fallbacks, shadowing, merge laws — are documented (in `CONTEXT.md` /
   `docs/CONCEPTS.md`) as _intended behavior_, not left implicit. An undocumented
   rule looks like a bug; transparency is for the next reader and the user.
+- **Implicit conventions must have a path to structural enforcement.** Every
+  rule that lives only in prose is one refactor away from being silently broken.
+  The enforcement ladder: **prose → comment → test → type/lint/CI rule**. Always
+  ask which rung the convention is on, and prefer the strongest constraint the
+  language or toolchain supports. Examples in this codebase:
+  - `// pure:` / `// effects:` → layer checker (`scripts/check-layers.ts`)
+    enforces the hexagonal boundary in CI.
+  - `// invariant #1` (respond has no exec path) → `agent.test.ts` asserts
+    `respondFlags` never grants run/write; R3 in `check-layers.ts` enforces the
+    direct import constraint.
+  - `gate-never-widen` → `readonly PermissionSet` prevents array mutation;
+    `satisfies Capability<Data>` makes literal `entryKind` types mandatory.
+  - Phase input shape → currently a TypeScript cast; schema validation at
+    `readInput()` is the next rung when `ipc.ts` next changes. When adding a new
+    convention, document it _and_ ask: what would make violating it a compile
+    error or CI failure? Note: `deno lint` validates doc comment structure and
+    types (`deno lint --rules` to see available rules); `deno doc` can surface
+    undocumented public exports.
 - **Clarity over brevity; readability over code-writing velocity; security over
   utility.** When these trade off, optimize in that order — and surface the
   tradeoff. (Hence: `permissions/` not `perms/`, `// effects:` markers, the
