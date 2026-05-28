@@ -577,16 +577,19 @@ above.)
    turn boundary ≈ the effect site, so boundary-level handlers likely suffice.
    Pluggability is also the home for plugins / extensibility (new providers
    behind `chat()`, new frontends behind `UI`/`Approver`).
-3. **Read-only-command auto-approve gate** — an application of the handler
-   pipeline (#2). Auto-approve a proposal when its _only_ effect is running a
-   curated, read-only command (`rg`/`grep`/`git log`/…) with read-only perms —
-   `allow-run=<safe cmd>` + `allow-read`, **no write, no net**. Safe by
-   construction: the absent write/net grants bound the blast radius (the cage
-   already rehearses no-net/scratch), so it never widens the envelope
-   (gate-never-widen). Note: `ls`/`cat`/`head`/`tail` are already the `read`
-   tool's job — the real win is content **search** the `read` tool can't do.
-   Cautions: "read-only" is sneaky (`find -delete`, `tee`, redirections, arg
-   injection) → the list must be curated and arg-constrained.
+3. **Read-only-command auto-approve gate → command grammar.** **Designed
+   2026-05-28** (`docs/specs/2026-05-28-command-grammar-design.md`); next to
+   implement. Auto-approve curated read-only commands (`rg`/`git log`/…,
+   `allow-read` + `allow-run`, **no write, no net**) with **agent-supplied args
+   validated by a formal grammar**. The design **subsumes** `run_task` (its
+   exact-enum = the degenerate zero-free-arg grammar — one command construct,
+   not two; folds in part of #4), and frames arg-safety as **LangSec**: a
+   regular sublanguage of safe argv invocations, recognised default-deny (the
+   no-shell architecture is what makes it regular). The "read-only" trap
+   (`--pre`, `find -delete`, abbreviation/bundling) is handled by canonical-flag
+   allowlist
+   - the law **free args ⇒ read-only ceiling**; the recogniser is a filter, not
+     the boundary (perms + sandbox + #5 bound what's possible).
 4. **Command-architecture generalization (rule of three).** CLI (flags), TUI
    (slash + arrow-key pickers), and ACP (slash + `availableCommands`) are three
    presentations of the same operations. `src/commands.ts` (the `SlashCommand`
