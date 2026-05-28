@@ -26,7 +26,7 @@ export type Permission =
   | { flag: Exclude<PermFlag, "all">; scope?: string }
   | { flag: "all" };
 
-export type PermissionSet = Permission[];
+export type PermissionSet = readonly Permission[];
 
 const FLAGS = new Set<PermFlag>([
   "read",
@@ -91,8 +91,8 @@ export function covers(env: Permission, req: Permission): boolean {
 
 /** A session's capability envelope: allowed scopes minus denied ones. */
 export interface Envelope {
-  allow: PermissionSet;
-  deny?: PermissionSet;
+  readonly allow: PermissionSet;
+  readonly deny?: PermissionSet;
 }
 
 /**

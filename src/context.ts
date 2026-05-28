@@ -74,7 +74,7 @@ export interface AgentContext {
   agents: string;
   readPaths: string[];
   repo?: string;
-  envelope: Envelope;
+  readonly envelope: Envelope;
   denyFlags: string[];
   /** Absolute paths of gitignored files — the agent's read tool refuses
    * these to prevent surfacing secrets to the model (CF3). */
