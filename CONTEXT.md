@@ -445,10 +445,11 @@ portable tier-1 floor around it (no regression).
   the runner stays the only exec path (invariant #1); ACP carries conversation +
   approval UX only. `session/new`|`load` honor the client's workspace `cwd`
   (2026-05-28) so repo + read-allowlist detection follows the editor's project.
-  **v1 is partial** — chat + approval work, but history replay on load,
-  slash-command advertisement, cancellation, and tool-call surfacing remain (see
-  Open → "ACP — remaining integration work"). Still deferred: images/audio, MCP,
-  remote transport.
+  **v1 is partial** — chat + approval + **history replay on load** work
+  (`session/load` replays the conversation; `9e2936f`, `d159484` coalesces
+  streaming). Slash-command advertisement, cancellation, and tool-call surfacing
+  remain (see Open → "ACP — remaining integration work"). Still deferred:
+  images/audio, MCP, remote transport.
 - **Composable agent loops — substrate (v1)** (`src/loop.ts`) — the agent loop
   is now a composable value, not a hand-written `for`. Denotation:
   `⟦Flow⟧ =
@@ -511,11 +512,9 @@ portable tier-1 floor around it (no regression).
 - **Permission modes** — named envelope bundles generalizing repo mode.
 - **A credential-injecting egress proxy** so net-granted scripts never see raw
   secrets.
-- **ACP — remaining integration work.** v1 runs in editors but is partial:
-  - **History replay on `session/load`** — `loadSession` rebuilds the context
-    (loads the log) but never re-sends the prior conversation as
-    `session/update` notifications, so a reloaded Zed thread shows empty. Replay
-    the log on load.
+- **ACP — remaining integration work.** v1 runs in editors but is partial.
+  (History replay on `session/load` — **shipped** 2026-05-28,
+  `src/frontends/acp.ts` `historyUpdates` + `loadSession`.) Remaining:
   - **Advertise slash commands** — surface pagu's commands (`/model`, `/roles`,
     `/skills`, `/advisor`, …) via ACP `availableCommands` so the editor offers
     them, and route the chosen command through the same handlers the TUI uses.

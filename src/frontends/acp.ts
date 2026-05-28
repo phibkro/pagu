@@ -21,6 +21,34 @@ import { runTask } from "../agent.ts";
 import type { AgentContext, Approver, ScriptEntry, UI } from "../context.ts";
 import { buildContext, type RunOpts } from "../config/setup.ts";
 import { newSessionId } from "../config/sessions.ts";
+import type { Entry } from "../log/index.ts";
+
+/**
+ * Map a conversation log to the `session/update` notifications that replay it on
+ * `session/load`, so a reopened editor thread isn't empty. Pure: messages become
+ * user/agent message chunks (message-granular — sent directly, not through the
+ * streaming coalescer); non-message entries are skipped in v1 (thinking + tool
+ * calls are a separate rich-content slice).
+ */
+export function historyUpdates(
+  log: Entry[],
+  sessionId: string,
+): SessionNotification[] {
+  const out: SessionNotification[] = [];
+  for (const e of log) {
+    if (e.kind !== "message") continue;
+    out.push({
+      sessionId,
+      update: {
+        sessionUpdate: e.role === "user"
+          ? "user_message_chunk"
+          : "agent_message_chunk",
+        content: { type: "text", text: e.text },
+      },
+    });
+  }
+  return out;
+}
 
 /**
  * The minimal connection surface the UI/Approver adapters need.
@@ -147,7 +175,13 @@ export class PaguAgent implements Agent {
   }
 
   async loadSession(p: LoadSessionRequest): Promise<LoadSessionResponse> {
-    await this.makeSession(p.sessionId, p.cwd);
+    const ctx = await this.makeSession(p.sessionId, p.cwd);
+    // Replay the loaded conversation so the reopened thread isn't empty. Sent
+    // directly + awaited (message-granular, ordered) — not through the streaming
+    // coalescer.
+    for (const u of historyUpdates(ctx.log, p.sessionId)) {
+      await this.conn.sessionUpdate(u);
+    }
     return {};
   }
 
@@ -171,7 +205,7 @@ export class PaguAgent implements Agent {
   // `cwd` is the client's workspace root from session/new|load — the directory
   // pagu detects the repo + read-allowlist against (the agent subprocess's own
   // cwd is whatever the editor launched it from, not the project).
-  private async makeSession(id: string, cwd?: string): Promise<void> {
+  private async makeSession(id: string, cwd?: string): Promise<AgentContext> {
     const ctx = await buildContext(
       { ...this.opts, session: id, cont: false, cwd },
       this.agents,
@@ -179,6 +213,7 @@ export class PaguAgent implements Agent {
       acpApprover(this.conn, id),
     );
     this.sessions.set(id, ctx);
+    return ctx;
   }
 }
 

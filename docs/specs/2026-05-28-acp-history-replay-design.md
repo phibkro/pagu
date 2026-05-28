@@ -1,11 +1,14 @@
 # ACP history replay on session/load — design (v1)
 
-> Status: hardened via grill-with-docs (2026-05-28); ready for tdd. Grill
-> verified the load path (`buildContext({session, cwd})` loads `ctx.log`,
-> depends on cwd fix `9e2936f`) and resolved: replay sends **directly** via
-> `conn.sessionUpdate` (awaited, message-granular), bypassing the new per-token
-> coalescing buffer (`d159484`). Roadmap: CONTEXT.md → Open → "ACP — remaining
-> integration work" (history replay). Authored via brainstorming.
+> Status: **implemented 2026-05-28** (via tdd) — as designed: pure
+> `historyUpdates` mapper (law-tested) + `loadSession` replays directly/awaited;
+> verified end-to-end against the real binary (`session/load` replays user +
+> agent chunks in order). Hardened via grill-with-docs: verified the load path
+> (`buildContext({session,
+> cwd})` loads `ctx.log`, depends on cwd fix
+> `9e2936f`) and resolved that replay sends **directly** via
+> `conn.sessionUpdate` (awaited, message-granular), bypassing the per-token
+> coalescing buffer (`d159484`). Authored via brainstorming.
 
 ## Goal
 

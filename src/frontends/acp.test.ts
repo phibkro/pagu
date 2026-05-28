@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
-import { acpApprover, type AcpConn, acpUI } from "./acp.ts";
+import { acpApprover, type AcpConn, acpUI, historyUpdates } from "./acp.ts";
 import type { ScriptEntry } from "../context.ts";
 
 // A fake connection that records sessionUpdate calls and returns a canned
@@ -110,4 +110,30 @@ Deno.test("acpUI coalesces rapid stream chunks into one update", async () => {
     (updates[0].update as { content: { text: string } }).content.text,
     "Hello world",
   );
+});
+
+// --- historyUpdates (replay on session/load) ---
+
+Deno.test("historyUpdates maps messages to user/agent chunks, skipping the rest", () => {
+  const log = [
+    { kind: "message", role: "user", text: "hi" },
+    { kind: "message", role: "assistant", text: "hey" },
+    { kind: "script", id: "s1", lang: "ts", body: "console.log(1);" },
+  ] as unknown as Parameters<typeof historyUpdates>[0];
+  const u = historyUpdates(log, "sess-1");
+  assertEquals(u.length, 2); // script entry skipped
+  assertEquals(u[0], {
+    sessionId: "sess-1",
+    update: {
+      sessionUpdate: "user_message_chunk",
+      content: { type: "text", text: "hi" },
+    },
+  });
+  assertEquals(u[1], {
+    sessionId: "sess-1",
+    update: {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "hey" },
+    },
+  });
 });
