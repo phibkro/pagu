@@ -1,10 +1,11 @@
-// effects: cage + run for invoke_skill entries
+// effects: invoke_skill execution — pipeline([resolveBody, ceilingGate, autoApprove, run])
 import {
-  absolutizePerm,
-  parsePermission,
-  withinEnvelope,
-} from "../permissions/index.ts";
-import { classifyRun, runScript } from "../runner/index.ts";
+  autoApprove,
+  cageWithinCeiling,
+  type Exec,
+  run,
+} from "../capability/index.ts";
+import { pipeline } from "../loop.ts";
 import type { AgentContext, SkillInvocationEntry } from "../context.ts";
 
 /** Return "stop" to exit runTask, "loop" to continue to the next turn. */
@@ -12,142 +13,99 @@ export async function executeSkillInvocation(
   entry: SkillInvocationEntry,
   ctx: AgentContext,
 ): Promise<"stop" | "loop"> {
-  const ss = ctx.activeSkillScripts.find((s) => s.name === entry.script);
-  if (!ss) {
-    ctx.ui.show(`✗ invoke_skill: unknown script "${entry.script}"`);
-    ctx.log.push({
-      kind: "message",
-      role: "user",
-      text:
-        `invoke_skill failed: no active skill script named "${entry.script}". Available: ${
-          ctx.activeSkillScripts.map((s) => s.name).join(", ") || "none"
-        }.`,
-    });
-    ctx.persist();
-    return "loop";
-  }
+  const exec: Exec = {
+    ctx,
+    id: entry.id,
+    title: entry.script,
+    body: "",
+    perms: [],
+    rationale: `auto-approved skill invocation: ${entry.script}`,
+    scriptArgs: entry.args,
+    cwd: ctx.repo ?? ctx.projectBase,
+    outcome: "loop",
+  };
 
-  // Re-read from disk: auto-approval claim is "what's currently in the skill
-  // file," not a startup snapshot.
-  let body: string;
-  try {
-    body = await Deno.readTextFile(ss.path);
-  } catch (e) {
-    ctx.ui.show(`✗ skill "${ss.name}": script not readable at ${ss.path}`);
-    ctx.log.push({
-      kind: "decision",
-      script: entry.id,
-      verdict: "reject",
-      rationale: `skill script unreadable: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
-    });
-    ctx.persist();
-    return "stop";
-  }
-
-  ctx.ui.status(`caging skill script: ${ss.name}…`);
-  const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
-  const file = `${scratch}/${entry.id}.ts`;
-  await Deno.writeTextFile(file, body);
-  const cageResult = await runScript({
-    scriptPath: file,
-    perms: [
-      ...ctx.readPaths.map((p) => `allow-read=${p}`),
-      `allow-write=${scratch}`,
-      ...ctx.denyFlags,
-    ],
-    cwd: ctx.repo ?? scratch,
-    sandbox: ctx.sandboxKind,
-  });
-  await Deno.remove(scratch, { recursive: true });
-
-  const cls = classifyRun(cageResult.exit, cageResult.stderr);
-  let skillPerms: string[];
-  const base = ctx.repo ?? Deno.cwd();
-
-  if (cls.kind === "ok") {
-    skillPerms = ctx.readPaths.map((p) => `allow-read=${p}`);
-  } else if (cls.kind === "needs-perms") {
-    const discovered = cls.perms.map((s) =>
-      parsePermission(absolutizePerm(s, base))
-    );
-    const ceiling = ss.permissions.flatMap((p) => {
-      try {
-        return [parsePermission(p)];
-      } catch {
-        return [];
-      }
-    });
-    if (!withinEnvelope(discovered, { allow: ceiling })) {
+  // resolveBody: re-read from disk (auto-approval is "what's currently on
+  // disk," not a startup snapshot); reject if unknown or unreadable.
+  const resolveBody = async (e: Exec) => {
+    const ss = ctx.activeSkillScripts.find((s) => s.name === entry.script);
+    if (!ss) {
+      ctx.ui.show(`✗ invoke_skill: unknown script "${entry.script}"`);
+      ctx.log.push({
+        kind: "message",
+        role: "user",
+        text:
+          `invoke_skill failed: no active skill script named "${entry.script}". Available: ${
+            ctx.activeSkillScripts.map((s) => s.name).join(", ") || "none"
+          }.`,
+      });
+      ctx.persist();
+      e.outcome = "loop";
+      return "done" as const;
+    }
+    try {
+      e.body = await Deno.readTextFile(ss.path);
+    } catch (err) {
       ctx.ui.show(
-        `✗ skill "${ss.name}" needs perms outside its declared ceiling — not run`,
+        `✗ skill "${ss.name}": script not readable at ${ss.path}`,
       );
       ctx.log.push({
         kind: "decision",
         script: entry.id,
         verdict: "reject",
-        rationale: "discovered perms exceed skill ceiling",
+        rationale: `skill script unreadable: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
       });
       ctx.persist();
-      return "stop";
+      e.outcome = "stop";
+      return "done" as const;
     }
-    skillPerms = [
-      ...ctx.readPaths.map((p) => `allow-read=${p}`),
-      ...cls.perms.map((s) => absolutizePerm(s, base)),
-    ];
-  } else {
-    ctx.ui.show(
-      `✗ skill "${ss.name}" failed cage (pre-authored script — not sent back for fixing):\n${cls.error}`,
-    );
-    ctx.log.push({
-      kind: "decision",
-      script: entry.id,
-      verdict: "reject",
-      rationale: `cage bug: ${cls.error}`,
-    });
-    ctx.persist();
-    return "stop";
-  }
-
-  ctx.ui.status(`running skill script: ${ss.name}…`);
-  ctx.log.push({
-    kind: "decision",
-    script: entry.id,
-    verdict: "approve",
-    rationale: `auto-approved skill invocation: ${ss.name}`,
-  });
-  ctx.persist();
-
-  const runScratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
-  const runFile = `${runScratch}/${entry.id}.ts`;
-  await Deno.writeTextFile(runFile, body);
-  const result = await runScript({
-    scriptPath: runFile,
-    perms: [...skillPerms, ...ctx.denyFlags],
-    cwd: ctx.repo ?? ctx.projectBase,
-    sandbox: ctx.sandboxKind,
-    scriptArgs: entry.args,
-  });
-  await Deno.remove(runScratch, { recursive: true });
-
-  const output = result.stdout || result.stderr;
-  const resultEntry = {
-    kind: "result" as const,
-    script: entry.id,
-    exit: result.exit,
-    ranWith: result.ranWith,
-    output,
+    return "continue" as const;
   };
-  ctx.log.push(resultEntry);
-  ctx.persist();
-  ctx.ui.entries?.([resultEntry]); // surface the tool_call_update
-  ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
-  if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
-    ctx.ui.show(
-      "\n[net was granted — output would NOT auto-return to the agent]",
-    );
-    return "stop";
-  }
-  return "loop";
+
+  // ceilingGate: cage the body, check discovered perms against the skill's
+  // declared ceiling; reject (no fix loop) if exceeded or cage bug.
+  const ceilingGate = async (e: Exec) => {
+    const ss = ctx.activeSkillScripts.find((s) => s.name === entry.script)!;
+    ctx.ui.status(`caging skill script: ${ss.name}…`);
+    const perms = await cageWithinCeiling({
+      body: e.body,
+      id: entry.id,
+      ctx,
+      declared: ss.permissions,
+      onExceed: (msg) => {
+        ctx.ui.show(
+          `✗ skill "${ss.name}" needs perms outside its declared ceiling — not run`,
+        );
+        ctx.log.push({
+          kind: "decision",
+          script: entry.id,
+          verdict: "reject",
+          rationale: msg,
+        });
+        ctx.persist();
+        e.outcome = "stop";
+      },
+      onBug: (msg) => {
+        ctx.ui.show(
+          `✗ skill "${ss.name}" failed cage (pre-authored script — not sent back for fixing):\n${msg}`,
+        );
+        ctx.log.push({
+          kind: "decision",
+          script: entry.id,
+          verdict: "reject",
+          rationale: `cage bug: ${msg}`,
+        });
+        ctx.persist();
+        e.outcome = "stop";
+      },
+    });
+    if (perms === null) return "done" as const;
+    e.perms = perms;
+    return "continue" as const;
+  };
+
+  await pipeline([resolveBody, ceilingGate, autoApprove, run])(exec);
+  return exec.outcome;
 }

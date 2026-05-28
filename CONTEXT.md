@@ -705,12 +705,52 @@ above.)
      structural, not bugs: joined list elements (args/perms/ran-with) carry no
      newline/space and attr values (ids/source/program) no `"`/newline — those
      fields never hold such values by construction.
+9. **Approval intent line (UX).** Before presenting the raw script at the human
+   gate, auto-generate a one-sentence plain-English summary of what the script
+   will do — "reads all `.ts` files in the repo and writes a line count to
+   `summary.txt`." Distinct from the advisory reviewer (which flags _risk_);
+   this is about _comprehension_. A fast/small model call with a tight
+   structured prompt produces it cheaply; display it above the script body so
+   the reviewer can spot intent mismatch before reading code. Sits naturally as
+   a handler inserted before `approve` in the pipeline —
+   `pipeline([cage, narrate, approve,
+   run])`.
+10. **Live runner output streaming.** `runScript` collects stdout/stderr and
+    returns them at exit. For long-running scripts (test suites, data
+    processing) the user sees nothing until completion. The respond phase
+    already streams model tokens via `UI.stream`; extend the same model to the
+    runner: `runScript` returns an `AsyncIterable<string>` side-channel
+    alongside the batch `RunResult`. TUI and ACP frontends consume the stream;
+    CLI falls back to batch. No security implications — the output is already
+    gated by net-granted check before re-entering context.
+11. **Session fuzzy search.** `/open` lists sessions by name/timestamp; finding
+    a session from days ago requires reading through the list. Add a text filter
+    (substring or fuzzy) over session names + first user messages to the picker.
+    Metadata for filtering is available at session-list time (frontmatter `name`
+    - first `message` entry). Pure UX, no security implications, composable with
+      the existing `selectFromList` picker.
+12. **Type-enforced gate-never-widen. Partial — shipped 2026-05-28.** Layer 1
+    landed: `PermissionSet = readonly Permission[]` + `Envelope.allow/deny`
+    readonly properties + `AgentContext.envelope` readonly — prevents any code
+    from pushing to the session envelope or replacing it at runtime; enforced by
+    `deno check`. Remaining: a `ReadonlyExec` view so the terminal handlers
+    (`autoApprove`, `run`) can't accidentally widen `exec.perms` either — needs
+    a typed narrowing operation at the gate/terminal boundary; deferred until
+    config-driven pluggability (#2) shapes the handler API.
+13. **`grammar.ts` enum value type. Shipped 2026-05-28.** `{ enum: string[] }`
+    value type added to `validateValue`; 4 tests cover accept/reject. Unlocks
+    `git log --format=<oneline|short|full>` and similar parameterized rules in
+    `tasks/defaults.ts`.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
 constraints surface. ACP integration gaps (Open) are independent and can slot in
 anytime; #5's enforcement-layer tiers, #6's `Capability` port, and #7/#8's
-testing work are likewise independent.
+testing work are likewise independent. New items: #9 (intent line) and #10
+(streaming) improve daily-use UX independently; #11 (session search) is a
+one-session UI task; #12 (type-enforced gate-never-widen) is the prerequisite
+for #2's pluggability milestone; #13 (grammar enum) is a small targeted
+addition.
 
 ### North Star (paradigm-level): pagu's core as an agent-workflow SDK
 

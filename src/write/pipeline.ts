@@ -6,7 +6,7 @@
 // model). cage → approve → run reproduces the former executeScriptProposal exactly.
 import { absolutizePerm, parsePermission } from "../permissions/index.ts";
 import { shouldAutoApprove } from "../permissions/index.ts";
-import { classifyRun, runScript } from "../runner/index.ts";
+import { cageOnce, performRun } from "../capability/index.ts";
 import { matchesSkillScript } from "../skills/index.ts";
 import { buildReview, formatReview } from "./review.ts";
 import { formatAdvisory, runAdvisor } from "./advisor.ts";
@@ -49,23 +49,13 @@ export const cage: Handler = async (p) => {
   let discovered: string[] = [];
 
   for (let attempt = 1; attempt <= MAX_FIX; attempt++) {
-    const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
-    const file = `${scratch}/${current.id}.ts`;
-    await Deno.writeTextFile(file, current.body);
     p.ctx.ui.status(`self-testing in cage (attempt ${attempt})…`);
-    const r = await runScript({
-      scriptPath: file,
-      perms: [
-        ...p.ctx.readPaths.map((path) => `allow-read=${path}`),
-        `allow-write=${scratch}`,
-        ...p.ctx.denyFlags,
-      ],
-      cwd: p.ctx.repo ?? scratch,
-      sandbox: p.ctx.sandboxKind,
+    const cls = await cageOnce({
+      body: current.body,
+      id: current.id,
+      ctx: p.ctx,
     });
-    await Deno.remove(scratch, { recursive: true });
 
-    const cls = classifyRun(r.exit, r.stderr);
     if (cls.kind === "ok") break;
     if (cls.kind === "needs-perms") {
       discovered = cls.perms;
@@ -168,37 +158,13 @@ export const approve: Handler = async (p) => {
 /** Perform the approved script in the runner, log the result, apply net-output
  * gating, and set outcome. Terminal — always halts (done). */
 export const run: Handler = async (p) => {
-  const perms = fullPerms(p);
-  const scratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
-  const file = `${scratch}/${p.script.id}.ts`;
-  await Deno.writeTextFile(file, p.script.body);
-  const result = await runScript({
-    scriptPath: file,
-    perms: [...perms, ...p.ctx.denyFlags],
-    cwd: p.ctx.repo ?? scratch,
-    sandbox: p.ctx.sandboxKind,
+  // cwd not passed → performRun falls back to ctx.repo ?? its own scratch,
+  // which is behavior-identical to the original (repo ?? run-scratch).
+  p.outcome = await performRun({
+    ctx: p.ctx,
+    id: p.script.id,
+    body: p.script.body,
+    perms: fullPerms(p),
   });
-  await Deno.remove(scratch, { recursive: true });
-
-  const output = result.stdout || result.stderr;
-  const resultEntry = {
-    kind: "result" as const,
-    script: p.script.id,
-    exit: result.exit,
-    ranWith: result.ranWith,
-    output,
-  };
-  p.ctx.log.push(resultEntry);
-  p.ctx.persist();
-  p.ctx.ui.entries?.([resultEntry]); // surface the tool_call_update
-  p.ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
-  if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
-    p.ctx.ui.show(
-      "\n[net was granted — output would NOT auto-return to the agent]",
-    );
-    p.outcome = "stop";
-    return "done";
-  }
-  p.outcome = "loop";
   return "done";
 };
