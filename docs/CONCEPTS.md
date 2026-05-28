@@ -202,6 +202,17 @@ the gate-never-widen law gets type-enforced) and generalizing to the
 (operation-granularity interception) are the lawful spine underneath, reached
 for only if a real need surfaces. (See `CONTEXT.md` → Roadmap.)
 
+**The static sibling — declare locally, aggregate centrally.** Where the handler
+pipeline _interprets_ contributions, a plain **list of declarations consumed by
+a generalised reader** does the same at the value level. Worked example: slash
+commands (`src/commands.ts`) — each `SlashCommand` is declared once as
+`{name, description,
+run}`, and one list is read by three consumers (the TUI
+dispatch, ACP routing, ACP advertisement) via `runCommand`. Same shape as the
+Nix module system (declare options locally, `mkMerge` centrally). Not a generic
+framework — codify one only at a third instance (rule of three; CLI flags / TUI
+slash+pickers / ACP slash+advertise are circling it).
+
 ## Derived state and inference chains
 
 A recurring pattern in pagu: effectful inference reads source files and produces

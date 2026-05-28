@@ -1,5 +1,6 @@
 // effects: terminal frontend (REPL)
 import { loadConfig, PRESETS } from "../config/config.ts";
+import { runCommand, slashCommands } from "../commands.ts";
 import { buildContext, parseArgs, readLine } from "../config/setup.ts";
 import {
   type AgentContext,
@@ -298,6 +299,9 @@ async function handleCommand(
   nav: { listing: SessionInfo[] },
 ): Promise<boolean> {
   const cmd = line.split(/\s+/)[0];
+  // Shared config commands (/model, /provider, /advisor) live in src/commands.ts
+  // so the TUI and ACP drive the same handlers. TUI-only commands stay below.
+  if (await runCommand(slashCommands, line, ctx)) return true;
   switch (cmd) {
     case "/help":
       console.log(
@@ -308,45 +312,6 @@ async function handleCommand(
         ),
       );
       return true;
-    case "/provider": {
-      const [, name, model] = line.split(/\s+/);
-      if (!name) {
-        console.log(dim(`  providers: ${Object.keys(PRESETS).join(", ")}`));
-        console.log(
-          dim(`  current: ${ctx.provider.model} @ ${ctx.providerHost}`),
-        );
-        return true;
-      }
-      const r = ctx.setProvider({ provider: name, model });
-      console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
-      return true;
-    }
-    case "/model": {
-      const name = line.includes(" ")
-        ? line.slice(line.indexOf(" ") + 1).trim()
-        : "";
-      if (!name) {
-        console.log(dim("  usage: /model <name>"));
-        return true;
-      }
-      const r = ctx.setProvider({ model: name });
-      console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
-      return true;
-    }
-    case "/advisor": {
-      const parts = line.split(/\s+/).slice(1);
-      if (parts[0] === "off") {
-        const r = ctx.setAdvisor({ enabled: false });
-        console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
-      } else if (parts.length === 0) {
-        const r = ctx.setAdvisor({});
-        console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
-      } else {
-        const r = ctx.setAdvisor({ provider: parts[0], model: parts[1] });
-        console.log(dim(`  ${r.ok ? "→" : "✗"} ${r.message}`));
-      }
-      return true;
-    }
     case "/roles": {
       let names = line.split(/\s+/).slice(1);
       if (names.length === 0) {

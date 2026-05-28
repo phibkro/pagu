@@ -445,11 +445,11 @@ portable tier-1 floor around it (no regression).
   the runner stays the only exec path (invariant #1); ACP carries conversation +
   approval UX only. `session/new`|`load` honor the client's workspace `cwd`
   (2026-05-28) so repo + read-allowlist detection follows the editor's project.
-  **v1 is partial** — chat + approval + **history replay on load** work
-  (`session/load` replays the conversation; `9e2936f`, `d159484` coalesces
-  streaming). Slash-command advertisement, cancellation, and tool-call surfacing
-  remain (see Open → "ACP — remaining integration work"). Still deferred:
-  images/audio, MCP, remote transport.
+  **v1 is partial** — chat + approval + **history replay on load** + **config
+  slash commands** (`/model`/`/provider`/`/advisor` advertised + routed;
+  `src/commands.ts`) work. Cancellation and tool-call surfacing remain (see Open
+  → "ACP — remaining integration work"). Still deferred: images/audio, MCP,
+  remote transport.
 - **Composable agent loops — substrate (v1)** (`src/loop.ts`) — the agent loop
   is now a composable value, not a hand-written `for`. Denotation:
   `⟦Flow⟧ =
@@ -513,17 +513,23 @@ portable tier-1 floor around it (no regression).
 - **A credential-injecting egress proxy** so net-granted scripts never see raw
   secrets.
 - **ACP — remaining integration work.** v1 runs in editors but is partial.
-  (History replay on `session/load` — **shipped** 2026-05-28,
-  `src/frontends/acp.ts` `historyUpdates` + `loadSession`.) Remaining:
-  - **Advertise slash commands** — surface pagu's commands (`/model`, `/roles`,
-    `/skills`, `/advisor`, …) via ACP `availableCommands` so the editor offers
-    them, and route the chosen command through the same handlers the TUI uses.
+  **Shipped** 2026-05-28: history replay on `session/load` (`historyUpdates` +
+  `loadSession`); config slash commands (`/model`/`/provider`/`/advisor`
+  advertised via `available_commands_update` + routed; `src/commands.ts`).
+  Remaining:
+  - **`/roles` & `/skills` over ACP** — their no-args path is a TUI-only
+    `selectFromList` picker; need a with-args-shared + ACP-text-listing split
+    (the TUI keeps its picker). Likely folded into the command-architecture
+    generalization (backlog).
   - **Cooperative cancellation** (`session/cancel`) — currently a no-op; needs a
     cancellable `runTask` (ties to the loop substrate — a cancel signal the loop
     checks between turns).
   - **Surface tool calls** — map `read`/`write`/`run_task`/`invoke_skill`
     actions to ACP `tool_call` / `tool_call_update` so the editor shows what the
-    agent is doing, not just streamed text.
+    agent is doing, not just streamed text. (= the rich-content slice with
+    thinking, `agent_thought_chunk`.)
+  - Live-verify the slash-command **invocation format** Zed sends (literal
+    `/name …` text is assumed; adjust routing if it sends bare names).
 - GUI / computer-use.
 
 ### Idea backlog (speculative / paradigm-level)
@@ -579,6 +585,14 @@ above.)
    tool's job — the real win is content **search** the `read` tool can't do.
    Cautions: "read-only" is sneaky (`find -delete`, `tee`, redirections, arg
    injection) → the list must be curated and arg-constrained.
+4. **Command-architecture generalization (rule of three).** CLI (flags), TUI
+   (slash + arrow-key pickers), and ACP (slash + `availableCommands`) are three
+   presentations of the same operations. `src/commands.ts` (the `SlashCommand`
+   list + `runCommand`) is the value-level seed (declare-locally / aggregate-
+   centrally, see `docs/CONCEPTS.md`); the generalization is a **command core +
+   per-frontend presentation adapters**, folding in `/roles`/`/skills` (the
+   picker-vs-listing split) and the TUI-native vs generalized distinction.
+   Design as its own slice when a third real need pushes on it.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as

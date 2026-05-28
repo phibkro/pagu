@@ -1,13 +1,15 @@
 # ACP slash commands — design (v1)
 
-> Status: hardened via grill-with-docs (2026-05-28); ready for tdd. Grill
-> resolved: (A) renamed `Command` → `SlashCommand` (the glossary + code already
-> use "command" for the command-policy/`run_task` domain — `CommandEntry`); (B)
-> ACP routing is try-`runCommand`-then-fall-through-to-`runTask` (not a
-> `/`-prefix check), so a real prompt leading with `/` reaches the model; (C)
-> `/help` is frontend-specific, so it leaves the shared set and ACP (Zed's
-> `availableCommands` menu is the help). Roadmap: CONTEXT.md → Open → "ACP —
-> remaining integration work". Authored via brainstorming.
+> Status: **implemented 2026-05-28** (via tdd). Shipped the 3 clean config
+> commands (`/model`, `/provider`, `/advisor`); `/roles`+`/skills` deferred
+> (TUI-only picker). Verified live: `session/new` emits
+> `available_commands_update` (3 bare names) and `/model …` routes to the
+> command. **Live-verify open:** whether Zed delivers an invocation as the
+> literal `/name …` text (routing assumes so) — adjust if it sends bare names.
+> Grill resolved: (A) `Command` → `SlashCommand` (glossary owns "command" for
+> command-policy/`run_task`); (B) routing is try-`runCommand`-then-`runTask`;
+> (C) `/help` is frontend-specific (out of the shared set + ACP). Authored via
+> brainstorming.
 
 ## Goal
 
@@ -20,12 +22,17 @@ the static sibling of the proposal–handler model (`docs/CONCEPTS.md`).
 
 ## Scope
 
-- **Config commands, shared over ACP (5):** `/model`, `/provider`, `/roles`,
-  `/skills`, `/advisor` — change agent config mid-session, report a result line.
-  These move out of `tui.ts`'s switch into shared `SlashCommand` declarations.
+- **Config commands, shared over ACP (3):** `/model`, `/provider`, `/advisor` —
+  change agent config mid-session, report a result line (pure parse → `ctx.*` →
+  `ctx.ui.show`, no TTY). These move out of `tui.ts`'s switch into shared
+  `SlashCommand` declarations.
+- **`/roles` and `/skills` — deferred.** Their no-args path opens a TUI-only
+  interactive picker (`selectFromList`); only their with-args path is
+  frontend-agnostic. An ACP form (with-args + a text listing, while the TUI
+  keeps its picker) is a follow-on slice. For now they stay TUI-only.
 - **`/help` is frontend-specific** — it lists the commands available in _this_
-  frontend (TUI = config + nav/pickers; ACP = just the five). So it is **not** a
-  shared `SlashCommand`: the TUI keeps its own `/help` over its full set, and
+  frontend (TUI = config + nav/pickers; ACP = just the three). So it is **not**
+  a shared `SlashCommand`: the TUI keeps its own `/help` over its full set, and
   ACP needs none (Zed renders `availableCommands` as its command menu — that
   _is_ help).
 - **TUI-only (stay local):** `/sessions`, `/new`, `/open`, `/fork`, `/rename`,
@@ -60,9 +67,9 @@ export function runCommand(
   ctx: AgentContext,
 ): Promise<boolean>;
 
-// The shared config-mutating commands, declared as values. Each run calls the existing
-// ctx.* method (setProvider/setRoles/setSkills/setAdvisor) and ctx.ui.show()s the
-// result. (/help is NOT here — it's frontend-specific; see Scope.)
+// The shared config-mutating commands (3), declared as values. Each run calls the
+// existing ctx.* method (/model + /provider → setProvider; /advisor → setAdvisor)
+// and ctx.ui.show()s the result. (/help, /roles, /skills are NOT here — see Scope.)
 export const slashCommands: SlashCommand[];
 ```
 
@@ -73,10 +80,10 @@ the console (drops the `dim()` cosmetic, acceptable); in ACP it's an
 ### TUI (`tui.ts`)
 
 `handleCommand` first tries `runCommand(slashCommands, line, ctx)`; if it
-returns `false`, fall through to the existing **TUI-only** handlers
-(nav/pickers, `/help`, `/exit`). The five config cases leave the switch; `/help`
-stays (it lists the TUI's full set: the shared `slashCommands` + the TUI-only
-ones).
+returns `false`, fall through to the existing **TUI-only** handlers. The three
+config cases (`/model`, `/provider`, `/advisor`) leave the switch; `/roles`,
+`/skills` (pickers), `/help`, and the nav commands stay. `/help` lists the TUI's
+full set (shared `slashCommands` + the TUI-only ones).
 
 ### ACP (`acp.ts`)
 
@@ -114,21 +121,29 @@ instance (rule of three).
 ## Success criteria
 
 1. `SlashCommand` + `runCommand` + `slashCommands` in `src/commands.ts`, tested.
-2. The five config commands removed from `tui.ts`'s switch and driven via
+2. The three config commands removed from `tui.ts`'s switch and driven via
    `runCommand`; TUI behavior unchanged for the user (incl. `/help`).
-3. ACP advertises the five (Zed shows them) and routes a chosen one to its
+3. ACP advertises the three (Zed shows them) and routes a chosen one to its
    handler.
 4. Full `deno task ci` green; live check in Zed (slash commands appear + work).
 
 ## Deferred
 
+- **`/roles` & `/skills` over ACP** — needs the picker-vs-listing split
+  (with-args shared, TUI keeps its `selectFromList` picker, ACP gets a text
+  listing on no-args).
+- **Command-architecture generalization (rule of three).** CLI (flags), TUI
+  (slash + pickers), and ACP (slash + advertisement) are three presentations of
+  the same operations — earns a shared **command core + per-frontend
+  presentation adapters** design (folding in `/roles`/`/skills` and the
+  TUI-native vs generalized split). Designed as its own slice; supersedes the
+  "generic registry framework" note.
 - TUI-only session-nav/picker commands over ACP (Zed owns sessions) — not
   planned.
-- A generic registry framework (YAGNI until a third instance).
 - Other ACP gaps (cancellation, rich content) — separate slices.
 
 ## Invariants preserved
 
 No change to invariant #1. Commands only call existing `ctx.*` config methods
-(provider/model/roles/skills/advisor) — no new execute path; they change
-settings, not effects. The runner stays the only exec path.
+(`setProvider`/`setAdvisor`) — no new execute path; they change settings, not
+effects. The runner stays the only exec path.

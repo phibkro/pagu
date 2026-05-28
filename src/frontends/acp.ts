@@ -22,6 +22,28 @@ import type { AgentContext, Approver, ScriptEntry, UI } from "../context.ts";
 import { buildContext, type RunOpts } from "../config/setup.ts";
 import { newSessionId } from "../config/sessions.ts";
 import type { Entry } from "../log/index.ts";
+import { runCommand, type SlashCommand, slashCommands } from "../commands.ts";
+
+/**
+ * The `available_commands_update` notification advertising the shared slash
+ * commands. Names are sent **bare** (no leading `/`) per the ACP convention
+ * (`create_plan`); the editor renders the `/`. Pure — sent by newSession/loadSession.
+ */
+export function commandsUpdate(
+  cmds: SlashCommand[],
+  sessionId: string,
+): SessionNotification {
+  return {
+    sessionId,
+    update: {
+      sessionUpdate: "available_commands_update",
+      availableCommands: cmds.map((c) => ({
+        name: c.name.replace(/^\//, ""),
+        description: c.description,
+      })),
+    },
+  };
+}
 
 /**
  * Map a conversation log to the `session/update` notifications that replay it on
@@ -171,6 +193,7 @@ export class PaguAgent implements Agent {
   async newSession(p: NewSessionRequest): Promise<NewSessionResponse> {
     const id = newSessionId(new Date());
     await this.makeSession(id, p.cwd);
+    await this.conn.sessionUpdate(commandsUpdate(slashCommands, id));
     return { sessionId: id };
   }
 
@@ -182,6 +205,7 @@ export class PaguAgent implements Agent {
     for (const u of historyUpdates(ctx.log, p.sessionId)) {
       await this.conn.sessionUpdate(u);
     }
+    await this.conn.sessionUpdate(commandsUpdate(slashCommands, p.sessionId));
     return {};
   }
 
@@ -192,6 +216,11 @@ export class PaguAgent implements Agent {
       .filter((b): b is { type: "text"; text: string } => b.type === "text")
       .map((b) => b.text)
       .join("");
+    // A slash command (exact name match) is handled here; anything else —
+    // including a prompt that merely begins with "/" — falls through to runTask.
+    if (await runCommand(slashCommands, text, ctx)) {
+      return { stopReason: "end_turn" };
+    }
     await runTask(ctx, text);
     return { stopReason: "end_turn" };
   }

@@ -1,6 +1,13 @@
 import { assertEquals } from "@std/assert";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
-import { acpApprover, type AcpConn, acpUI, historyUpdates } from "./acp.ts";
+import {
+  acpApprover,
+  type AcpConn,
+  acpUI,
+  commandsUpdate,
+  historyUpdates,
+} from "./acp.ts";
+import type { SlashCommand } from "../commands.ts";
 import type { ScriptEntry } from "../context.ts";
 
 // A fake connection that records sessionUpdate calls and returns a canned
@@ -134,6 +141,24 @@ Deno.test("historyUpdates maps messages to user/agent chunks, skipping the rest"
     update: {
       sessionUpdate: "agent_message_chunk",
       content: { type: "text", text: "hey" },
+    },
+  });
+});
+
+Deno.test("commandsUpdate advertises bare command names", () => {
+  const cmds: SlashCommand[] = [
+    { name: "/model", description: "set model", run: () => {} },
+    { name: "/advisor", description: "toggle advisor", run: () => {} },
+  ];
+  const u = commandsUpdate(cmds, "sess-1");
+  assertEquals(u, {
+    sessionId: "sess-1",
+    update: {
+      sessionUpdate: "available_commands_update",
+      availableCommands: [
+        { name: "model", description: "set model" },
+        { name: "advisor", description: "toggle advisor" },
+      ],
     },
   });
 });
