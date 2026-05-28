@@ -45,19 +45,23 @@ Deno.test("acpUI.show sends an agent_message_chunk with the text", async () => {
   });
 });
 
-Deno.test("acpUI.stream sends an agent_message_chunk per chunk", async () => {
+Deno.test("acpUI.show flushes pending stream output first, preserving order", async () => {
   const { conn, updates } = fakeConn({
     outcome: "selected",
     optionId: "allow",
   });
-  const ui = acpUI(conn, "sess-1");
-  ui.stream!("Hel");
-  ui.stream!("lo");
+  const ui = acpUI(conn, "sess-1", 50);
+  ui.stream!("partial "); // buffered, not yet sent
+  ui.show("RESULT"); // must flush the buffer, then send itself
   await Promise.resolve();
   assertEquals(updates.length, 2);
   assertEquals(
+    (updates[0].update as { content: { text: string } }).content.text,
+    "partial ",
+  );
+  assertEquals(
     (updates[1].update as { content: { text: string } }).content.text,
-    "lo",
+    "RESULT",
   );
 });
 
@@ -89,4 +93,21 @@ Deno.test("acpApprover returns false when outcome is cancelled", async () => {
   const { conn } = fakeConn({ outcome: "cancelled" });
   const approved = await acpApprover(conn, "sess-1")(SCRIPT, []);
   assertEquals(approved, false);
+});
+
+Deno.test("acpUI coalesces rapid stream chunks into one update", async () => {
+  const { conn, updates } = fakeConn({
+    outcome: "selected",
+    optionId: "allow",
+  });
+  const ui = acpUI(conn, "sess-1", 10); // 10ms flush window
+  ui.stream!("Hel");
+  ui.stream!("lo");
+  ui.stream!(" world");
+  await new Promise((r) => setTimeout(r, 25)); // past the flush window
+  assertEquals(updates.length, 1); // coalesced into one notification
+  assertEquals(
+    (updates[0].update as { content: { text: string } }).content.text,
+    "Hello world",
+  );
 });

@@ -40,8 +40,8 @@ export interface AcpConn {
  * progress — the editor shows its own activity indicator, so it's a no-op
  * (mapping it to chunks would spam the conversation).
  */
-export function acpUI(conn: AcpConn, sessionId: string): UI {
-  const chunk = (text: string): void => {
+export function acpUI(conn: AcpConn, sessionId: string, flushMs = 50): UI {
+  const send = (text: string): void => {
     void conn.sessionUpdate({
       sessionId,
       update: {
@@ -50,10 +50,36 @@ export function acpUI(conn: AcpConn, sessionId: string): UI {
       },
     });
   };
+  // Coalesce streamed tokens so we send the editor ~one notification per
+  // `flushMs` window (bounded latency) instead of one per token — a fast model
+  // otherwise floods the client with hundreds of tiny updates. A size guard
+  // bounds the buffer for very fast streams. (CLI/TUI stream per-token; this
+  // batching lives only in the ACP adapter.)
+  let buf = "";
+  let timer: number | undefined;
+  const flush = (): void => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (buf) {
+      send(buf);
+      buf = "";
+    }
+  };
   return {
     status: () => {},
-    show: chunk,
-    stream: chunk,
+    // `show` is discrete output (results, review) — flush any pending stream
+    // first so ordering is preserved, then send it immediately.
+    show: (text: string) => {
+      flush();
+      send(text);
+    },
+    stream: (text: string) => {
+      buf += text;
+      if (buf.length >= 1024) flush();
+      else if (timer === undefined) timer = setTimeout(flush, flushMs);
+    },
   };
 }
 
