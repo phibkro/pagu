@@ -267,7 +267,19 @@ export async function tuiMain(): Promise<void> {
   console.log(dim(`  sandbox   ${ctx.sandboxKind}`));
   console.log(dim("  /help for commands; empty line or Ctrl-D to exit\n"));
 
-  if (opts.task) await runTask(ctx, opts.task); // seed from argv if given
+  // Run a task with Ctrl-C wired to cancel the in-flight respond subprocess.
+  // Deno.addSignalListener suppresses the default SIGINT exit for the duration,
+  // so Ctrl-C cancels the task instead of killing the process.
+  const withCancellation = (fn: (signal: AbortSignal) => Promise<void>) => {
+    const controller = new AbortController();
+    const onSigint = () => controller.abort();
+    Deno.addSignalListener("SIGINT", onSigint);
+    return fn(controller.signal).finally(() => {
+      Deno.removeSignalListener("SIGINT", onSigint);
+    });
+  };
+
+  if (opts.task) await withCancellation((s) => runTask(ctx, opts.task!, s));
   const nav = { listing: [] as SessionInfo[] }; // last /sessions, for /open
   while (true) {
     const t = estimateTokens(ctx.log);
@@ -286,7 +298,7 @@ export async function tuiMain(): Promise<void> {
       if (await handleCommand(line, ctx, nav)) continue;
       break; // /exit
     }
-    await runTask(ctx, line);
+    await withCancellation((s) => runTask(ctx, line, s));
   }
   spinner.stop(); // clear any leftover timer so the process can exit
   console.log(dim("bye"));

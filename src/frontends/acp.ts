@@ -223,6 +223,8 @@ export function acpApprover(conn: AcpConn, sessionId: string): Approver {
  */
 export class PaguAgent implements Agent {
   private sessions = new Map<string, AgentContext>();
+  /** One AbortController per in-flight session/prompt — cleared when done. */
+  private controllers = new Map<string, AbortController>();
 
   constructor(
     private conn: AgentSideConnection,
@@ -276,13 +278,18 @@ export class PaguAgent implements Agent {
     if (await runCommand(slashCommands, text, ctx)) {
       return { stopReason: "end_turn" };
     }
-    await runTask(ctx, text);
+    const controller = new AbortController();
+    this.controllers.set(p.sessionId, controller);
+    try {
+      await runTask(ctx, text, controller.signal);
+    } finally {
+      this.controllers.delete(p.sessionId);
+    }
     return { stopReason: "end_turn" };
   }
 
-  // v1: runTask isn't cancellable mid-loop. Accept the notification as a no-op
-  // so the protocol stays well-formed; cooperative cancellation is deferred.
-  cancel(_p: CancelNotification): Promise<void> {
+  cancel(p: CancelNotification): Promise<void> {
+    this.controllers.get(p.sessionId)?.abort();
     return Promise.resolve();
   }
 

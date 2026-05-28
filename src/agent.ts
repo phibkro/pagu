@@ -39,7 +39,11 @@ function cleanPhaseError(msg: string): string {
  * either replies in chat (done) or emits an action entry dispatched via the
  * capability registry.
  */
-export async function runTask(ctx: AgentContext, task: string): Promise<void> {
+export async function runTask(
+  ctx: AgentContext,
+  task: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const input = () => ({
     log: ctx.log,
     provider: ctx.provider,
@@ -56,12 +60,14 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
 
   // Inject respond onto ctx — the cage fix-loop in write/pipeline.ts uses
   // ctx.respond (Application layer can't import spawnPhase directly).
+  // The signal threads through so Ctrl-C / session/cancel kills the subprocess.
   ctx.respond = () =>
     spawnPhase({
       entry: join(ctx.phaseDir, "respond.ts"),
       flags: respondFlags(ctx.providerHost, ctx.readPaths),
       input: input(),
       onStderr: ctx.ui.stream ? (c) => ctx.ui.stream!(c) : undefined,
+      signal,
     });
 
   const showReply = (entries: Entry[]) => {
@@ -76,6 +82,7 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
 
   let turnIndex = 0;
   const turn: Step<AgentContext> = async (): Promise<Flow> => {
+    if (signal?.aborted) return "done"; // inter-turn cancellation check
     ctx.ui.status(turnIndex++ === 0 ? "thinking…" : "continuing…");
     const produced = await ctx.respond();
     ctx.log.push(...produced);
@@ -96,6 +103,10 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
   try {
     await loop(turn, MAX_TURNS)(ctx);
   } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      ctx.ui.show("· cancelled");
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     ctx.ui.show("✗ " + cleanPhaseError(msg));
   }

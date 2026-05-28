@@ -12,13 +12,22 @@ import type { PhaseInput } from "./ipc.ts";
  * model tokens there as they arrive, and `onStderr` (if given) is called
  * with each chunk. It carries no capability — the phase still returns its
  * auditable entries on stdout. stderr is also captured for diagnostics.
+ *
+ * When `signal` is provided and fires, the child process is killed and an
+ * AbortError is thrown. If the signal is already aborted on entry, throws
+ * immediately without spawning.
  */
 export async function spawnPhase(opts: {
   entry: string;
   flags: string[];
   input: PhaseInput;
   onStderr?: (chunk: string) => void;
+  signal?: AbortSignal;
 }): Promise<Entry[]> {
+  if (opts.signal?.aborted) {
+    throw new DOMException("respond phase cancelled", "AbortError");
+  }
+
   const command = new Deno.Command("deno", {
     args: ["run", "--no-prompt", ...opts.flags, opts.entry],
     stdin: "piped",
@@ -27,31 +36,48 @@ export async function spawnPhase(opts: {
   });
   const child = command.spawn();
 
-  const writer = child.stdin.getWriter();
-  await writer.write(new TextEncoder().encode(JSON.stringify(opts.input)));
-  await writer.close();
-
-  // Drain stdout (buffer → JSON) and stderr (forward live) concurrently to
-  // avoid a pipe-buffer deadlock; then await exit.
-  let stdoutText = "";
-  let stderrText = "";
-  const drainStdout = async () => {
-    for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
-      stdoutText += c;
+  // Kill the child if the signal fires while it's running.
+  const onAbort = () => {
+    try {
+      child.kill();
+    } catch {
+      // already exited — ignore
     }
   };
-  const drainStderr = async () => {
-    for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
-      stderrText += c;
-      opts.onStderr?.(c);
-    }
-  };
-  await Promise.all([drainStdout(), drainStderr()]);
-  const { code } = await child.status;
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
 
-  if (code !== 0) {
-    throw new Error(`phase ${opts.entry} exited ${code}: ${stderrText}`);
+  try {
+    const writer = child.stdin.getWriter();
+    await writer.write(new TextEncoder().encode(JSON.stringify(opts.input)));
+    await writer.close();
+
+    // Drain stdout (buffer → JSON) and stderr (forward live) concurrently to
+    // avoid a pipe-buffer deadlock; then await exit.
+    let stdoutText = "";
+    let stderrText = "";
+    const drainStdout = async () => {
+      for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
+        stdoutText += c;
+      }
+    };
+    const drainStderr = async () => {
+      for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
+        stderrText += c;
+        opts.onStderr?.(c);
+      }
+    };
+    await Promise.all([drainStdout(), drainStderr()]);
+    const { code } = await child.status;
+
+    if (opts.signal?.aborted) {
+      throw new DOMException("respond phase cancelled", "AbortError");
+    }
+    if (code !== 0) {
+      throw new Error(`phase ${opts.entry} exited ${code}: ${stderrText}`);
+    }
+    const parsed = JSON.parse(stdoutText) as { entries: Entry[] };
+    return parsed.entries;
+  } finally {
+    opts.signal?.removeEventListener("abort", onAbort);
   }
-  const parsed = JSON.parse(stdoutText) as { entries: Entry[] };
-  return parsed.entries;
 }
