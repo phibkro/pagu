@@ -28,8 +28,23 @@ integration, and plugin loading are later slices.
 
 ## The `Capability<Data>` interface
 
-Lives in `src/capability/index.ts` alongside the existing execution substrate
-(`Exec`, `cageOnce`, `performRun`, etc.).
+`src/capability/` is one module expressing one concept ("a tool the agent can
+invoke") at two audience layers:
+
+- **Public** — for capability *consumers* (the registry, `agent.ts`,
+  `respond.ts`): `Capability<Data>`, `AnyCapability`, `isActionEntry`,
+  `ActionEntry`.
+- **Author-facing** — for capability *implementers* (`write/execute.ts`,
+  `skills/execute.ts`, `tasks/execute.ts`): `Exec`, `cageOnce`,
+  `cageWithinCeiling`, `performRun`, `autoApprove`, `run`.
+
+Both layers live in `src/capability/index.ts` (one barrel, one module). The
+name "capability" is correct at all three levels — concept, interface, substrate
+— because they are the same thing seen from different vantage points, not three
+different things. No rename warranted.
+
+`Capability<Data>` lives in `src/capability/index.ts` alongside the existing
+execution substrate (`Exec`, `cageOnce`, `performRun`, etc.).
 
 ```typescript
 interface Capability<Data> {
@@ -60,22 +75,51 @@ interface Capability<Data> {
 
   /** Execute the log entry. Effectful — orchestrator only. Never called
    *  in the respond subprocess even though the module is imported there. */
-  execute(entry: Entry, ctx: AgentContext, opts: TurnOpts): Promise<"stop" | "loop">;
+  execute(entry: Entry, ctx: AgentContext): Promise<"stop" | "loop">;
 }
 ```
 
-**`TurnOpts`** — a turn-scoped bag passed to every `execute` call:
+**`TurnOpts` is eliminated.** The `execute` signature is:
 
 ```typescript
-interface TurnOpts {
-  task: string;                          // user's original task (for write's fix loop)
-  respond: Responder;                    // re-invoke the respond phase
-  showReply: (entries: Entry[]) => void; // display assistant text
+execute(entry: Entry, ctx: AgentContext): Promise<"stop" | "loop">;
+```
+
+`write`'s three extra needs are met without a parameter bag:
+- **`task`** — derived inside `executeScriptProposal` from
+  `ctx.log.findLast(e => e.kind === "message" && e.role === "user")?.text ?? ""`
+- **`showReply`** — reconstructed from `ctx.ui` inside `executeScriptProposal`
+  (it is purely a wrapper over `ctx.ui.show` / `ctx.ui.stream`)
+- **`respond`** — added to `AgentContext` as a **dependency-injected
+  boundary-crossing function**. The cage handler in `write/pipeline.ts`
+  (Application layer) needs to re-invoke the respond subprocess (Adapters layer)
+  for the fix loop, but cannot import `spawnPhase` directly — that would violate
+  the hexagonal invariant ("adapters depend on the core; the core never imports
+  from adapters"). `respond` is injected by `agent.ts` (the Orchestrator, which
+  spans both layers) before the turn loop starts, exactly as `approve: Approver`
+  is injected by frontends. Both are functions the core needs but cannot construct
+  itself. `respond` is set once per conversation at the top of `runTask`; it is
+  always present before any capability calls `ctx.respond()`, by construction.
+
+**Downstream simplification — `Proposal` carrier shrinks.** `write/pipeline.ts`'s
+`Proposal` currently carries `task`, `respond`, and `showReply` separately because
+they were passed in as parameters. With all three derivable from `ctx`, `Proposal`
+drops those fields:
+
+```typescript
+// Before: 8 fields  →  After: 5 fields
+interface Proposal {
+  ctx: AgentContext;   // respond / showReply / ui all on ctx
+  script: ScriptEntry;
+  initialBody: string;
+  discovered: string[];
+  approved?: boolean;
+  outcome: "stop" | "loop";
 }
 ```
 
-Capabilities that don't need `opts` (skill, task, command) ignore it. `write`
-uses all three. This avoids polluting `AgentContext` with turn-scoped closures.
+The cage handler changes `p.respond()` → `p.ctx.respond()` and inlines
+`showReply` from `p.ctx.ui`. No behavior change.
 
 **`AnyCapability`** — the erased form for the registry:
 
@@ -95,6 +139,21 @@ They are **two separate `Capability<Data>` objects**, both with
 `entryKind: "command-invoke"`, both delegating `execute` to
 `executeCommandInvocation` (which already routes internally via
 `findDefaultRule`). Each has one `toolDef`, one `toEntry`, one `toolName`.
+
+### The `entryKind` = executor key law
+
+`entryKind` is the **semantic action type** — what the action IS. `toolName`
+is the **model presentation layer** — how the model expressed its intent. The
+orchestrator dispatches at the semantic level (`entryKind`), not the
+presentation level (`toolName`).
+
+**Law:** all capabilities sharing an `entryKind` must share an executor. Two
+tools sharing `"command-invoke"` is correct by design — they are the same
+semantic action type; `executeCommandInvocation` routes internally by
+`findDefaultRule(program, args)` (the entry content), not by tool name. A
+future capability with a genuinely different execution path gets a different
+`entryKind`. No log format change (`tool?: string` on `CommandInvocationEntry`)
+is needed — `program` + `args` already fully determine the execution path.
 
 ## Per-capability modules
 
@@ -119,18 +178,40 @@ import { writeCapability } from "../write/capability.ts";
 import { skillCapability } from "../skills/capability.ts";
 import { runCommandCapability, runTaskCapability } from "../tasks/capability.ts";
 
-export const actionCapabilities: AnyCapability[] = [
+// `as const` preserves literal entryKind types so ActionEntryKind derives correctly.
+export const actionCapabilities = [
   writeCapability,
   skillCapability,
   runCommandCapability,
   runTaskCapability,
-];
+] as const;
+
+// Derived from the registry — auto-correct when capabilities are added.
+type ActionEntryKind = (typeof actionCapabilities)[number]["entryKind"];
+export type ActionEntry = Extract<Entry, { kind: ActionEntryKind }>;
+export function isActionEntry(e: Entry): e is ActionEntry {
+  return actionCapabilities.some(c => c.entryKind === e.kind);
+}
 ```
 
-Adding a new capability = implement `Capability<Data>`, add one line here.
-`agent.ts` imports from this barrel and **never changes for new capabilities**
-(generic entryKind dispatch). `respond.ts` still needs a one-line pairing per
-capability (capability object ↔ phase input field) until open item 3 lands.
+For this to work, each capability object's `entryKind` must carry a **literal
+type** (not widened to `string`). Use `satisfies Capability<Data>` on each
+capability declaration rather than an explicit type annotation — `satisfies`
+checks the shape without widening the literal:
+
+```typescript
+// e.g. in src/write/capability.ts:
+export const writeCapability = {
+  entryKind: "script",   // literal type "script", not widened to string
+  // ...
+} satisfies Capability<void>;
+```
+
+**Adding a new capability = implement with `satisfies`, add one line to the
+array.** `isActionEntry`, `ActionEntryKind`, and `ActionEntry` update
+automatically. `agent.ts` **never changes** (generic entryKind dispatch).
+`respond.ts` still needs a one-line pairing per capability (capability object ↔
+phase input field) until open item 1 lands.
 
 ## `read`'s special status
 
@@ -163,7 +244,7 @@ const phaseInput = {
 
 The capability objects are imported directly (same objects the orchestrator uses).
 Phase input fields are named, so each capability is explicitly paired with its
-data — this is the seam described in open item 3:
+data — this is the seam described in open item 1:
 
 ```typescript
 // Imported from their source modules (same objects as the orchestrator's registry).
@@ -221,43 +302,27 @@ if (!action) return "done"; // pure chat turn
 
 const cap = actionCapabilities.find(c => c.entryKind === action.kind);
 // cap is always found if respond + orchestrator share the same registry
-const outcome = await cap.execute(action, ctx, { task, respond, showReply });
+const outcome = await cap.execute(action, ctx);
 return outcome === "stop" ? "done" : "continue";
 ```
 
-`isActionEntry` is a new type guard in `registry.ts` that returns true for
-`script | skill-invoke | command-invoke` — the union of all action entry kinds.
+`isActionEntry` and `ActionEntry` are derived from the registry (see Registry
+barrel section) — they auto-update when capabilities are added.
 
-## Open items (flagged for grill-with-docs)
+## Open items
 
-1. **`TurnOpts` vs. `AgentContext` pollution** — `TurnOpts` is the chosen
-   approach (turn-scoped bag, third arg to `execute`). Alternatives:
-   nullable turn-state fields on `AgentContext`, or deriving `task` from
-   `ctx.log`. Grill should confirm `TurnOpts` is the cleanest seam.
-
-2. **Naming overload** — "capability" now has three meanings in the codebase:
-   (a) the agent's tools (the capability ladder), (b) the execution substrate
-   (`src/capability/`), (c) the new `Capability<Data>` interface. Grill should
-   confirm the terminology is consistent with `docs/CONCEPTS.md` and
-   `AGENTS.md`, or propose a rename (e.g. `CapabilityDef`, `Cap`, `Tool`).
-
-3. **Phase input seam** — `capData` in `respond.ts` is a parallel structure
+1. **Phase input seam** — `capData` in `respond.ts` is a parallel structure
    to the registry because phase input fields are named. A future slice could
    replace named fields with a generic `capabilities: { name, data }[]` array,
-   making the coupling explicit. Not load-bearing now.
-
-4. **Dispatch ambiguity** — `run_task` and `run_command` share `entryKind:
-   "command-invoke"`. The orchestrator's `find` returns whichever appears
-   first in `actionCapabilities`. Since both delegate to `executeCommandInvocation`,
-   this is correct but fragile — a future capability with the same entry kind
-   would silently shadow. Grill should confirm this is acceptable, or propose
-   dispatching on `toolName` instead (requires adding `tool?` to
-   `CommandInvocationEntry` — a log format change).
+   making the coupling explicit. Not load-bearing now; `respond.ts` still needs
+   a one-line addition per new capability until that lands.
 
 ## Migration plan (refactor-under-green)
 
-1. Add `Capability<Data>`, `TurnOpts`, `AnyCapability`, `isActionEntry` to
-   `src/capability/index.ts`. CI green.
+1. Add `Capability<Data>`, `AnyCapability` to `src/capability/index.ts`; add
+   `respond: Responder` to `AgentContext` in `src/context.ts`; simplify
+   `Proposal` in `src/write/pipeline.ts` (remove `task`, `respond`,
+   `showReply`). CI green.
 2. Add `src/write/capability.ts` with `writeCapability`. Wire `respond.ts`
    and `agent.ts` to use it for write only. CI green.
 3. Add `src/skills/capability.ts` with `skillCapability`. Wire. CI green.
