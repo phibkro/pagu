@@ -172,6 +172,39 @@ Deno.test("recognize: rejects any out-of-scope path positional (property)", () =
   );
 });
 
+// A rule with an enum-typed flag value.
+const enumRule: CommandRule = {
+  program: "git",
+  prefix: ["log"],
+  flags: [{ name: "--format", value: { enum: ["oneline", "short", "full"] } }],
+  positionals: { slots: [], min: 0, max: 0 },
+  ceiling: ["allow-run=git", "allow-read=."],
+  source: "default",
+};
+
+Deno.test("recognize: accepts a value in the declared enum", () => {
+  assertEquals(recognize(enumRule, ["log", "--format", "oneline"], []), {
+    ok: true,
+  });
+});
+
+Deno.test("recognize: accepts enum value in =value form", () => {
+  assertEquals(recognize(enumRule, ["log", "--format=short"], []), {
+    ok: true,
+  });
+});
+
+Deno.test("recognize: rejects a value not in the enum", () => {
+  assertEquals(
+    recognize(enumRule, ["log", "--format", "medium"], []).ok,
+    false,
+  );
+});
+
+Deno.test("recognize: rejects an empty string not in the enum", () => {
+  assertEquals(recognize(enumRule, ["log", "--format", ""], []).ok, false);
+});
+
 // --- invariant guards (whole-recogniser) ---
 
 // Totality: untrusted agent input must never throw — only ok/why-rejected.

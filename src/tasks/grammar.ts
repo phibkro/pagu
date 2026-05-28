@@ -151,5 +151,5 @@ function validateValue(
       readScope.map((r) => ({ flag: "read", scope: r })),
     );
   }
-  return false; // enum: implemented when a rule needs it
+  return type.enum.includes(val);
 }
