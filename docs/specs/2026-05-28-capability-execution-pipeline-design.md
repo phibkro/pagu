@@ -82,25 +82,41 @@ wholesale (`run` is exposed both as a `Step<Exec>` handler and as the
 - **`autoApprove`** (`Step<Exec>`) — log the `approve` decision + status; shared
   by skill/task/command (write keeps its own `approve` with the human gate +
   advisor).
-- **`cageOnce`** — the cage mechanics (scratch → `runScript` cage-perms →
-  `classify`), and **`cageWithinCeiling(ceiling, onDiscover?)`** — a handler
-  that runs `cageOnce`, sets `perms` if discovered ⊆ `ceiling`, else rejects
-  (`outcome="stop"`, `done`); `onDiscover` lets `run_task` store its lockfile.
-  Write's fix-loop `cage` also calls `cageOnce`.
+- **`cageOnce`** — the cage **mechanics only**: scratch →
+  `runScript(cagePerms,
+  cwd)` → `classify` → `{ class, discovered }`.
+  Parameterized by cage-perms + cwd, which already differ across capabilities
+  (`run_task` cages _with_ its policy ceiling, cwd `projectBase`; skill/write
+  cage read+scratch, cwd `scratch`). Every cage path calls it, including write's
+  fix-loop `cage`.
+
+So the genuinely-shared trio is **`cageOnce` + `autoApprove` + `run`** — _not_
+`cageWithinCeiling`. **Ceiling enforcement is per-capability**, because the
+policies genuinely differ (resolved in grill against `tasks/execute.ts:80–133`):
+
+- **skill** — always check `withinEnvelope(discovered, declared)`; reject if
+  exceeded. Never infers.
+- **task** — if a declared ceiling exists, check-within-and-reject; **else infer
+  - `storeInferred`** (first-run lockfile discovery, _no_ rejection).
+- **command** — none (fixed read-only `perms`, no cage at all).
+
+A `cageWithinCeiling(ceiling)` helper (cageOnce + within-check + reject) is
+**shared by skill and task-with-ceiling**; task's first-run inference stays in
+the task gate. It is a helper, not one of the shared pipeline handlers.
 
 **Per-capability gates (produce `(body, perms)` or reject) — stay in their own
 module:**
 
 | capability  | pipeline                                                                                                               |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **skill**   | `[resolveSkillBody, cageWithinCeiling(declared), autoApprove, run]`                                                    |
-| **task**    | `[genTaskBody, policyGate, cageWithinCeiling(inferred, storeInferred), autoApprove, run]`                              |
+| **skill**   | `[resolveSkillBody, skillCeilingGate, autoApprove, run]` — `skillCeilingGate` = `cageWithinCeiling(declared)`          |
+| **task**    | `[genTaskBody, policyGate, taskCeilingGate, autoApprove, run]` — `taskCeilingGate` = cageOnce + infer-or-check fork    |
 | **command** | `[grammarGate, autoApprove, run]` — `grammarGate` recognizes + sets a fixed read-only `perms`; **no cage**             |
 | **write**   | `[cage, approve, run]` — unchanged shape; `cage` keeps the fix-loop, `approve` the human gate; reuses the shared `run` |
 
 The genuinely-different validation (verbatim file-read / policy+lockfile /
 grammar / agent-authored+fix-loop) stays in a small per-capability gate — not
-forced into one interface — while `run` (+ `autoApprove` + `cageOnce`) is
+forced into one interface — while the `cageOnce + autoApprove + run` trio is
 shared. That's the dedup without a leaky one-size abstraction.
 
 ## Where it lives

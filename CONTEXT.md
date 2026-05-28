@@ -598,7 +598,16 @@ above.)
    slices + property invariants (totality, positive path generator, negative
    flag injection). **Remaining (deferred):** user-extensible rules via config;
    folder rename `tasks/`→`commands/`; write/net free-arg commands;
-   symlink-escape in path containment.
+   symlink-escape in path containment. **Grammar inference (opt-in only).**
+   Generalize the "command policy as a type system" inference (today: `run_task`
+   cage-infers _permissions_ into the lockfile) to **infer a command's grammar /
+   safety** — inspect `man <cmd>` or `<cmd> -h/--help` to discover its flags, or
+   research safety via an AI agent — instead of hand-authoring each
+   `CommandRule`. **Must be opt-in, never on-by-default:** auto-trusting an
+   inferred grammar (e.g. mislabeling `--pre` safe) would breach the read-only
+   guarantee, against deny-by-default + invariant #4. The human opts into
+   trusting an inferred rule (like accepting an inferred type), keeping the gate
+   the backstop (#3 ladder).
 4. **Command-architecture generalization (rule of three).** CLI (flags), TUI
    (slash + arrow-key pickers), and ACP (slash + `availableCommands`) are three
    presentations of the same operations. `src/commands.ts` (the `SlashCommand`
