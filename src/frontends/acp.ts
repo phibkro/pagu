@@ -114,14 +114,14 @@ export class PaguAgent implements Agent {
     return Promise.resolve();
   }
 
-  async newSession(_p: NewSessionRequest): Promise<NewSessionResponse> {
+  async newSession(p: NewSessionRequest): Promise<NewSessionResponse> {
     const id = newSessionId(new Date());
-    await this.makeSession(id);
+    await this.makeSession(id, p.cwd);
     return { sessionId: id };
   }
 
   async loadSession(p: LoadSessionRequest): Promise<LoadSessionResponse> {
-    await this.makeSession(p.sessionId);
+    await this.makeSession(p.sessionId, p.cwd);
     return {};
   }
 
@@ -142,9 +142,12 @@ export class PaguAgent implements Agent {
     return Promise.resolve();
   }
 
-  private async makeSession(id: string): Promise<void> {
+  // `cwd` is the client's workspace root from session/new|load — the directory
+  // pagu detects the repo + read-allowlist against (the agent subprocess's own
+  // cwd is whatever the editor launched it from, not the project).
+  private async makeSession(id: string, cwd?: string): Promise<void> {
     const ctx = await buildContext(
-      { ...this.opts, session: id, cont: false },
+      { ...this.opts, session: id, cont: false, cwd },
       this.agents,
       acpUI(this.conn, id),
       acpApprover(this.conn, id),

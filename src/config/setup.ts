@@ -65,6 +65,10 @@ export interface RunOpts {
   skills: string[];
   /** `--acp`: run as an ACP agent over stdio (the entrypoint reads this). */
   acp: boolean;
+  /** Workspace root for repo/read-allowlist detection. ACP sets it from the
+   * `session/new` request's `cwd`; CLI/TUI leave it unset (falls back to
+   * `Deno.cwd()`), since their process cwd is already the working directory. */
+  cwd?: string;
 }
 
 /** The CLI surface as a cliffy Command — the single source of the flag set,
@@ -220,9 +224,12 @@ export async function buildContext(
     console.error(`· loaded .env (${loadedEnv.join(", ")})`);
   }
 
-  // Project dir (git root, else cwd) — roles + sessions live here.
-  const repoRoot = await gitRoot(Deno.cwd());
-  const projectBase = repoRoot ?? Deno.cwd();
+  // Project dir (git root, else cwd) — roles + sessions live here. `cwd` is the
+  // workspace root: ACP supplies it from `session/new`; CLI/TUI leave it unset
+  // and fall back to the process cwd (already their working directory).
+  const cwd = opts.cwd ?? Deno.cwd();
+  const repoRoot = await gitRoot(cwd);
+  const projectBase = repoRoot ?? cwd;
 
   // Repo mode: explicit --repo, or auto-detect + offer (remembered per repo).
   // Resolved before roles because it's role-independent and folds into the
@@ -248,7 +255,7 @@ export async function buildContext(
       await saveRepoPref(repoRoot, repoMode);
     }
   }
-  const repo = repoMode ? (repoRoot ?? Deno.cwd()) : undefined;
+  const repo = repoMode ? (repoRoot ?? cwd) : undefined;
 
   if (repo && await repoDirty(repo)) {
     console.error(

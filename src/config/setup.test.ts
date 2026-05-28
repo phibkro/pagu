@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { parseArgs } from "./setup.ts";
+import { buildContext, parseArgs } from "./setup.ts";
 import { DEFAULTS } from "./config.ts";
 
 // parseArgs maps the cliffy-parsed flags onto RunOpts. These encode the
@@ -98,4 +98,22 @@ Deno.test("parseArgs: defaults when no flags are given", async () => {
   assertEquals(o.logPath, undefined);
   assertEquals(o.session, undefined);
   assertEquals(o.skills, []);
+});
+
+// Regression: ACP passes the workspace root via opts.cwd (from session/new);
+// buildContext must detect the repo from THAT, not from the process cwd —
+// otherwise Zed (which launches pagu from an arbitrary cwd) gets no read access.
+Deno.test("buildContext honors opts.cwd for repo detection", async () => {
+  const repo = await Deno.realPath(await Deno.makeTempDir());
+  await new Deno.Command("git", { args: ["-C", repo, "init", "-q"] }).output();
+  const opts = await parseArgs(DEFAULTS, ["--repo"]);
+  opts.cwd = repo; // the ACP workspace root, distinct from Deno.cwd()
+  const ctx = await buildContext(
+    opts,
+    "",
+    { status() {}, show() {} },
+    () => Promise.resolve(false),
+  );
+  assertEquals(ctx.repo, repo); // detected from opts.cwd, not the test's cwd
+  await Deno.remove(repo, { recursive: true });
 });
