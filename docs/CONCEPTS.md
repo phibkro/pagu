@@ -126,8 +126,12 @@ is a **lawful merge**.
   `⟦Flow⟧ = continue | done`), and `⟦loop⟧` is the bounded fixpoint over that
   coproduct. `loop : Step → Step` is **closed over the type** — a loop is itself
   a composable turn — which is what will let loops combine (`andThen` =
-  composition, `fanOut` = monoidal product) as the substrate grows. `runTask` is
-  just `loop(turn)`.
+  sequential composition; `fanOut` = the **eager-parallel fold of the `Flow`
+  monoid**, dual to `pipeline`'s lazy-sequential fold) as the substrate grows.
+  (`fanOut` is derived from the monoidal product via the diagonal, but isn't the
+  bare categorical tensor: `Step<C> = C → Flow` is an effectful _predicate_, not
+  a carrier-transforming arrow, so what combines is the `Flow` answers, not the
+  carrier types.) `runTask` is just `loop(turn)`.
 
 ## Command policy as a type system
 

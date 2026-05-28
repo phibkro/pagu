@@ -18,16 +18,15 @@ that transforms the carrier — the output is always `Flow`. So a `Step` is an
 carrier and answers `continue`/`done`.
 
 Therefore `fanOut` is **not** a textbook monoidal-category tensor (a product of
-carrier *types* `A ⊗ B`). It runs N predicates over one carrier and combines
+carrier _types_ `A ⊗ B`). It runs N predicates over one carrier and combines
 their `Flow` **answers**. `Flow` is a monoid under "or": `continue` is the
-identity (false), `done` absorbs (true). Both `andThen` and `fanOut` fold
-branch results through this same monoid; they differ only in **evaluation
-strategy**:
+identity (false), `done` absorbs (true). Both `andThen` and `fanOut` fold branch
+results through this same monoid; they differ only in **evaluation strategy**:
 
-| combinator | strategy | execution |
-|------------|----------|-----------|
+| combinator             | strategy             | execution                              |
+| ---------------------- | -------------------- | -------------------------------------- |
 | `pipeline` / `andThen` | sequential, **lazy** | stops at first `done` (short-circuits) |
-| `fanOut` | parallel, **eager** | runs all branches, then combines |
+| `fanOut`               | parallel, **eager**  | runs all branches, then combines       |
 
 ## Signature & denotation
 
@@ -49,21 +48,23 @@ strategy**:
 export function fanOut<C>(branches: Step<C>[]): Step<C>;
 ```
 
-Denotation: `⟦fanOut(bs)⟧ = c ↦ (await all bs(c)).reduce(or, "continue")`
-where `or(continue, x) = x`, `or(done, _) = done`.
+Denotation: `⟦fanOut(bs)⟧ = c ↦ (await all bs(c)).reduce(or, "continue")` where
+`or(continue, x) = x`, `or(done, _) = done`.
 
 ## Race-freedom — call-site responsibility
 
 `loop.ts` is deliberately generic and imports nothing (tested by law). It does
 **not** know whether `C` is mutable. The race-freedom guarantee lives at the
 call site: fan out only over a read-only carrier. `ReadonlyExec` (shipped) is
-exactly that carrier — its `body`/`perms` are `readonly`, so a `Step<ReadonlyExec>`
-branch provably cannot mutate them. The mutable carriers (`Exec`, `Proposal`,
-`AgentContext`) are untouched; you simply don't fan out over them.
+exactly that carrier — its `body`/`perms` are `readonly`, so a
+`Step<ReadonlyExec>` branch provably cannot mutate them. The mutable carriers
+(`Exec`, `Proposal`, `AgentContext`) are untouched; you simply don't fan out
+over them.
 
-This is the same separation already in place: `loop.ts` defines `Step`/`pipeline`
-generically; the capability layer instantiates them at `C = Exec`/`ReadonlyExec`.
-`fanOut` follows the identical pattern — no carrier rewrite, opt-in safety.
+This is the same separation already in place: `loop.ts` defines
+`Step`/`pipeline` generically; the capability layer instantiates them at
+`C = Exec`/`ReadonlyExec`. `fanOut` follows the identical pattern — no carrier
+rewrite, opt-in safety.
 
 ## Semantics detail
 
@@ -71,7 +72,7 @@ generically; the capability layer instantiates them at `C = Exec`/`ReadonlyExec`
   cannot cancel a running branch. All branches are launched concurrently and
   every one is awaited to settlement (`Promise.allSettled`, not `Promise.all` —
   so no branch is orphaned even when another rejects). It short-circuits the
-  *result* (any-done), not the *work*. This is the honest parallel semantics and
+  _result_ (any-done), not the _work_. This is the honest parallel semantics and
   the key behavioural difference from `pipeline`.
 - **Fail-closed on throw.** After all branches settle: if any rejected, `fanOut`
   rejects with the first rejection reason (fail-closed — a broken gate blocks,
@@ -80,10 +81,20 @@ generically; the capability layer instantiates them at `C = Exec`/`ReadonlyExec`
 
 ## The laws (validation — fanOut has no consumer yet)
 
-Since `fanOut` ships without a concrete caller, the laws *are* the validation.
+Since `fanOut` ships without a concrete caller, the laws _are_ the validation.
 All property-tested with `fast-check` (existing test-only dep), generating
 arrays of pure branches that return `continue`/`done` and bump an invocation
 counter.
+
+**Laws 1 and 2 are jointly the definition — neither alone suffices.** Law 1
+(result agreement) is satisfiable by a _cheating_ sequential implementation
+(`export const fanOut = pipeline`): if `fanOut` simply _were_ `pipeline`, it
+agrees with itself trivially and the parallel/runs-all point is lost. Law 2
+(execution difference) is what forbids that cheat — it forces `fanOut` to run
+**every** branch, which `pipeline` does not. So the keystone is the **pair**:
+Law 1 pins the _answer_ (same fold as the sequential combinator), Law 2 pins the
+_strategy_ (eager, not lazy). `fanOut` is correct only when both hold; an
+implementer who satisfies Law 1 alone has built `pipeline`, not `fanOut`.
 
 1. **Result agreement (keystone).** For read-only branches,
    `await fanOut(bs)(c) === await pipeline(bs)(c)`. `pipeline` is the **oracle**
@@ -92,9 +103,10 @@ counter.
    genuinely different implementations that must converge on the answer.
 2. **Execution difference.** `fanOut` runs **all N** branches; `pipeline` runs
    only up to and including the first `done`. Assert via invocation counts:
-   `fanOut` count == N always; `pipeline` count ≤ N (== index-of-first-done + 1).
-3. **Identity.** `fanOut([])` ≡ always-`continue`; shares the `continue` identity
-   with `pipeline([])`.
+   `fanOut` count == N always; `pipeline` count ≤ N (== index-of-first-done +
+   1).
+3. **Identity.** `fanOut([])` ≡ always-`continue`; shares the `continue`
+   identity with `pipeline([])`.
 4. **Associativity / flattening.** `fanOut([...xs, ...ys])` result ==
    `fanOut([fanOut(xs), fanOut(ys)])` result.
 5. **Commutativity of result.** `fanOut([a, b])` result == `fanOut([b, a])`
@@ -106,10 +118,10 @@ counter.
 **In:** `fanOut<C>(branches: Step<C>[]): Step<C>` in `src/loop.ts`; property
 tests for the six laws in `src/loop.test.ts`.
 
-**Out:** an `all-done` variant (no consumer — add when one appears); any concrete
-caller (multi-agent / author→critic→revise / explore→synthesize remain deferred,
-backlog #1); cancellation tokens for true execution short-circuit (the loop
-substrate has none today; `fanOut` documents the limitation honestly).
+**Out:** an `all-done` variant (no consumer — add when one appears); any
+concrete caller (multi-agent / author→critic→revise / explore→synthesize remain
+deferred, backlog #1); cancellation tokens for true execution short-circuit (the
+loop substrate has none today; `fanOut` documents the limitation honestly).
 
 ## Migration
 
@@ -122,6 +134,6 @@ function and its property tests.
 The compositional-spine section notes `loop`/`andThen`/`pipeline` with `fanOut`
 deferred. On landing, update it: `fanOut` is the **eager-parallel fold of the
 Flow monoid, dual to pipeline's lazy-sequential fold**, sharing the `continue`
-identity — and note the honest caveat that `Step` is an effectful predicate
-(not a transforming arrow), so this is a monoid lift over `Flow`, not a textbook
+identity — and note the honest caveat that `Step` is an effectful predicate (not
+a transforming arrow), so this is a monoid lift over `Flow`, not a textbook
 monoidal tensor.
