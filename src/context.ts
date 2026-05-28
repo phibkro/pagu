@@ -109,4 +109,8 @@ export interface AgentContext {
   rename: (name: string) => void;
   ui: UI;
   approve: Approver;
+  /** Re-invoke the respond phase. Injected by agent.ts before the turn loop
+   *  (same DI pattern as approve — the Application layer can't construct this
+   *  itself without importing from the Adapters layer). */
+  respond: Responder;
 }

@@ -10,7 +10,7 @@ import { cageOnce, performRun } from "../capability/index.ts";
 import { matchesSkillScript } from "../skills/index.ts";
 import { buildReview, formatReview } from "./review.ts";
 import { formatAdvisory, runAdvisor } from "./advisor.ts";
-import type { AgentContext, Responder, ScriptEntry } from "../context.ts";
+import type { AgentContext, ScriptEntry } from "../context.ts";
 import { isScript } from "../context.ts";
 import type { Entry } from "../log/index.ts";
 import type { Step } from "../loop.ts";
@@ -19,17 +19,15 @@ const MAX_FIX = 3;
 
 /** The carrier threaded through the handler pipeline for one proposal. Mutable:
  * handlers read and mutate it (same style as the turn over ctx.log). `discovered`
- * + `initialBody` are the canonical state; `perms`/`discoveredPerms` derive. */
+ * + `initialBody` are the canonical state; `perms`/`discoveredPerms` derive.
+ * task/respond/showReply are accessed via ctx (respond is DI'd by agent.ts). */
 export interface Proposal {
   ctx: AgentContext;
-  task: string;
   script: ScriptEntry; // mutated by the cage fix loop
   initialBody: string; // pre-cage body, for the review iteration diff
   discovered: string[]; // cage's absolutized perm output; [] until cage runs
   approved?: boolean;
   outcome: "stop" | "loop"; // the return to the turn loop; default "loop"
-  respond: Responder; // the cage handler uses these for fix rounds
-  showReply: (entries: Entry[]) => void;
 }
 
 export type Handler = Step<Proposal>;
@@ -74,10 +72,18 @@ export const cage: Handler = async (p) => {
     });
     p.ctx.persist();
     p.ctx.ui.status("fixing…");
-    const fixed = await p.respond();
+    const fixed = await p.ctx.respond();
     p.ctx.log.push(...fixed);
     p.ctx.persist();
-    p.showReply(fixed);
+    // showReply: surface assistant messages from the fix round
+    const fixMsgs = fixed.filter(
+      (e): e is Extract<Entry, { kind: "message" }> =>
+        e.kind === "message" && e.role === "assistant",
+    );
+    if (fixMsgs.length > 0) {
+      if (p.ctx.ui.stream) p.ctx.ui.stream("\n");
+      else for (const m of fixMsgs) p.ctx.ui.show(m.text);
+    }
     const next = fixed.findLast(isScript);
     if (!next) break;
     current = next;
@@ -118,9 +124,13 @@ export const approve: Handler = async (p) => {
       formatReview(review, p.script.id, p.script.lang, p.script.body),
     );
     if (p.ctx.advisorConfig) {
+      const task = p.ctx.log.findLast(
+        (e): e is Extract<Entry, { kind: "message" }> =>
+          e.kind === "message" && e.role === "user",
+      )?.text ?? "";
       const advisory = formatAdvisory(
         await runAdvisor({
-          task: p.task,
+          task,
           script: p.script.body,
           perms,
           provider: p.ctx.advisorConfig,

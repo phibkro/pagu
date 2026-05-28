@@ -1,17 +1,16 @@
 // effects: phase entrypoint (reads allowlist, talks to model, emits chat/script)
 import { chat, type ChatMessage } from "../providers/chat.ts";
 import { handleRead, readToolDef } from "../read.ts";
-import { handleWrite, writeToolDef } from "../write/write.ts";
-import { handleInvokeSkill, invokeSkillToolDef } from "../skills/tool.ts";
+import { writeCapability } from "../write/capability.ts";
+import { skillCapability } from "../skills/capability.ts";
 import {
-  handleRunCommand,
-  handleRunTask,
-  runCommandToolDef,
-  runTaskToolDef,
-} from "../tasks/tool.ts";
+  runCommandCapability,
+  runTaskCapability,
+} from "../tasks/capability.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
 import type { Entry } from "../log/schema.ts";
+import type { AnyCapability } from "../capability/index.ts";
 
 // The single agent phase. The model converses; it calls `read` to inspect
 // files and `write` to propose a script ONLY when an action is needed.
@@ -52,9 +51,6 @@ const system = input.capabilities
 const messages = logToMessages(input.log, withAgents(system, input.agents));
 const out: Entry[] = [];
 
-const skillScripts = input.skillScripts ?? [];
-const allowedTasks = input.allowedTasks ?? [];
-const commandRules = input.commandRules ?? [];
 const gitignored = input.gitignored ?? [];
 
 /** True if path is gitignored (exact match or nested under a gitignored dir). */
@@ -64,12 +60,22 @@ function isGitignored(filePath: string): boolean {
     (g) => abs === g || abs.startsWith(g + "/"),
   );
 }
+
+// Named-field pairing: capability object ↔ its slice of the phase input.
+// (The seam between the registry and the named phase input fields — see
+// the "phase input seam" open item in the design spec.)
+const capData: Array<{ cap: AnyCapability; data: unknown }> = [
+  { cap: writeCapability, data: undefined },
+  { cap: skillCapability, data: input.skillScripts ?? [] },
+  { cap: runCommandCapability, data: input.commandRules ?? [] },
+  { cap: runTaskCapability, data: input.allowedTasks ?? [] },
+];
+
 const tools = [
   readToolDef,
-  writeToolDef,
-  ...(commandRules.length > 0 ? [runCommandToolDef(commandRules)] : []),
-  ...(skillScripts.length > 0 ? [invokeSkillToolDef(skillScripts)] : []),
-  ...(allowedTasks.length > 0 ? [runTaskToolDef(allowedTasks)] : []),
+  ...capData
+    .filter(({ cap, data }) => cap.isAvailable(data as never))
+    .map(({ cap, data }) => cap.toolDef(data as never)),
 ];
 
 try {
@@ -90,43 +96,22 @@ async function converse(): Promise<void> {
   for (let i = 0; i <= MAX_READS; i++) {
     const res = await chat(input.provider, messages, tools, onToken);
 
-    const runTaskCall = res.toolCalls.find((c) => c.name === "run_task");
-    if (runTaskCall) {
-      if (res.content) {
-        out.push({ kind: "message", role: "assistant", text: res.content });
-      }
-      const n = input.log.filter((e) => e.kind === "command-invoke").length + 1;
-      out.push(handleRunTask(runTaskCall.args, `ci${n}`));
-      break;
-    }
+    // Find the first action tool call (priority order: write > skill > command).
+    const match = capData
+      .map(({ cap }) => ({
+        cap,
+        call: res.toolCalls.find((c) => c.name === cap.toolName),
+      }))
+      .find(({ call }) => call != null);
 
-    const runCommandCall = res.toolCalls.find((c) => c.name === "run_command");
-    if (runCommandCall) {
+    if (match) {
+      const { cap, call } = match;
+      const n = out.filter((e) => e.kind === cap.entryKind).length + 1;
+      const id = `${cap.idPrefix}${n}`;
       if (res.content) {
         out.push({ kind: "message", role: "assistant", text: res.content });
       }
-      const n = input.log.filter((e) => e.kind === "command-invoke").length + 1;
-      out.push(handleRunCommand(runCommandCall.args, `ci${n}`));
-      break;
-    }
-
-    const invokeCall = res.toolCalls.find((c) => c.name === "invoke_skill");
-    if (invokeCall) {
-      if (res.content) {
-        out.push({ kind: "message", role: "assistant", text: res.content });
-      }
-      const n = input.log.filter((e) => e.kind === "skill-invoke").length + 1;
-      out.push(handleInvokeSkill(invokeCall.args, `sk${n}`));
-      break;
-    }
-
-    const writeCall = res.toolCalls.find((c) => c.name === "write");
-    if (writeCall) {
-      if (res.content) {
-        out.push({ kind: "message", role: "assistant", text: res.content });
-      }
-      const n = input.log.filter((e) => e.kind === "script").length + 1;
-      out.push(handleWrite(writeCall.args, `s${n}`));
+      out.push(cap.toEntry(call!.args, id));
       break;
     }
 

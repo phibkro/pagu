@@ -1,6 +1,12 @@
 // effects: shared execution substrate for all capability pipelines.
 // The security-critical cage→autoApprove→run path is centralized here;
 // per-capability gates stay in their own modules.
+//
+// Two audience layers (one concept: "a tool the agent can invoke"):
+//   Public (consumers — registry, agent.ts, respond.ts):
+//     Capability<Data>, AnyCapability
+//   Author-facing (implementers — write/execute.ts, skills/execute.ts, etc.):
+//     Exec, cageOnce, cageWithinCeiling, performRun, autoApprove, run
 import {
   absolutizePerm,
   parsePermission,
@@ -8,9 +14,40 @@ import {
 } from "../permissions/index.ts";
 import { classifyRun, type RunClass, runScript } from "../runner/index.ts";
 import type { AgentContext } from "../context.ts";
+import type { Entry } from "../log/index.ts";
+import type { ToolDef } from "../providers/index.ts";
 import type { Step } from "../loop.ts";
 
 export type { RunClass };
+
+// ── Capability<Data>: the public registry interface ──────────────────────────
+
+/** One tool the agent can invoke — declared once, used by both processes.
+ * Use `satisfies Capability<Data>` (not a type annotation) on declarations
+ * so the literal entryKind type is preserved for registry derivation. */
+export interface Capability<Data> {
+  /** Log entry kind produced — the executor dispatch key. */
+  entryKind: string;
+  /** The model tool name this capability advertises. */
+  toolName: string;
+  /** Id prefix for log entries, e.g. "sk", "ci", "s". */
+  idPrefix: string;
+  /** Serializable data for the respond subprocess (the discover step).
+   *  Called by the orchestrator each turn; result goes into phase input. */
+  data(ctx: AgentContext): Data;
+  /** Availability law: legal ∩ environment-present. */
+  isAvailable(data: Data): boolean;
+  /** Build the tool schema from this turn's data. Pure — respond subprocess only. */
+  toolDef(data: Data): ToolDef;
+  /** Parse a model tool-call into a typed log entry. Pure — respond subprocess only. */
+  toEntry(args: Record<string, unknown>, id: string): Entry;
+  /** Execute the log entry. Effectful — orchestrator only. Never called in the
+   *  respond subprocess even though the module is imported there. */
+  execute(entry: Entry, ctx: AgentContext): Promise<"stop" | "loop">;
+}
+
+/** Type-erased form for the registry (heterogeneous array of capabilities). */
+export type AnyCapability = Capability<unknown>;
 
 // ── Exec: the carrier threaded through a capability pipeline ─────────────────
 

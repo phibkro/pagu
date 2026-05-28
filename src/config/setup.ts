@@ -670,5 +670,8 @@ export async function buildContext(
     },
     ui,
     approve,
+    // Placeholder — agent.ts overwrites this before the turn loop starts.
+    // Calling it before agent.ts sets it is a programming error.
+    respond: () => Promise.reject(new Error("respond not yet bound")),
   };
 }

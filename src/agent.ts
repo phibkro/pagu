@@ -1,20 +1,11 @@
 // imperative shell: orchestrates effects; the decisions it calls are pure
 import { join } from "@std/path";
 import { spawnPhase } from "./phases/spawn.ts";
-import {
-  AgentContext,
-  Approver,
-  isCommandInvoke,
-  isScript,
-  isSkillInvoke,
-  Responder,
-  UI,
-} from "./context.ts";
-import { executeSkillInvocation } from "./skills/index.ts";
-import { executeCommandInvocation } from "./tasks/index.ts";
-import { executeScriptProposal } from "./write/index.ts";
+import { AgentContext, Approver, UI } from "./context.ts";
+import { actionCapabilities, isActionEntry } from "./capability/registry.ts";
 import type { Entry } from "./log/index.ts";
 import { type Flow, loop, type Step } from "./loop.ts";
+import { buildAllowedTasks } from "./tasks/capability.ts";
 
 // Re-export the port interfaces — frontends import from here.
 export type { AgentContext, Approver, UI };
@@ -45,9 +36,8 @@ function cleanPhaseError(msg: string): string {
 
 /**
  * Run one task as a conversation. Each turn spawns the respond phase, which
- * either replies in chat (done) or emits an action entry (skill-invoke,
- * command-invoke, or script). The orchestrator dispatches to the appropriate
- * capability module, which owns the full cage → approval → run pipeline.
+ * either replies in chat (done) or emits an action entry dispatched via the
+ * capability registry.
  */
 export async function runTask(ctx: AgentContext, task: string): Promise<void> {
   const input = () => ({
@@ -64,7 +54,9 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     commandRules: ctx.availableCommandRules,
   });
 
-  const respond: Responder = () =>
+  // Inject respond onto ctx — the cage fix-loop in write/pipeline.ts uses
+  // ctx.respond (Application layer can't import spawnPhase directly).
+  ctx.respond = () =>
     spawnPhase({
       entry: join(ctx.phaseDir, "respond.ts"),
       flags: respondFlags(ctx.providerHost, ctx.readPaths),
@@ -82,47 +74,20 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     else for (const m of msgs) ctx.ui.show(m.text);
   };
 
-  // One turn as a composable Step (closes over ctx — the carrier `loop`
-  // threads). Respond, then dispatch to whichever capability the produced
-  // entries call for, mapping its "stop"/"loop" to the Flow coproduct. status
-  // is the turn's concern (an effect) — `loop` stays pure — and tracks
-  // first-vs-subsequent here. The inner cage fix-round loop stays encapsulated
-  // inside executeScriptProposal (the turn is atomic over it).
   let turnIndex = 0;
   const turn: Step<AgentContext> = async (): Promise<Flow> => {
     ctx.ui.status(turnIndex++ === 0 ? "thinking…" : "continuing…");
-    const produced = await respond();
+    const produced = await ctx.respond();
     ctx.log.push(...produced);
     ctx.persist();
     showReply(produced);
-    ctx.ui.entries?.(produced); // surface actions (tool calls) to the frontend
+    ctx.ui.entries?.(produced);
 
-    const skillInvoke = produced.findLast(isSkillInvoke);
-    if (skillInvoke) {
-      return (await executeSkillInvocation(skillInvoke, ctx)) === "stop"
-        ? "done"
-        : "continue";
-    }
+    const action = produced.findLast(isActionEntry);
+    if (!action) return "done"; // pure chat turn
 
-    const cmdInvoke = produced.findLast(isCommandInvoke);
-    if (cmdInvoke) {
-      return (await executeCommandInvocation(cmdInvoke, ctx)) === "stop"
-        ? "done"
-        : "continue";
-    }
-
-    const script = produced.findLast(isScript);
-    if (!script) return "done"; // pure chat turn — no action needed
-    return (await executeScriptProposal(
-        script,
-        task,
-        ctx,
-        respond,
-        showReply,
-      )) ===
-        "stop"
-      ? "done"
-      : "continue";
+    const cap = actionCapabilities.find((c) => c.entryKind === action.kind)!;
+    return (await cap.execute(action, ctx)) === "stop" ? "done" : "continue";
   };
 
   ctx.log.push({ kind: "message", role: "user", text: task });
@@ -134,33 +99,4 @@ export async function runTask(ctx: AgentContext, task: string): Promise<void> {
     const msg = e instanceof Error ? e.message : String(e);
     ctx.ui.show("✗ " + cleanPhaseError(msg));
   }
-}
-
-/** Build the allowed-tasks list for the phase input. */
-function buildAllowedTasks(ctx: AgentContext) {
-  const inPolicy = (p: string, a: string[]) =>
-    ctx.commandEntries.some(
-      (e) =>
-        e.program === p &&
-        e.args.length === a.length &&
-        e.args.every((x, i) => x === a[i]),
-    );
-  return [
-    ...ctx.discoveredTasks.filter((t) => inPolicy(t.program, t.args)),
-    ...ctx.commandEntries
-      .filter((e) =>
-        e.source === "explicit" &&
-        !ctx.discoveredTasks.some(
-          (t) =>
-            t.program === e.program &&
-            t.args.length === e.args.length &&
-            t.args.every((a, i) => a === e.args[i]),
-        )
-      )
-      .map((e) => ({
-        program: e.program,
-        args: e.args,
-        description: `${e.program} ${e.args.join(" ")}`,
-      })),
-  ];
 }
