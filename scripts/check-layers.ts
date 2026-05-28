@@ -22,6 +22,13 @@
  *        It must not directly import src/runner/ (which contains runScript /
  *        spawnPhase) — that would hand the agent an exec capability.
  *
+ *   R4 — Pure-header claim is verified
+ *        Files whose first line starts with "// pure" (and does not also
+ *        declare mixed concerns with "; effect" or "// pure-ish") claim to
+ *        contain no I/O. They must not make value imports from src/runner/,
+ *        src/phases/, or src/providers/. Type-only imports (`import type`)
+ *        are exempt — they carry no runtime side effects.
+ *
  * Add further rules below as new implicit conventions need enforcement.
  */
 
@@ -37,21 +44,38 @@ function under(file: string, dir: string): boolean {
   return file === d || file.startsWith(d + "/");
 }
 
-/** Relative imports a .ts file makes within src/ (resolves to abs paths). */
-function srcImports(file: string, source: string): string[] {
+/**
+ * Relative imports a .ts file makes within src/, resolved to absolute paths.
+ * When `valueOnly` is true, `import type { ... }` statements are excluded
+ * (they carry no runtime side effects and cannot introduce I/O).
+ */
+function srcImports(
+  file: string,
+  source: string,
+  valueOnly = false,
+): string[] {
   const imports: string[] = [];
   const dir = file.replace(/\/[^/]+$/, "");
-  for (const m of source.matchAll(/^import\b[^'"]*['"](\.[^'"]+)['"]/gm)) {
+  // `import type` starts with `import type` (statement-level); skip when valueOnly.
+  const pattern = valueOnly
+    ? /^import(?!\s+type\b)\b[^'"]*['"](\.[^'"]+)['"]/gm
+    : /^import\b[^'"]*['"](\.[^'"]+)['"]/gm;
+  for (const m of source.matchAll(pattern)) {
     const raw = m[1];
     let target = resolve(dir, raw);
-    // add .ts if the import omits the extension
-    if (!target.endsWith(".ts") && !target.endsWith("/")) {
-      target += ".ts";
-    }
-    // only track imports that land inside src/
+    if (!target.endsWith(".ts") && !target.endsWith("/")) target += ".ts";
     if (target.startsWith(SRC + "/")) imports.push(target);
   }
   return imports;
+}
+
+/** True if the file's first line is a full "// pure" claim with no
+ *  mixed-concern qualifier ("; effect" or "// pure-ish"). */
+function claimsPure(source: string): boolean {
+  const firstLine = source.split("\n")[0];
+  return firstLine.startsWith("// pure") &&
+    !firstLine.includes("; effect") &&
+    !firstLine.startsWith("// pure-ish");
 }
 
 // ── rules ────────────────────────────────────────────────────────────────────
@@ -59,10 +83,12 @@ function srcImports(file: string, source: string): string[] {
 interface Rule {
   name: string;
   description: string;
-  /** Should this file be checked by this rule? */
-  subject(file: string): boolean;
+  /** Should this file be checked by this rule? source is the file contents. */
+  subject(file: string, source: string): boolean;
   /** Is this import target forbidden for files matching `subject`? */
   forbidden(target: string): boolean;
+  /** When true, only value imports (not `import type`) are checked. */
+  valueOnly?: boolean;
 }
 
 const RULES: Rule[] = [
@@ -72,10 +98,7 @@ const RULES: Rule[] = [
       "Core (src/log/, src/permissions/) must not import application or adapter modules",
     subject: (f) => under(f, "log") || under(f, "permissions"),
     forbidden: (t) =>
-      // everything in src/ except log/ and permissions/ themselves
-      t.startsWith(SRC + "/") &&
-      !under(t, "log") &&
-      !under(t, "permissions"),
+      t.startsWith(SRC + "/") && !under(t, "log") && !under(t, "permissions"),
   },
   {
     name: "R2",
@@ -90,6 +113,17 @@ const RULES: Rule[] = [
       "(invariant #1: respond subprocess has no exec path)",
     subject: (f) => f === join(SRC, "phases", "respond.ts"),
     forbidden: (t) => under(t, "runner"),
+  },
+  {
+    name: "R4",
+    description:
+      'Files with an unqualified "// pure" header must not make value imports ' +
+      "from src/runner/, src/phases/, or src/providers/ — the claim is verified, " +
+      "not just documented. (`import type` is exempt: no runtime side effects.)",
+    subject: (_f, source) => claimsPure(source),
+    forbidden: (t) =>
+      under(t, "runner") || under(t, "phases") || under(t, "providers"),
+    valueOnly: true,
   },
 ];
 
@@ -106,13 +140,11 @@ async function* walk(dir: string): AsyncGenerator<string> {
 let violations = 0;
 
 for await (const file of walk(SRC)) {
-  const activeRules = RULES.filter((r) => r.subject(file));
-  if (activeRules.length === 0) continue;
-
   const source = await Deno.readTextFile(file);
-  const imports = srcImports(file, source);
 
-  for (const rule of activeRules) {
+  for (const rule of RULES) {
+    if (!rule.subject(file, source)) continue;
+    const imports = srcImports(file, source, rule.valueOnly);
     for (const target of imports) {
       if (rule.forbidden(target)) {
         const rel = (p: string) => relative(SRC, p);
