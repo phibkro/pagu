@@ -154,6 +154,52 @@ The metaphor earns its keep: it gives the user a correct mental model of what
 exists and when to delete it (when the task changes in a way that needs new
 permissions).
 
+## The proposal–handler model: effects ≅ permissions ≅ types
+
+pagu's security model and its (planned) composable orchestration are the **same
+idea seen from different sides**. An effect system is, almost exactly, a
+permission model: a computation _requests_ an operation it cannot itself perform
+("can I have this?"), and a **handler** decides and performs it ("yes — I'll do
+it"). That is the **object-capability** model (capabilities-as-effects): you can
+only affect what you hold a handle to, and the agent holds _no_ handle to real
+execution — it can only propose.
+
+So pagu's two cores are one spine. A **proposal** is an effect request _is_ a
+permission request; the chain that processes it before it becomes a real effect
+is a **handler pipeline**, and a **gate** is a handler that can refuse:
+
+| permission view              | effect/handler view                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| a proposal's requested perms | the effect it requests                                                                        |
+| the **envelope**             | the effect signature the stack auto-grants                                                    |
+| `shouldAutoApprove` (within) | "is this effect in the granted set?"                                                          |
+| the **human gate**           | the escalation handler for out-of-envelope effects                                            |
+| the **cage**                 | a rehearsal handler that _infers_ requested effects (permission discovery = effect inference) |
+| the **runner**               | the terminal handler that performs                                                            |
+
+This completes the loop with **command policy as a type system** (above): effect
+systems _are_ type-and-effect systems, so **effects ≅ permissions ≅ types**,
+unified by two artifacts pagu already has — the **envelope** is the signature,
+the **cage** is the checker/interpreter. One idea, three faces (conceptual
+integrity).
+
+**The law this hands us — handlers tighten, never widen.** Because the handler
+pipeline _is_ the permission model made explicit, its security law falls out of
+the permission lattice for free: a handler may **gate** (refuse or narrow) a
+proposal but **never grant authority beyond the envelope** — mirroring
+"composition can only hold-or-tighten, never silently widen; deny wins
+unconditionally." A pluggable handler/plugin is therefore safe by the _same_ law
+that makes role composition safe, and invariant #1 survives a pluggable model:
+the **set of handlers is the TCB**, each named and inspectable.
+
+**Status:** today the pipeline (`cage → review → advisor → approve → run` in
+`write/execute.ts`) is a _hardcoded_ handler stack — the model names what the
+code already is implicitly. Making it a **composable** handler pipeline (each
+stage an insertable `Step → Step` handler, gates included) is the planned next
+step — the value-level form first, with these names; algebraic effect handlers
+are the lawful spine underneath, reached for only if operation-granularity
+interception ever earns its keep. (See `CONTEXT.md` → Roadmap.)
+
 ## Derived state and inference chains
 
 A recurring pattern in pagu: effectful inference reads source files and produces

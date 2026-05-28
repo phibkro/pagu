@@ -498,9 +498,12 @@ portable tier-1 floor around it (no regression).
 
 ### Idea backlog (speculative / paradigm-level)
 
-**Next up: #1, composable agent loops — the substrate (v1) shipped 2026-05-28**
-(`src/loop.ts`; see Shipped). The loop is now a composable value; the next
-concrete loop (author→critic) is what pulls `andThen` into existence.
+**Next up: #2, the composable handler pipeline.** The loop substrate (v1)
+shipped 2026-05-28 (`src/loop.ts`; see Shipped). The next slice makes
+`write/execute.ts`'s hardcoded `cage → review → advisor → approve → run` stack a
+**composable handler pipeline** — grounded in the proposal–handler model
+(`docs/CONCEPTS.md`: effects ≅ permissions ≅ types), with its keystone law:
+**handlers tighten, never widen.**
 
 To knock out one at a time — not commitments. Designed through the compositional
 lens (see `AGENTS.md` → Values: functional/compositional core, composition over
@@ -512,14 +515,30 @@ above.)
 
 1. **Composable agent loops — iterative review / multi-agent.** Substrate (v1)
    **shipped** 2026-05-28 (`src/loop.ts`): the turn is a `Step<C>`, `runTask` is
-   `loop(turn)`. Remaining: the first real composed loop — author → reviewer
-   (iterative critique) — which implements `andThen` (composition); then
-   fan-out/critique (`fanOut` = monoidal product, needs the immutable carrier);
-   multi-agent _later_, the point where "independent actors" finally become
-   appropriate. Also queued: unifying the inner cage fix-round loop under the
-   same combinator.
-2. **Composable extensibility — plugins / feature flags.** Further extension
-   beyond skills/tasks without forking the core; new providers behind `chat()`,
-   new frontends behind `UI`/`Approver`, new tools that still only _propose_.
+   `loop(turn)`. Remaining: `fanOut` (monoidal product, needs the immutable
+   carrier) and multi-agent _later_, the point where "independent actors"
+   finally become appropriate. **Author→critic→revise: deferred** — it turned
+   out to be an _inner_ loop (sibling to the cage fix-round loop), not
+   turn-level `andThen`, and its use case (sharpening proposals on the
+   advisor-on human-gate path) is too narrow to justify now. `andThen` stays a
+   deferred combinator until a genuine turn-level composition needs it. Also
+   queued: unifying the inner cage fix-round loop under a shared inner-loop
+   combinator (would gain a second instance if author→critic is ever revived).
+2. **Composable handler pipeline — the proposal–handler model made explicit.**
+   Make `write/execute.ts`'s hardcoded `cage → review → advisor → approve → run`
+   stack composable: each stage an insertable `Step → Step` **handler** (a
+   **gate** if it can refuse), so new behavior (policy gates, logging, a critic,
+   plugins) drops in without editing the core. Grounded in `docs/CONCEPTS.md`'s
+   proposal– handler model (effects ≅ permissions ≅ types; the envelope is the
+   signature, the cage the checker). **Keystone law: handlers tighten, never
+   widen** — a plugin is safe by the same lattice law that makes role
+   composition safe, so invariant #1 survives a pluggable model (the set of
+   handlers is the TCB). Value-level first, named in effect-handler vocabulary;
+   algebraic effect handlers (operation- granularity interception) only if a
+   real need surfaces — pagu's one-action-per- turn shape means the turn
+   boundary ≈ the effect site, so boundary-level handlers likely suffice. This
+   is also the home for the old #2 (plugins / extensibility: new providers
+   behind `chat()`, new frontends behind `UI`/`Approver`).
 
-Suggested order **1 → 2** (re-sequence freely as constraints surface).
+Suggested order **2 → 1** (the handler pipeline is next; re-sequence freely as
+constraints surface).
