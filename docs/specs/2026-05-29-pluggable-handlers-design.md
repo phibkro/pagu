@@ -203,7 +203,9 @@ export interface ExecView {
 }
 ```
 
-**`HandlerPhaseInput`** and **`HandlerPhaseOutput`** (in `phases/ipc.ts`):
+**Handler I/O types** — kept in `src/capability/index.ts` alongside `ExecView`,
+not in `phases/ipc.ts` (the handler phase has its own lightweight I/O, separate from
+the respond-phase `readInput`/`writeOutput` that wraps `{ entries: Entry[] }`):
 
 ```typescript
 export interface HandlerPhaseInput {
@@ -216,23 +218,26 @@ export interface HandlerPhaseOutput {
 }
 ```
 
-**`phases/handler.ts`** (the subprocess entrypoint):
+**`phases/handler.ts`** (the subprocess entrypoint) — reads/writes raw JSON directly,
+not through `phases/ipc.ts`:
 
 ```typescript
 // effects: handler phase — runs a user handler in an isolated process
-import { readInput, writeOutput } from "./ipc.ts";
-import type { HandlerPhaseInput, HandlerPhaseOutput } from "./ipc.ts";
+// Lightweight I/O: raw JSON on stdin/stdout (not the respond-phase Entry[] wrapper).
 
-const { handlerPath, exec } = await readInput() as HandlerPhaseInput;
+const raw = new TextDecoder().decode(await Deno.stdin.readable
+  .getReader().read().then(r => r.value ?? new Uint8Array()));
+const { handlerPath, exec } = JSON.parse(raw) as HandlerPhaseInput;
 const mod = await import(handlerPath);
 
-// Minimal ReadonlyExec adapter from ExecView — ctx is unavailable in subprocess
+// Minimal ReadonlyExec adapter — ctx is unavailable in the subprocess
 const pseudoExec = { ...exec, ctx: undefined!, rationale: "", outcome: "loop" as const };
 const decision: "continue" | "done" = await mod.default(pseudoExec);
-writeOutput({ decision } satisfies HandlerPhaseOutput);
+console.log(JSON.stringify({ decision } satisfies HandlerPhaseOutput));
 ```
 
-**`spawnHandlerPhase`** in the orchestrator:
+**`spawnHandlerPhase`** — its own lightweight subprocess spawn, not using `spawnPhase`
+(which expects `{ entries: Entry[] }` output):
 
 ```typescript
 async function spawnHandlerPhase(
@@ -241,17 +246,33 @@ async function spawnHandlerPhase(
   ctx: AgentContext,
 ): Promise<Flow> {
   const view: ExecView = { id: exec.id, body: exec.body, perms: exec.perms, title: exec.title };
-  const [result] = await spawnPhase({
-    entry: join(ctx.phaseDir, "handler.ts"),
-    flags: [
+  const input = JSON.stringify({ handlerPath: h.path, exec: view } satisfies HandlerPhaseInput);
+  const child = new Deno.Command("deno", {
+    args: ["run", "--no-prompt",
       ...ctx.readPaths.map(p => `--allow-read=${p}`),
       ...h.permissions,
+      join(ctx.phaseDir, "handler.ts"),
     ],
-    input: { handlerPath: h.path, exec: view } satisfies HandlerPhaseInput,
-    onStderr: ctx.ui.stream ? c => ctx.ui.stream!(c) : undefined,
-  });
-  // spawnPhase returns Entry[]; handler phase returns a single HandlerPhaseOutput
-  return (result as unknown as HandlerPhaseOutput).decision;
+    stdin: "piped", stdout: "piped", stderr: "piped",
+  }).spawn();
+  const writer = child.stdin.getWriter();
+  await writer.write(new TextEncoder().encode(input));
+  await writer.close();
+  // forward stderr live (handler can emit status via stderr side-channel)
+  const drainStderr = async () => {
+    for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
+      ctx.ui.stream?.(c);
+    }
+  };
+  let stdout = "";
+  const drainStdout = async () => {
+    for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) stdout += c;
+  };
+  await Promise.all([drainStdout(), drainStderr()]);
+  const { code } = await child.status;
+  if (code !== 0) throw new Error(`handler ${h.name} exited ${code}`);
+  const out = JSON.parse(stdout) as HandlerPhaseOutput;
+  return out.decision;
 }
 ```
 
