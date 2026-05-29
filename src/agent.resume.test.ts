@@ -4,6 +4,7 @@ import {
   createContext,
   resumePending,
   resumeTask,
+  submitDecision,
 } from "./mod.ts";
 import type { Entry } from "./log/schema.ts";
 
@@ -182,6 +183,65 @@ Deno.test("resumePending with a {grant} outcome logs a standing grant and runs t
     const g = ctx.log.find((e) => e.kind === "grant");
     assert(g && g.kind === "grant");
     assertEquals(g.perms, [`allow-write=${repo}`, "allow-net=example.com"]);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+// submitDecision — the transport-agnostic write-back seam (an authenticated
+// adapter calls it; here we call it directly, as an adapter would post-auth).
+
+Deno.test("submitDecision: approve a matching pending proposal resolves + runs", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo);
+    const out = `${repo}/sd.txt`;
+    seedPending(
+      ctx,
+      `await Deno.writeTextFile(${JSON.stringify(out)}, "ok");`,
+      [`allow-write=${repo}`, "allow-net=example.com"],
+    );
+    assertEquals(await submitDecision(ctx, "s1", "approve"), "resolved");
+    assertEquals(await Deno.readTextFile(out), "ok");
+    assertEquals(lastDecision(ctx.log)?.verdict, "approve");
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("submitDecision: reject resolves without running", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo);
+    seedPending(ctx, "throw new Error('must not run');", []);
+    assertEquals(await submitDecision(ctx, "s1", "reject"), "resolved");
+    assertEquals(lastDecision(ctx.log)?.verdict, "reject");
+    assertEquals(ctx.log.some((e) => e.kind === "result"), false);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("submitDecision: a mismatched proposalId is a no-op (id-mismatch)", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo);
+    seedPending(ctx, "throw new Error('must not run');", []);
+    assertEquals(await submitDecision(ctx, "s2", "approve"), "id-mismatch");
+    assertEquals(ctx.log.some((e) => e.kind === "decision"), false);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("submitDecision: no pending proposal is a no-op (not-pending)", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo);
+    ctx.log.push({ kind: "message", role: "user", text: "hi" });
+    ctx.persist();
+    assertEquals(await submitDecision(ctx, "s1", "approve"), "not-pending");
+    assertEquals(ctx.log.some((e) => e.kind === "decision"), false);
   } finally {
     await Deno.remove(repo, { recursive: true });
   }

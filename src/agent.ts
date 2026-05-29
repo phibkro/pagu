@@ -224,3 +224,26 @@ export async function resumePending(
   }
   return true;
 }
+
+/**
+ * The transport-agnostic **write-back seam** (#14/#15): an authenticated adapter
+ * (HTTP token / ACP connection) submits a remote human's decision for a specific
+ * pending proposal. **Resolve-only** — it can only approve/reject an *existing*
+ * pending proposal, never create authority. proposalId-bound + idempotent: a
+ * stale or wrong id is a no-op (`not-pending` / `id-mismatch`), so it never
+ * resolves the wrong proposal and a double-submit is safe. On a match it
+ * dispatches to the existing `resumeTask` (the runner appends + runs — the
+ * single-writer invariant holds; the remote never touches the log).
+ */
+export async function submitDecision(
+  ctx: AgentContext,
+  proposalId: string,
+  verdict: "approve" | "reject",
+  signal?: AbortSignal,
+): Promise<"resolved" | "not-pending" | "id-mismatch"> {
+  const pending = pendingProposal(ctx.log);
+  if (!pending) return "not-pending";
+  if (pending.script.id !== proposalId) return "id-mismatch";
+  await resumeTask(ctx, verdict, signal);
+  return "resolved";
+}
