@@ -38,6 +38,14 @@ if (Deno.args[0] === "vm") {
   Deno.exit(0);
 }
 
+// `pagu serve <task>` runs the task, then exposes its pending proposal over HTTP
+// for an out-of-band approver (a phone, a LAN device). Re-execs itself with
+// inbound net scoped to the bind address — the only frontend that opens a socket.
+if (Deno.args[0] === "serve") {
+  await (await import("./serve.ts")).serveMain(Deno.args.slice(1));
+  Deno.exit(0);
+}
+
 const { config: fileConfig, agents } = await loadConfig();
 const opts = await parseArgs(fileConfig, Deno.args);
 

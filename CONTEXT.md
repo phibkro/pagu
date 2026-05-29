@@ -937,12 +937,18 @@ above.)
         the `{grant:{ttlMs}}` gate outcome; `/grants` + `/revoke` commands.
         **Remaining:** TTL config plumbing (helper exists, off by default). The
         **remote write-back transport** (a remote approver submitting a decision
-        the runner appends) is **spec'd**
-        (`docs/specs/2026-05-30-writeback-transport-design.md`, grilled) — a
-        transport-agnostic `submitDecision` seam + an opt-in `pagu serve` HTTP
-        adapter (deferring approver, GET pending / POST decision + token); ACP
-        is already covered by `resumePending`. **Deferred:** the staleness
-        marker, proactive/human-specified grants.
+        the runner appends) is **shipped 2026-05-30**
+        (`docs/specs/2026-05-30-writeback-transport-design.md`, grilled): a
+        transport-agnostic `submitDecision` seam (`agent.ts` — resolve-only,
+        proposalId-bound + idempotent) + the opt-in **`pagu serve`** HTTP
+        frontend (`src/frontends/serve.ts` — deferring approver, `GET /pending`
+        / `POST /decision` + Bearer token; live HTTP e2e). The orchestrator
+        stays **net-less**: `pagu serve` re-execs itself with `--allow-net`
+        scoped to exactly the bind address (the `pagu vm` launcher pattern), so
+        cli/tui gain no net and the runner/respond subprocesses keep their own
+        scoped perms. ACP is already covered by `resumePending`. **Deferred:**
+        the staleness marker, proactive/human-specified grants, remote
+        `{grant}`, `GET /events`, TLS, multi-session serve.
 16. **Scheduled short-lived agents (cron for contained agents).** The
     operationally useful shape of "long-running agent" is **not** an immortal
     process — that accumulates two unbounded quantities (context drift +

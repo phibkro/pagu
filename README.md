@@ -69,6 +69,29 @@ pagu "count the .txt files in ./photos and write the total to count.txt" \
 
 Bare **`pagu`** in a terminal (or `pagu --tui`) launches an interactive REPL.
 
+## Remote approval (`pagu serve`)
+
+```sh
+pagu serve "diagnose the failing deploy and propose a fix" --repo \
+  --host 0.0.0.0 --port 8787 --token "$SECRET"
+```
+
+Runs the task with a **deferring** approver — when the agent proposes a script,
+it becomes a _pending_ proposal instead of blocking on a local prompt — then
+exposes it over HTTP so an out-of-band approver (a phone, a LAN device) can
+decide:
+
+- `GET /pending` → the proposal awaiting a decision (`id`, `perms`, `body`).
+- `POST /decision` `{ proposalId, verdict: "approve" | "reject" }` → the runner
+  runs it **locally** under its cage-vetted perms.
+
+All routes require `Authorization: Bearer <token>` (a token is generated and
+printed if `--token` is omitted; **mandatory** when binding beyond localhost).
+The remote only _submits a decision_ — it can't inject a script or widen perms
+(resolve-only), and the runner stays the single writer of the log. `pagu serve`
+is the **only** frontend that opens a socket; it re-execs itself with inbound
+net scoped to exactly the bind address, so the rest of pagu stays net-less.
+
 ## Editor integration (ACP)
 
 pagu can run as an [Agent Client Protocol](https://agentclientprotocol.com)

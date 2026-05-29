@@ -85,13 +85,24 @@ a socket opens**, entirely opt-in:
   is the HTTP router + token check + the deferring approver — small, and the
   seam's security logic is transport-independent and unit-tested.
 
-## Implementation slice
+## Implementation slice — **shipped 2026-05-30**
 
 `submitDecision` seam (`agent.ts`) → `serveHandler(ctx, token)` router (pure,
 fake-Request-tested: GET pending, POST decision, token 401, bad-id mapping) →
 `serveMain` frontend (deferring approver + `Deno.serve(serveHandler)`) →
-`pagu serve` CLI subcommand (host/port/token flags). Integration-test the live
-listener on an ephemeral port (GET pending → POST decision → resolved + ran).
+`pagu serve` CLI subcommand (host/port/token flags). Integration-tested on a
+live listener on an ephemeral port (GET pending → POST decision → resolved +
+ran).
+
+**Net packaging (the one open question, resolved):** the orchestrator binary is
+deliberately net-less (cli/tui carry no `--allow-net`), but the listener needs
+inbound net. Rather than widen the shared binary, `pagu serve` **re-execs
+itself** with `--allow-net=<host:port>` scoped to exactly the bind address — the
+established `pagu vm` launcher pattern (a `PAGU_SERVING` sentinel guards the
+re-exec). cli/tui gain no net; the runner/respond subprocesses keep their own
+independently-scoped perms; only serve's listener leg holds inbound net.
+Verified live: a net-less parent re-execs and binds; 401 without token, 200
+with.
 
 **Deferred:** the full event-stream (`GET /events`, #14) beyond current-pending;
 remote `{grant}`; TLS (localhost/LAN + token first; TLS or a reverse proxy
