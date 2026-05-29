@@ -1,4 +1,5 @@
-// effects: stdio (stdin/stdout)
+// effects: stdio (stdin/stdout); pure: validatePhaseInput
+import { z } from "zod";
 import type { Entry } from "../log/schema.ts";
 import type { ProviderConfig } from "../providers/chat.ts";
 import type { CommandRule } from "../tasks/grammar.ts";
@@ -32,10 +33,46 @@ export interface PhaseInput {
   conceal?: ConcealmentSpec;
 }
 
+// The PhaseInput contract at the process boundary. Shallow on `log` (the log
+// codec owns entry shape; deep-validating the union here would duplicate it and
+// the orchestrator is the trusted producer) and on the complex list fields —
+// the point is to catch an orchestrator bug, not re-type the whole payload.
+const stringArray = z.array(z.string());
+const phaseInputSchema = z.object({
+  log: z.array(z.unknown()),
+  provider: z.object({
+    model: z.string(),
+    baseURL: z.string(),
+    apiKey: z.string().optional(),
+    format: z.enum(["openai", "anthropic"]).optional(),
+  }),
+  agents: z.string().optional(),
+  capabilities: z.string().optional(),
+  skillScripts: z.array(z.unknown()).optional(),
+  allowedTasks: z.array(z.unknown()).optional(),
+  commandRules: z.array(z.unknown()).optional(),
+  conceal: z.object({
+    vcsPaths: stringArray,
+    hideGlobs: stringArray,
+    secretGlobs: stringArray,
+    revealGlobs: stringArray,
+    roots: stringArray,
+    enumerated: stringArray,
+  }).optional(),
+});
+
+/** Validate a parsed object against the PhaseInput contract — fail loud (a
+ * `ZodError` naming the offending field) so an orchestrator bug surfaces here,
+ * at the boundary, not three frames deep. Returns the input typed. */
+export function validatePhaseInput(parsed: unknown): PhaseInput {
+  phaseInputSchema.parse(parsed);
+  return parsed as PhaseInput;
+}
+
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */
 export async function readInput(): Promise<PhaseInput> {
   const text = await new Response(Deno.stdin.readable).text();
-  return JSON.parse(text) as PhaseInput;
+  return validatePhaseInput(JSON.parse(text));
 }
 
 /** Emit the entries this phase produced (parent appends them to the log). */

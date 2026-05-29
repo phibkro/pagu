@@ -10,6 +10,13 @@ release milestone, newest first.
 
 ### Added
 
+- **Phase-input schema validation** — `readInput()` validates the `PhaseInput`
+  contract via a Zod schema (`phaseInputSchema` / `validatePhaseInput`) instead
+  of a blind `JSON.parse(...) as PhaseInput`, failing loud (a field-naming
+  error) when an orchestrator bug sends a malformed payload across the process
+  boundary. Shallow on `log` + complex list fields (the orchestrator is the
+  trusted producer; the log codec owns entry shape). Zod is already in the tree
+  (transitively via the ACP SDK), so no new attack surface. (`feat(phases)`)
 - **Concealment sources — multi-source hide policy**
   (`src/permissions/concealment.ts`) — generalizes gitignore read confinement
   from a single git-derived set into a source-neutral concealment fed by three
@@ -185,6 +192,3 @@ release milestone, newest first.
   only boundary.
 - **ACP — partial** — `/roles` and `/skills` still require TUI pickers (no ACP
   text-listing equivalent yet).
-- **Phase input** — parsed with `JSON.parse(...) as PhaseInput`, no runtime
-  schema validation. Defensive, not security-critical (orchestrator is trusted
-  source), but worth adding.

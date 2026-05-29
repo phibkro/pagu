@@ -73,11 +73,13 @@ the blast radius statically enumerable._
     direct import constraint.
   - `gate-never-widen` → `readonly PermissionSet` prevents array mutation;
     `satisfies Capability<Data>` makes literal `entryKind` types mandatory.
-  - Phase input shape → currently a TypeScript cast; schema validation at
-    `readInput()` is the next rung when `ipc.ts` next changes. When adding a new
-    convention, document it _and_ ask: what would make violating it a compile
-    error or CI failure? Note: `deno lint` validates doc comment structure and
-    types (`deno lint --rules` to see available rules); `deno doc` can surface
+  - Phase input shape → a Zod schema (`phaseInputSchema`) validates at
+    `readInput()` (`validatePhaseInput`), failing loud on a malformed contract.
+    Shallow on `log` + the complex list fields (the orchestrator is the trusted
+    producer; the log codec owns entry shape). When adding a new convention,
+    document it _and_ ask: what would make violating it a compile error or CI
+    failure? Note: `deno lint` validates doc comment structure and types
+    (`deno lint --rules` to see available rules); `deno doc` can surface
     undocumented public exports.
 - **Clarity over brevity; readability over code-writing velocity; security over
   utility.** When these trade off, optimize in that order — and surface the

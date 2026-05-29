@@ -21,7 +21,8 @@
     "jsr:@std/yaml@^1.0.5": "1.1.1",
     "npm:@agentclientprotocol/sdk@*": "0.22.1_zod@4.4.3",
     "npm:@agentclientprotocol/sdk@0.22": "0.22.1_zod@4.4.3",
-    "npm:fast-check@3": "3.23.2"
+    "npm:fast-check@3": "3.23.2",
+    "npm:zod@4": "4.4.3"
   },
   "jsr": {
     "@cliffy/command@1.1.0": {
@@ -137,7 +138,8 @@
       "jsr:@std/path@1",
       "jsr:@std/streams@1",
       "npm:@agentclientprotocol/sdk@0.22",
-      "npm:fast-check@3"
+      "npm:fast-check@3",
+      "npm:zod@4"
     ]
   }
 }
