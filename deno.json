@@ -1,4 +1,7 @@
 {
+  "name": "@phibkro/pagu",
+  "version": "0.1.0",
+  "exports": { ".": "./src/mod.ts" },
   "tasks": {
     "test": "deno test --allow-run --allow-read --allow-write --allow-net --allow-env",
     "check": "deno check src",
