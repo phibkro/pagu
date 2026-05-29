@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { buildContext, parseArgs } from "./setup.ts";
+import { buildContext, enumerateConcealed, parseArgs } from "./setup.ts";
 import { DEFAULTS } from "./config.ts";
 
 // parseArgs maps the cliffy-parsed flags onto RunOpts. These encode the
@@ -115,6 +115,41 @@ Deno.test("parseArgs: defaults when no flags are given", async () => {
   assertEquals(o.logPath, undefined);
   assertEquals(o.session, undefined);
   assertEquals(o.skills, []);
+});
+
+Deno.test("enumerateConcealed: non-repo walk matches globs, skips heavy dirs", async () => {
+  const dir = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await Deno.writeTextFile(`${dir}/.env`, "x");
+    await Deno.writeTextFile(`${dir}/key.pem`, "x");
+    await Deno.mkdir(`${dir}/sub`);
+    await Deno.writeTextFile(`${dir}/sub/deep.pem`, "x");
+    await Deno.mkdir(`${dir}/node_modules`); // skip-listed
+    await Deno.writeTextFile(`${dir}/node_modules/leak.pem`, "x");
+    const found = await enumerateConcealed([dir], [".env", "*.pem"]);
+    assertEquals(found.sort(), [
+      `${dir}/.env`,
+      `${dir}/key.pem`,
+      `${dir}/sub/deep.pem`,
+    ]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("enumerateConcealed: repo mode matches via git ls-files", async () => {
+  const repo = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await new Deno.Command("git", { args: ["-C", repo, "init", "-q"] })
+      .output();
+    await Deno.writeTextFile(`${repo}/.env`, "secret"); // untracked, not ignored
+    await Deno.writeTextFile(`${repo}/key.pem`, "secret");
+    await Deno.writeTextFile(`${repo}/readme.txt`, "ok");
+    const found = await enumerateConcealed([repo], [".env", "*.pem"], repo);
+    assertEquals(found.sort(), [`${repo}/.env`, `${repo}/key.pem`]);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
 });
 
 // Regression: ACP passes the workspace root via opts.cwd (from session/new);

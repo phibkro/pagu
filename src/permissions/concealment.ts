@@ -55,24 +55,35 @@ function normalizeGlob(g: string): string {
   return g; // middle slash → anchored as written (gitignore)
 }
 
-export function buildConcealment(spec: ConcealmentSpec): Concealment {
-  const vcsMatch = (p: string) => spec.vcsPaths.some((v) => underPath(v, p));
-
-  const compile = (globs: string[]) =>
-    globs.map((g) => globToRegExp(normalizeGlob(g), { globstar: true }));
-  const hideRes = compile([...spec.hideGlobs, ...spec.secretGlobs]);
-  const revealRes = compile(spec.revealGlobs);
-  const anyMatch = (res: RegExp[], p: string) => {
-    const rel = relativize(p, spec.roots);
+/** Compile a glob set into a scope-relative matcher (gitignore semantics).
+ *  Shared by the predicate and the effectful enumeration shell so both match
+ *  identically. Compiles the regexes once. */
+export function makeGlobMatcher(
+  globs: string[],
+  roots: string[],
+): (absPath: string) => boolean {
+  const res = globs.map((g) =>
+    globToRegExp(normalizeGlob(g), { globstar: true })
+  );
+  return (p) => {
+    const rel = relativize(p, roots);
     return rel !== null && res.some((re) => re.test(rel));
   };
+}
+
+export function buildConcealment(spec: ConcealmentSpec): Concealment {
+  const vcsMatch = (p: string) => spec.vcsPaths.some((v) => underPath(v, p));
+  const hideMatch = makeGlobMatcher(
+    [...spec.hideGlobs, ...spec.secretGlobs],
+    spec.roots,
+  );
+  const revealMatch = makeGlobMatcher(spec.revealGlobs, spec.roots);
 
   return {
-    conceals: (p) =>
-      (vcsMatch(p) || anyMatch(hideRes, p)) && !anyMatch(revealRes, p),
+    conceals: (p) => (vcsMatch(p) || hideMatch(p)) && !revealMatch(p),
     maskPaths: () =>
       [...new Set([...spec.vcsPaths, ...spec.enumerated])].filter(
-        (p) => !anyMatch(revealRes, p),
+        (p) => !revealMatch(p),
       ),
   };
 }
