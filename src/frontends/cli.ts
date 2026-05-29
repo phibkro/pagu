@@ -3,6 +3,7 @@ import { loadConfig } from "../config/config.ts";
 import {
   buildContext,
   completionsCommand,
+  loadCwdEnv,
   parseArgs,
   readLine,
 } from "../config/setup.ts";
@@ -73,5 +74,6 @@ const approve: Approver = async (_script, _perms) => {
   return ans?.trim().toLowerCase() === "y";
 };
 
+await loadCwdEnv(); // terminal frontend: offer to source cwd .env first
 const ctx = await buildContext(opts, agents, ui, approve);
 await runTask(ctx, opts.task);

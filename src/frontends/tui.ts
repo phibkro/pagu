@@ -1,7 +1,12 @@
 // effects: terminal frontend (REPL)
 import { loadConfig, PRESETS } from "../config/config.ts";
 import { runCommand, slashCommands } from "../commands.ts";
-import { buildContext, parseArgs, readLine } from "../config/setup.ts";
+import {
+  buildContext,
+  loadCwdEnv,
+  parseArgs,
+  readLine,
+} from "../config/setup.ts";
 import {
   type AgentContext,
   type Approver,
@@ -252,6 +257,7 @@ export async function tuiMain(): Promise<void> {
     return ans?.trim().toLowerCase() === "y";
   };
 
+  await loadCwdEnv(); // terminal frontend: offer to source cwd .env first
   const ctx = await buildContext(opts, agents, ui, approve);
 
   // Session header: what you're talking to and the active scope.

@@ -309,6 +309,16 @@ async function repoDirty(dir: string): Promise<boolean> {
   }
 }
 
+/** Offer to load a cwd `.env` (interactive, per-folder-consented) so its keys
+ * are visible to provider resolution. The **terminal frontends** (cli/tui) call
+ * this before `buildContext`; ACP and the programmatic `createContext` do NOT —
+ * ACP must never prompt on its JSON-RPC stdin, and a library embed manages its
+ * own env. Lifted out of `buildContext` so the latter is env-agnostic. */
+export async function loadCwdEnv(): Promise<void> {
+  const loaded = await maybeLoadEnvFile(readLine);
+  if (loaded.length > 0) console.error(`· loaded .env (${loaded.join(", ")})`);
+}
+
 export async function buildContext(
   opts: RunOpts,
   agents: string,
@@ -316,13 +326,6 @@ export async function buildContext(
   approve: Approver,
 ): Promise<AgentContext> {
   const phaseDir = fromFileUrl(new URL("../phases/", import.meta.url));
-
-  // Offer to load a cwd .env first, so its keys are visible to the provider
-  // resolution below (e.g. ANTHROPIC_API_KEY without a manual export).
-  const loadedEnv = await maybeLoadEnvFile(readLine);
-  if (loadedEnv.length > 0) {
-    console.error(`· loaded .env (${loadedEnv.join(", ")})`);
-  }
 
   // Project dir (git root, else cwd) — roles + sessions live here. `cwd` is the
   // workspace root: ACP supplies it from `session/new`; CLI/TUI leave it unset
