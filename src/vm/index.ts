@@ -5,4 +5,4 @@ export { wrapForVM } from "./wrap.ts";
 export type { VMKind, VMMount, VMScope } from "./wrap.ts";
 export { planVMLaunch } from "./plan.ts";
 export type { VMLaunchOpts } from "./plan.ts";
-export { modelHostFromBaseURL } from "./egress.ts";
+export { guestModelURL, modelHostFromBaseURL } from "./egress.ts";
