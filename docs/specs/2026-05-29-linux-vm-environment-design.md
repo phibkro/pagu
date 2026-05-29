@@ -18,11 +18,13 @@ boundary that A's backup tarball stood in for.
 ## What B is
 
 A new **outer isolation tier** that wraps an entire pagu invocation in a
-reproducible Linux guest, plus the image build tooling. It is **purely
-additive**: pagu's trusted core is untouched; inside the guest pagu still runs
-its full tier-1 (Deno perms) + tier-2 (bwrap) per script. B is launcher + image
-— not a change to the security core. (Snapshot/restore tooling is a deferred
-persistent-mode concern — ephemeral restore is just recreate-from-image.)
+reproducible Linux guest, plus the image build tooling. It is **additive**:
+pagu's trusted core is untouched; inside the guest pagu runs its tier-1 (Deno
+perms) per script. _Tier-2 (`bwrap`) can't nest in a rootless container, so the
+container itself is tier-2's replacement_ — see Composition. B is launcher +
+image — not a change to the security core. (Snapshot/restore tooling is a
+deferred persistent-mode concern — ephemeral restore is just
+recreate-from-image.)
 
 ## Core decisions (settled in brainstorm)
 
@@ -71,8 +73,8 @@ host launcher (B):  pagu vm <task>  → detectVM → podman | firecracker(deferr
                        └─ podman run --volume <dirs> --egress=<model-host-only>  pagu-image  pagu <task>
                                                                                     │
   ───────────────────────────────── guest boundary ───────────────────────────────┤
-  pagu (inside guest, runs exactly as today; detectVM === none → no recursion)      │
-    tier 2:  detectSandbox → bwrap | none      ← per script (unchanged)             │
+  pagu (inside guest; detectVM === none → no recursion)                             │
+    tier 2:  detectSandbox → none (bwrap can't nest → container IS the wall)        │
     tier 1:  Deno --allow-* permissions        ← per phase (unchanged)             │
 ```
 
@@ -103,8 +105,9 @@ host launcher (B):  pagu vm <task>  → detectVM → podman | firecracker(deferr
 ## The image — one base, pruned variants
 
 A `Containerfile` (OCI, built by Podman/Docker; the portable lingua franca)
-produces a minimal **base**: Deno + pagu + bwrap, nothing else. Variants layer
-on and carry _only_ their context's surface:
+produces a minimal **base**: Deno + pagu (+ git for the gitignore source), no
+bwrap (it can't nest — see Composition). Variants layer on and carry _only_
+their context's surface:
 
 - **`local`** (test/eval/dev) — A's fixture tooling, optional bundled offline
   model; **no** remote-access surface. The first cut targets this variant.
