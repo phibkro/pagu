@@ -1,9 +1,10 @@
 # Linux VM environment — the coarse outer isolation tier (design)
 
-> Status: **hardened 2026-05-29** (brainstorm → grill → tdd-ready). Sub-project
-> **B** of pagu's test/demo environment (A demo fixture → **B Linux VM** → C
-> scored eval). B wraps pagu in a reproducible Linux guest; A is the workload
-> that runs _inside_ it, C scores runs _inside_ it.
+> Status: **first cut shipped 2026-05-29** (brainstorm → grill → tdd →
+> live-validated). Sub-project **B** of pagu's test/demo environment (A demo
+> fixture → **B Linux VM** → C scored eval). B wraps pagu in a reproducible
+> Linux guest; A is the workload that runs _inside_ it, C scores runs _inside_
+> it.
 
 ## The vision this serves
 
@@ -236,30 +237,42 @@ at `detectVM === none`.
     runtime). The **container replaces tier-2** for write confinement (only
     `/work` mounted) + net confinement (egress policy).
   - **Read concealment moves to the launcher's mount layer** — concealed paths
-    (`.env`, secrets) are simply **not threaded into the guest** (or bound to
-    `/dev/null`), so the secret never enters the guest. This preserves A's
-    guarantee (1) without nested bwrap. _(Mount-layer masking + the
-    exfil-in-guest test still to implement — see status below.)_
+    (`.env`, secrets) are bound to `/dev/null` (file) / empty tmpfs (dir) over
+    the mount, so the secret never enters the guest. This preserves A's
+    guarantee (1) without nested bwrap. **Shipped + validated** (the `leak`
+    probe leaks the canary without the mask, empty with it).
 - **Validated live** (`nix shell nixpkgs#podman`): pagu runs in the `pagu:local`
-  guest, drives the mock model, and A's **destruction** scenario is contained to
-  the mounted `/work` — the out-of-mount sentinel/backup are untouched and
-  restore recovers (`containment_vm.test.ts`).
+  guest, drives the mock model, and BOTH golden runs are contained through the
+  layer — **destruction** bounded to the mounted `/work` (out-of-mount sentinel/
+  backup untouched, restore recovers) and **concealment** masking the `.env`
+  canary (a `leak` probe prints empty in-guest; canary leaks WITHOUT the mask).
+  The `pagu vm` subcommand launches it all end-to-end
+  (`containment_vm.test.ts`).
+- **Network posture finding — model-host-only egress is Claw-Patrol/Firecracker-
+  shaped, not a rootless-Podman flag.** The guest runs on its own netns (good —
+  not `--network=host`) and reaches a host model via the
+  `host.containers.internal` gateway (`guestModelURL` rewrites loopback URLs).
+  But confining egress to _only_ the model host on rootless Podman has no clean
+  mechanism — it needs an outbound proxy choke-point + dropping direct egress,
+  which is exactly **Claw Patrol** (the egress proxy wider egress already routes
+  through) or the **Firecracker tier** (host-side firewall on virtio-net). Both
+  deferred. pagu's per-script net policy _inside_ the guest remains the primary
+  egress control; the VM-layer confinement is defense-in-depth that lands with
+  Claw Patrol / Firecracker.
 
 ## Status (2026-05-29)
 
-**Shipped:** `src/vm/` (`detectVM` + recursion guard, pure `wrapForVM`,
-`planVMLaunch`, `modelHostFromBaseURL`; all unit-tested) · `vm/Containerfile`
-(base + `local`, no bwrap) · `containment_vm.test.ts` (destruction-in-guest,
-skips at `detectVM === none`).
+**First cut shipped + validated live:** `src/vm/` (`detectVM` + recursion guard,
+pure `wrapForVM` incl. mount-layer read-mask, `buildVMScope`/`planVMLaunch`,
+`modelHostFromBaseURL`, `guestModelURL`; all unit-tested) · `vm/Containerfile`
+(base + `local`, no bwrap, no ENTRYPOINT) · `pagu vm <task>` subcommand
+(`src/frontends/vm.ts`) · `containment_vm.test.ts` (destruction + concealment
+in-guest, skip at `detectVM === none`).
 
-**Remaining for the first cut:**
+**Deferred (designed, not built):**
 
-- **Mount-layer concealment** — the launcher applies the concealment policy to
-  the threaded mounts (don't mount concealed paths / bind `/dev/null`), then the
-  **exfil-in-guest** test asserting the canary stays masked through the layer.
-- **`pagu vm` subcommand** — wire `detectVM` + `planVMLaunch` + `wrapForVM` +
-  spawn in the CLI frontend (currently the test drives `podman` directly).
-- **Egress-allowlist mechanism** — replace the test's `--network=host` smoke
-  with model-host-only egress (restricted Podman network + firewall vs
-  `pasta`/slirp single-destination vs pinned gateway); the enforcement test is
-  the proof.
+- **Model-host-only egress confinement** — Claw-Patrol / Firecracker-shaped (see
+  the network finding above); the rootless-Podman tier ships with isolated-netns
+  - per-script net gating as the control.
+- **Firecracker microVM tier**, **persistent / remote-deploy mode + transport**,
+  **bundled-offline mode**, **enterprise audit/policy split** — as above.
