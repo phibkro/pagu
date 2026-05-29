@@ -10,6 +10,26 @@ release milestone, newest first.
 
 ### Added
 
+- **VM isolation tier — `pagu vm` launches pagu inside a guest** (sub-project B
+  of the test/demo env; `src/vm/` + `src/frontends/vm.ts` + `vm/Containerfile`).
+  A coarse OUTER tier wrapping the whole pagu process, mirroring
+  `detectSandbox`: `detectVM` picks the runtime (rootless **Podman** first;
+  degrades to `none` → runs pagu directly, no regression) and a recursion guard
+  (`PAGU_IN_VM`) stops the guest wrapping itself. `pagu vm <task>` resolves the
+  model host + concealment on the host, then re-execs pagu in the `pagu:local`
+  image with **only cwd mounted** (→ `/work`), **concealed paths masked at the
+  mount layer** (`/dev/null`/tmpfs over `.env` etc. — tier-2's read-protection
+  replacement, since `bwrap` can't nest in a rootless container), and the model
+  reached via the `host.containers.internal` gateway on the **isolated default
+  network** (not `--network=host`). Validated live (`nix shell nixpkgs#podman`):
+  A's golden scenario stays contained THROUGH the guest — destruction bounded to
+  the mount + recoverable, the `.env` canary masked
+  (`examples/golden-scenario/
+  containment_vm.test.ts`, skips at
+  `detectVM === none`). Deferred: Firecracker microVM tier,
+  persistent/remote-deploy mode, model-host-only egress confinement
+  (Claw-Patrol/Firecracker-shaped). (`feat(vm)`)
+
 - **Golden-scenario containment demo + fixture** (`examples/golden-scenario/`) —
   the adversarial demo fixture (sub-project A of the test/demo environment): a
   throwaway "infra" repo materialized under `$HOME` whose `deploy.log` carries a
