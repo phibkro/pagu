@@ -13,7 +13,7 @@ import type { Approver, UI } from "../agent.ts";
 import type { HandlerPlugin } from "../capability/index.ts";
 
 const noopUI: UI = { status() {}, show() {} };
-const noApprove: Approver = () => Promise.resolve(false);
+const noApprove: Approver = () => Promise.resolve("reject");
 
 /** Run a script that reads `target`, masked by `maskPaths`, and report whether
  * the secret surfaced. Shared by the enforcement + reveal cases. */
@@ -316,7 +316,7 @@ Deno.test("buildContext honors opts.cwd for repo detection", async () => {
     opts,
     "",
     { status() {}, show() {} },
-    () => Promise.resolve(false),
+    () => Promise.resolve("reject" as const),
   );
   assertEquals(ctx.repo, repo); // detected from opts.cwd, not the test's cwd
   await Deno.remove(repo, { recursive: true });

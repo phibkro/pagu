@@ -10,7 +10,7 @@ import { cageOnce, performRun } from "../capability/index.ts";
 import { matchesSkillScript } from "../skills/index.ts";
 import { buildReview, formatReview } from "./review.ts";
 import { formatAdvisory, runAdvisor } from "./advisor.ts";
-import type { AgentContext, ScriptEntry } from "../context.ts";
+import type { AgentContext, ApprovalOutcome, ScriptEntry } from "../context.ts";
 import { isScript } from "../context.ts";
 import type { Entry } from "../log/index.ts";
 import type { Step } from "../loop.ts";
@@ -100,19 +100,24 @@ export const cage: Handler = async (p) => {
 export const approve: Handler = async (p) => {
   const perms = fullPerms(p);
   const discoveredPerms = p.discovered.map(parsePermission);
+  // Persist the gated permission set (the `perms` entry) before deciding, so a
+  // deferred proposal is a self-contained pending state in the log — script +
+  // perms, no decision — that a fresh process or remote client can resume.
+  p.ctx.log.push({ kind: "perms", script: p.script.id, perms });
+  p.ctx.persist();
   const matchedSkill = matchesSkillScript(
     p.script.body,
     discoveredPerms,
     p.ctx.activeSkillScripts,
   );
 
-  let approved: boolean;
+  let outcome: ApprovalOutcome;
   if (shouldAutoApprove(discoveredPerms, p.ctx.envelope, !!p.ctx.repo)) {
     p.ctx.ui.status("auto-approved (within session envelope)");
-    approved = true;
+    outcome = "approve";
   } else if (matchedSkill) {
     p.ctx.ui.status(`auto-approved (skill script: ${matchedSkill.name})`);
-    approved = true;
+    outcome = "approve";
   } else {
     const review = buildReview({
       perms,
@@ -138,10 +143,19 @@ export const approve: Handler = async (p) => {
       );
       if (advisory) p.ctx.ui.show(advisory);
     }
-    approved = await p.ctx.approve(p.script, perms);
+    outcome = await p.ctx.approve(p.script, perms);
   }
 
-  if (!approved) {
+  if (outcome === "defer") {
+    // Leave the proposal pending — no decision entry. The turn ends; a decision
+    // arrives later via resumeTask (same or a fresh process), which folds the
+    // pending script + perms back into a run.
+    p.ctx.ui.status("deferred — awaiting a decision");
+    p.outcome = "stop";
+    return "done";
+  }
+
+  if (outcome === "reject") {
     p.ctx.log.push({
       kind: "decision",
       script: p.script.id,

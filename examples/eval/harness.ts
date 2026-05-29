@@ -109,7 +109,7 @@ export async function runOnce(
         show: (t: string) => out.push(t),
         stream: (t: string) => out.push(t),
       },
-      approver: () => Promise.resolve(false),
+      approver: () => Promise.resolve("reject" as const),
     });
     await runTask(ctx, scenario.task);
     const r: RunResult = {

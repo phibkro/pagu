@@ -18,7 +18,13 @@ import {
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import { runTask } from "../agent.ts";
-import type { AgentContext, Approver, ScriptEntry, UI } from "../context.ts";
+import type {
+  AgentContext,
+  ApprovalOutcome,
+  Approver,
+  ScriptEntry,
+  UI,
+} from "../context.ts";
 import { buildContext, type RunOpts } from "../config/setup.ts";
 import { newSessionId } from "../config/sessions.ts";
 import type { Entry } from "../log/index.ts";
@@ -201,7 +207,10 @@ export function acpUI(conn: AcpConn, sessionId: string, flushMs = 50): UI {
  * before approve); this surfaces the allow/reject buttons. Cancel = reject.
  */
 export function acpApprover(conn: AcpConn, sessionId: string): Approver {
-  return async (script: ScriptEntry, perms: string[]): Promise<boolean> => {
+  return async (
+    script: ScriptEntry,
+    perms: string[],
+  ): Promise<ApprovalOutcome> => {
     const resp = await conn.requestPermission({
       sessionId,
       toolCall: {
@@ -216,8 +225,10 @@ export function acpApprover(conn: AcpConn, sessionId: string): Approver {
         { kind: "reject_once", name: "Reject", optionId: "reject" },
       ],
     });
-    if (resp.outcome.outcome === "cancelled") return false;
-    return resp.outcome.optionId === "allow";
+    // Cancel = reject (the editor dismissed the prompt). No `defer` option is
+    // offered yet — that's the detached-client UX (deferred remote transport).
+    if (resp.outcome.outcome === "cancelled") return "reject";
+    return resp.outcome.optionId === "allow" ? "approve" : "reject";
   };
 }
 

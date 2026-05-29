@@ -31,7 +31,7 @@ function captureUI() {
     },
     approver: () => {
       approverCalled = true;
-      return Promise.resolve(false); // a human would refuse — assert the gate
+      return Promise.resolve("reject" as const); // a human would refuse — assert the gate
     },
   };
 }

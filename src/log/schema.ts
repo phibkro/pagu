@@ -70,11 +70,13 @@ export interface PermsEntry {
   perms: string[]; // e.g. ["allow-read=./photos"]
 }
 
-/** A human (or auto-approve rule) decision on a proposed script. */
+/** A human (or auto-approve rule) decision on a proposed script. `expired` is a
+ * terminal verdict the system records when a pending proposal outlives its TTL
+ * (no human answer in time) — see the approval lifecycle. */
 export interface Decision {
   kind: "decision";
   script: string;
-  verdict: "approve" | "reject";
+  verdict: "approve" | "reject" | "expired";
   rationale: string;
 }
 

@@ -17,8 +17,8 @@
  */
 
 // Core loop & ports
-export { runTask } from "./agent.ts";
-export type { AgentContext, Approver, UI } from "./agent.ts";
+export { resumeTask, runTask } from "./agent.ts";
+export type { AgentContext, ApprovalOutcome, Approver, UI } from "./agent.ts";
 
 // Loop combinators (pure, lawful)
 export { andThen, fanOut, loop, pipeline } from "./loop.ts";

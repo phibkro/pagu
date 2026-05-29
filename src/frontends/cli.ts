@@ -79,7 +79,7 @@ const ui: UI = {
 // Perms are already shown by the core; this is a plain yes/no gate.
 const approve: Approver = async (_script, _perms) => {
   const ans = await readLine("Approve and run? [y/N]: ");
-  return ans?.trim().toLowerCase() === "y";
+  return ans?.trim().toLowerCase() === "y" ? "approve" : "reject";
 };
 
 await loadCwdEnv(); // terminal frontend: offer to source cwd .env first

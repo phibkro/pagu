@@ -106,22 +106,22 @@ Deno.test("acpUI.status is a no-op (no session update)", async () => {
 
 // --- acpApprover ---
 
-Deno.test("acpApprover returns true when outcome selects allow", async () => {
+Deno.test("acpApprover returns approve when outcome selects allow", async () => {
   const { conn } = fakeConn({ outcome: "selected", optionId: "allow" });
-  const approved = await acpApprover(conn, "sess-1")(SCRIPT, ["allow-read=."]);
-  assertEquals(approved, true);
+  const outcome = await acpApprover(conn, "sess-1")(SCRIPT, ["allow-read=."]);
+  assertEquals(outcome, "approve");
 });
 
-Deno.test("acpApprover returns false when outcome selects reject", async () => {
+Deno.test("acpApprover returns reject when outcome selects reject", async () => {
   const { conn } = fakeConn({ outcome: "selected", optionId: "reject" });
-  const approved = await acpApprover(conn, "sess-1")(SCRIPT, ["allow-read=."]);
-  assertEquals(approved, false);
+  const outcome = await acpApprover(conn, "sess-1")(SCRIPT, ["allow-read=."]);
+  assertEquals(outcome, "reject");
 });
 
-Deno.test("acpApprover returns false when outcome is cancelled", async () => {
+Deno.test("acpApprover returns reject when outcome is cancelled", async () => {
   const { conn } = fakeConn({ outcome: "cancelled" });
-  const approved = await acpApprover(conn, "sess-1")(SCRIPT, []);
-  assertEquals(approved, false);
+  const outcome = await acpApprover(conn, "sess-1")(SCRIPT, []);
+  assertEquals(outcome, "reject");
 });
 
 Deno.test("acpUI coalesces rapid stream chunks into one update", async () => {

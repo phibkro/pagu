@@ -250,7 +250,7 @@ export async function tuiMain(): Promise<void> {
   };
   const approve: Approver = async (_script, _perms) => {
     const ans = await readLine(bold("approve and run? [y/N]: "));
-    return ans?.trim().toLowerCase() === "y";
+    return ans?.trim().toLowerCase() === "y" ? "approve" : "reject";
   };
 
   await loadCwdEnv(); // terminal frontend: offer to source cwd .env first

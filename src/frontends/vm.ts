@@ -33,7 +33,7 @@ export async function vmMain(rawArgs: string[]): Promise<never> {
   // Resolve provider + concealment on the host. buildContext writes no session
   // file unless a turn/rename runs, so building-and-launching is side-effect-free.
   const ui: UI = { status: () => {}, show: (m) => console.error(m) };
-  const approve: Approver = () => Promise.resolve(false);
+  const approve: Approver = () => Promise.resolve("reject");
   const ctx = await buildContext(opts, agents, ui, approve);
 
   if (kind === "none") {

@@ -164,7 +164,11 @@ const entryG: fc.Arbitrary<Entry> = fc.oneof(
   fc.record({
     kind: fc.constant("decision" as const),
     script: attrG,
-    verdict: fc.constantFrom("approve" as const, "reject" as const),
+    verdict: fc.constantFrom(
+      "approve" as const,
+      "reject" as const,
+      "expired" as const,
+    ),
     rationale: bodyG,
   }),
   fc.record({

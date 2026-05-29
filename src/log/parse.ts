@@ -70,7 +70,11 @@ export function parseLog(md: string): Entry[] {
         entries.push({
           kind,
           script: a.script ?? "",
-          verdict: a.verdict === "approve" ? "approve" : "reject",
+          verdict: a.verdict === "approve"
+            ? "approve"
+            : a.verdict === "expired"
+            ? "expired"
+            : "reject",
           rationale: body,
         });
         break;

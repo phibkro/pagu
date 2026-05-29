@@ -67,7 +67,7 @@ async function main() {
             perms.join(" ") || "none"
           }) — declining (simulating an absent/refusing operator)\x1b[0m\n`,
         );
-        return Promise.resolve(false);
+        return Promise.resolve("reject" as const);
       },
     });
 
