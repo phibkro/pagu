@@ -8,8 +8,11 @@
 > **This is the single source of truth for the project** — rationale, threat
 > model, design, roadmap, and the idea backlog. Durable project context goes
 > here, not scattered across docs. **`README.md`** is usage; **`AGENTS.md`** is
-> how-we-work; **`docs/CONCEPTS.md`** is the mental-models reference. The
-> **Roadmap** at the bottom tracks shipped / open / backlog.
+> how-we-work; **`docs/CONCEPTS.md`** is the mental-models reference;
+> **`docs/INVARIANTS.md`** is the canonical catalog of load-bearing claims with
+> their enforcement tier — and the **single home of the numbered invariants
+> (`#1`–`#5`)** this file cites throughout. The **Roadmap** at the bottom tracks
+> shipped / open / backlog.
 
 **Map** (sections below): _What & why_ — One-liner · Why it exists ·
 Goals/non-goals. _The model_ — Core principle · System map · Phase FSM · State
@@ -231,6 +234,46 @@ One file, readable by a human, parseable by the harness, clean git diffs. A
 session also carries a small YAML **frontmatter** header (display `name`,
 `created`); the entries below stay the source of truth (`src/conversations.ts`).
 
+### Open: the markdown _container_ assumes a single co-located reader
+
+The log is already a typed event store — the entries are the canonical CQRS
+stream, the markdown is the _container_. That container quietly assumes one
+writer (the runner) and one reader (a co-located CLI/TUI that re-folds the whole
+file). That assumption holds today and should not be disturbed for the
+co-located case — it is exactly what gives the cheap "read the file"
+auditability the threat model leans on. What it does _not_ provide is what a
+**non-co-located client** (ACP remote, a management surface, an alerting
+webhook) needs:
+
+- an **offset / event id** so a reconnecting client can ask for "everything
+  after N" instead of re-reading the file (the entire sync story for remote
+  clients — append-only + single-writer means no CRDT and no consensus _for the
+  log itself_; ordering has one authority per session);
+- a **tail/subscribe** affordance instead of poll-and-reparse;
+- the events as a **stream**, not only a file.
+
+The framing to hold: do **not** demote the markdown — it stays a first-class
+projection (the human-readable, git-diffable one). The open question is whether
+the _same typed events_ also get an addressable, streamable representation
+(append-addressed JSONL, or SQLite for indexed cross-session queries) that the
+markdown is rendered _from_. If so, several things fall out for free, the same
+way content-addressed caching falls out elsewhere: offset-based resumption _is_
+the remote sync protocol; the observability stream (costs, advisor flags,
+approvals, hook firings) is just a **filtered projection of the one log**, not a
+parallel pipeline; cross-session / cross-host queries become expressible at all.
+
+The cost, stated honestly: a structured store shifts auditability from "read the
+file" to "trust the projection," and the moment a second client reads the events
+the **event schema becomes public API** — it needs the same floor-test
+versioning discipline as `src/mod.ts` (a CI test that fails on a
+backwards-incompatible change). Where CRDTs _do_ earn a place is the
+coordination edge _around_ the logs (a client aggregating many hosts;
+multi-client edits to session metadata / tags / standing approvals) — kept to
+types whose current value is statable in one line (OR-set, LWW-register), never
+the conversation log itself, which stays single-writer authoritative. (Whether
+this is worth doing is gated on the remote-client work actually landing — see
+Roadmap → Idea backlog → the subscribable event stream.)
+
 ## Approval model
 
 > **Implemented:** a simple **y/n** per-script gate is the default — the human
@@ -327,6 +370,50 @@ portable tier-1 floor around it (no regression).
   human review of every proposal is the backstop (Dual-LLM / quarantine
   posture). The per-turn gate bounds the read → propose → run → read
   amplification.
+  - **The context axis is a trust gradient** (model owned by `docs/CONCEPTS.md`
+    → The context axis is a trust gradient). The structural invariant —
+    _untrusted context may inform, never instruct_ — is the context-axis sibling
+    of deny-wins. Its security _consequence_ lives here: an
+    `~~~pagu:observation` entry is accumulated-untrusted and must never be
+    treated as an authored instruction at prompt-assembly. The log's typed entry
+    kinds already carry the label; the discipline is that prompt assembly
+    preserve it (fence untrusted spans), never flatten observation into
+    instruction.
+  - **Relation to CaMeL / dual-LLM (prior art, same diagnosis, different
+    cure).** The diagnosis — mixing trust levels in one token stream is the root
+    flaw — is shared with Willison's Dual-LLM pattern and DeepMind's **CaMeL**
+    ("Defeating Prompt Injections by Design", 2025), which labels every value
+    with a capability and **taint-tracks** whether untrusted data reaches a
+    dangerous sink, blocking the tool call if so. pagu's cure is **structural,
+    not dataflow**: there is no sink to reach, because the agent holds no
+    execute capability — untrusted context can at most cause a _proposal_, which
+    hits the cage + envelope + human gate. CaMeL keeps full autonomy and pays
+    with a conservative taint policy (≈⅔ task completion on AgentDojo, since any
+    untrusted-derived argument is rejected); pagu trades some autonomy (novel
+    actions need approval) for total containment that does not depend on
+    tracking taint correctly. The two sit at different points on the
+    autonomy/containment frontier; pagu's wedge (contain a _compromised_ model,
+    not merely a cooperative one) is the sharper end. This is the same lineage
+    as the LangSec framing (`docs/CONCEPTS.md` → The command grammar): a
+    boundary _described_ in prose is not a boundary; a boundary that is
+    structural (an absent capability, a recognised grammar, a typed envelope) is
+    _enforced_.
+  - **The residual recogniser (honest seam).** The LangSec ideal is _complete_
+    recognisability. pagu has one irreducible non-decidable recogniser left: the
+    human reading a `write` script at the gate. We have not eliminated it — we
+    have moved it _off the hot path_ (novelty only; `invoke_skill`/`run_task`/
+    `run_command` are decidable and auto-approve) and surrounded it with
+    decidable structure (cage-discovered perms, envelope diff, advisor flags).
+    The irreducible "should I authorise this novel script?" decision is where a
+    sufficiently clever injected proposal could still get a tired human to say
+    yes; approval fatigue (below) is the empirical form of this risk. pagu
+    _minimises and structures_ the weird-machine surface; it does not claim to
+    have zero.
+  - **Approval fatigue is a named risk.** Too many prompts habituate "yes"; this
+    is the failure mode the auto-approve envelope (decidable, deny-by-default)
+    exists to keep _rare_, so the human's attention is spent only on genuine
+    novelty. Any future change that increases gate frequency trades against
+    this.
 - **Runner perms cap an approved-but-buggy script**; **harness phase perms cap a
   buggy/compromised harness**.
 - **Advisory reviewer** (`src/advisor.ts`) is a pre-screening _control action_
@@ -775,27 +862,99 @@ above.)
     value type added to `validateValue`; 4 tests cover accept/reject. Unlocks
     `git log --format=<oneline|short|full>` and similar parameterized rules in
     `tasks/defaults.ts`.
-14. **Shell-sublanguage recognizer — a `run_command` grammar generalized to
-    multi-command scripts.** The agent writes a _shell script_ normally; a
-    recognizer checks the **whole script** against the safe argv sublanguage and
-    returns in-bounds / out-of-bounds — generalizing the `run_command` spine
-    (`recognize` over one argv) to a **sequence** of allowlisted commands. Scope
-    boundary (decided): this is for **one-offs** — a chain of vetted commands;
-    **true programmatic behavior (loops, conditionals, state) still uses a
-    `write` Deno script**, which is the right tool for logic. Two
-    non-negotiables: (a) **closed-world soundness** — bash's escape hatches
-    (`$(…)`, `eval`, `sh -c`, backticks, `xargs`, var-indirection, `PATH`/alias
-    games, here-docs) make a leaky grammar the _false-confidence_ trap; accept a
-    **small total sublanguage** (allowlisted commands + typed args, maybe
-    pipes/redirs between allowlisted commands, no substitution/eval/indirection)
-    and **reject by default**. (b) **It's an auto-approve gate, NOT the security
-    boundary** — the recognizer decides auto-approve vs human gate, but the
-    script still runs in the sandboxed runner under scoped perms + the
-    OS-sandbox/VM wall, so a parser bug only over-asks the human (fail-safe),
-    never breaches (invariants #1/#2). Depends on the OS-sandbox/VM tier to
-    contain `--allow-run=sh` (Deno doesn't bound subprocesses). A new capability
-    rung — needs its own brainstorm; sits naturally on the
-    `run_command`/command-policy spine and the grammar/compositional lens.
+14. **The subscribable event stream — one primitive, many subscribers.** The
+    remote-client work (ACP remote, a management/observability surface, alerting
+    webhooks) is not a pile of new frontends; structurally each is a
+    **subscriber to the canonical event log**, differing only in renderer and in
+    whether it can write back. The unifying observation: CLI/TUI/ACP/remote/ntfy
+    are all _the same primitive_ — a subscribable typed event stream off the one
+    log — with different presentation and write-back capability. Prerequisite is
+    the addressable/streamable event representation (see State model → the
+    markdown container assumes a single co-located reader): offset/event-id +
+    tail. Once that exists, **observability is a filtered projection of the log,
+    not a parallel pipeline** — per-turn cost, advisor flags, approvals, and
+    `before-approve`/post-result hook firings are already events (or become so),
+    so a trace timeline / cost dashboard / audit feed is a `fold` with a filter,
+    nothing new in the core. Keep the conversation log **single-writer
+    authoritative** (the runner's host owns ordering per session); push
+    eventual-consistency only to coordination state _around_ it (multi-host
+    aggregation, session metadata) and only via one-line-statable CRDTs. The
+    event schema joining the compat surface (floor-tested like `mod.ts`) is the
+    real core cost; everything else is a subscriber. Dovetails with the North
+    Star's workflow-IR (both are "the value is the source; interpretation is the
+    read side").
+15. **Approval as an event with a lifecycle (async-gate prerequisite).** With a
+    co-located TUI the gate is synchronous and the loop just `await`s a fast
+    human. A non-co-located approver (phone, on a train) makes approval latency
+    arbitrary — minutes to hours. The loop already tolerates this (the
+    `Approver` is just an async function), but the _product_ shape needs
+    "pending approval" as first-class: the proposed-script entry and the
+    decision entry are separate log events, possibly hours apart, with a state
+    (proposed → pending → granted/denied/**expired**). This makes two things
+    natural that are awkward today: **standing approvals with a TTL**
+    ("auto-approve scripts matching this envelope for the next hour") — which is
+    just a human-authored _temporary ceiling_, reusing the capability-ladder
+    machinery, not a new bypass — and a **staleness marker** ("proposed against
+    system state X, which may have moved") so a 3am-incident fix isn't blindly
+    applied at 9am. Bounds the residual-human -recogniser risk (Threat model) by
+    giving the rare gate better async framing rather than more frequent prompts.
+16. **Scheduled short-lived agents (cron for contained agents).** The
+    operationally useful shape of "long-running agent" is **not** an immortal
+    process — that accumulates two unbounded quantities (context drift +
+    liveness risk / wedged loops). It is a **recurring short session over the
+    durable log**: each firing is a fresh session off one profile (see the
+    config/state line — many sessions, one profile), fixed envelope, bounded
+    budget, appends events, exits. Continuity that an immortal process would
+    hold in accumulated context instead comes from the event store — the next
+    run can `read` prior runs' events, _bounded and inspectable_, vs an opaque
+    growing window. The safety property that makes this novel: **duration does
+    not widen the envelope** — a week-long schedule has the same
+    statically-enumerable blast radius as a single turn, because containment is
+    structural, not runtime-accumulated. Two tiers fall out of the existing
+    ladder for free: _fully autonomous_ jobs stay inside the auto-approve
+    envelope (`invoke_skill`/`run_task`/`run_command`); _human-in-the-loop_ jobs
+    may `write`-propose and the proposals queue as pending approvals (#15) —
+    "the agent diagnosed the 3am failure and _proposes_ this fix; approve when
+    you wake." **Keep the scheduler external** (cron / systemd timers / CI
+    invoking `pagu --role … --skill …`) for as long as possible — an in-core
+    scheduler is stateful and long-lived, exactly what grows the TCB past
+    "readable in one sitting." Two new threat-model surfaces to carry if this
+    lands: a **budget / iteration ceiling** as a first-class envelope dimension
+    (the one unbounded quantity the short-session decomposition doesn't
+    auto-cap), and **trigger provenance** — "run skill X in response to alert Y"
+    means a forged alert chooses _which_ vetted skill fires and when; the
+    grammar/ceiling bounds _what_ a skill does but the trigger bounds
+    _when/why_, so triggers join the trust surface (same class as prompt
+    injection, different hat). External scheduler keeps this as "trust your
+    cron," a problem admins already reason about. **Two interaction risks to
+    carry before building:** (a) a batch of pending approvals reviewed at 9am is
+    _itself_ the approval-fatigue condition (Threat model) — #15's async framing
+    improves presentation but batching can _worsen_ per-item attention; design
+    the queue to resist rubber-stamping, not just to hold items. (b) "continuity
+    via the event store" means a run reads prior runs' **observations** —
+    accumulated-untrusted context — so the trust label (Threat model → the
+    context axis is a trust gradient) must survive the _cross-session_ hop, or a
+    file poisoned today silently informs every nightly proposal thereafter
+    (slow-motion injection). The invariant already covers it in principle; the
+    cross-session read is exactly where it's easy to forget.
+17. **The agent-management model — three axes, bundles, profiles, sessions.**
+    The model is owned by `docs/CONCEPTS.md` (→ Axes and bundles); the _roadmap_
+    for realizing it lives here. Managing an agent collapses to three composable
+    axes — **personality** (context), **access** (permission), **policy**
+    (capability) — with **skill / role / project / MCP** as bundles (partial
+    assignments) and a **profile** as the full assignment one launches. Today's
+    pieces map on but aren't yet decoupled cleanly: roles bundle context+access;
+    "project" is welded to directory+context the way other tools do it. The work
+    is to **decouple personality as its own axis** (same access+tools, swappable
+    disposition), let any axis be swapped/saved independently, and make
+    `profile` the named composition. Composition is the existing fold (prose
+    monoid + permission lattice + policy union) at a higher grain — _no new
+    merge law_. **Constraint for whoever implements:** the fold (bundles →
+    resolved profile) must happen _above_ the hermetic `createContext`, which by
+    contract reads no ambient config — resolution produces a fully-folded
+    explicit assignment and passes it in; composition logic in the core would
+    break hermeticity. This is what a management _client_ (the remote surface,
+    #14) would present, so it and the event-stream work are natural companions.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
@@ -805,7 +964,12 @@ testing work are likewise independent. New items: #9 (intent line) and #10
 (streaming) improve daily-use UX independently; #11 (session search) is a
 one-session UI task; #12 (type-enforced gate-never-widen) is the prerequisite
 for #2's pluggability milestone; #13 (grammar enum) is a small targeted
-addition.
+addition. The remote-client cluster (#14 subscribable stream → #15 async
+approval → #16 scheduled agents → #17 management model) is a coherent track that
+depends on the addressable event representation (State model) landing first; it
+is post-v1 in spirit but #14's event-schema-as-compat-surface decision is worth
+making _before_ a second client exists. #17's model is already documented
+(`docs/CONCEPTS.md`); only the decoupling work is pending.
 
 ### v1 milestone definition
 

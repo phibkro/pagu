@@ -3,8 +3,10 @@
 The nouns and verbs of pagu, and the lived-experience ideas they borrow from.
 For humans getting oriented and for agents that want the conceptual map. This
 file owns **the mental models**; `CONTEXT.md` owns project design / threat model
-/ roadmap; `AGENTS.md` owns how-we-work. Each points to the others — one home
-per topic, no duplication.
+/ roadmap; `AGENTS.md` owns how-we-work; `INVARIANTS.md` owns the **enforcement
+tier** of each load-bearing claim (which are `[law]` / `[structural]` /
+`[prose: unchecked]` / `[judgment]`). Each points to the others — one home per
+topic, no duplication.
 
 ## Design principle: lean on lived experience (honestly)
 
@@ -74,11 +76,79 @@ lawful.
 | **hide / conceal**         | hiding something from view       | paths the runner's filesystem view omits and the agent's read refuses — fed by sources (gitignore = VCS, config `hide` globs, default secrets), liftable by `reveal` |
 | **conversation / session** | talking; a transcript            | the append-only log _is_ the conversation; a session is one such transcript                                                                                          |
 | **script**                 | a script to be performed         | a written procedure the model authors; never run by the author, only _performed_ by the runner after approval                                                        |
-| **role**                   | a hat you wear / a part you play | a composable bundle of config + instructions; an agent _carries_ several at once                                                                                     |
-| **profile**                | a profile = the whole picture    | the resolved agent + config (the result of composing roles onto the base)                                                                                            |
+| **role**                   | a hat you wear / a part you play | a composable bundle of config + instructions; an agent _carries_ several at once (precise model: a bundle across axes — see **Axes and bundles** below)              |
+| **profile**                | a profile = the whole picture    | the resolved agent + config (the result of composing roles onto the base) (precise model: the full assignment over all three axes — see **Axes and bundles** below)  |
 | **phase / turn**           | turn-taking in conversation      | one short-lived, scoped step of the loop                                                                                                                             |
 | **skill**                  | a skill you have mastered        | a bundled capability: reference files + pre-approved procedures the agent can invoke verbatim without a fresh human gate                                             |
 | **task / command policy**  | a task you are permitted to run  | a named project command the agent can invoke by exact name; deny-by-default, opt-in via config; permissions inferred then cached                                     |
+
+## Axes and bundles — two levels, not one flat list
+
+The table above mixes two _levels_, and keeping them apart is what stops the
+concept set from feeling slippery as it grows. Some concepts are **pure axes** —
+each speaks to exactly one of the three things that determine an agent's
+behaviour and blast radius. Others are **bundles** — named, savable groupings
+_across_ axes, for convenience, because in practice you don't want to assemble
+the axes by hand every time.
+
+The reduction the rest of this file leans on: **managing an agent collapses to
+three concerns** — _context_ (what it knows and how it reasons), _permission_
+(what it may touch), and _policy_ (what it may do without asking). Those are the
+three axes. Everything else is presentation.
+
+**The three axes** (each maps to exactly one concern, each composes by its own
+law — see the compositional spine):
+
+| axis            | concern    | what it is                                                                             |
+| --------------- | ---------- | -------------------------------------------------------------------------------------- |
+| **personality** | context    | prose, instructions, disposition — how it reasons and talks. No access, no capability. |
+| **access**      | permission | the envelope: which paths/hosts are granted or denied. The lattice (below).            |
+| **policy**      | capability | the auto-approve surface: skill ceilings, task policies, command grammars, MCP allows. |
+
+**Bundles** are partial assignments over those axes, folded by the same laws at
+different grain:
+
+| bundle      | what it bundles                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------- |
+| **skill**   | a bit of context (instructions) + capability (scripts) + permission (ceiling), packaged for one competence |
+| **role**    | a personality + an access envelope + some policy, packaged for a _job_                                     |
+| **project** | mostly an _access_ contribution (these paths), conventionally anchored to a directory                      |
+| **MCP**     | context (what it can query) + capability (new tools) — two axes at once, so a bundle, not an axis          |
+| **profile** | the fully-resolved assignment over all three axes — the thing you launch                                   |
+
+**Names vs. today's code (don't rename yet).** These axis names are the _model_;
+the code has not adopted them and should not until #17 is actually built (the
+model leads, the code follows). The mapping: **access** ≈ the permission half of
+today's `role`/`ConfigLayer` (the `allow`/`write`/`deny` envelope);
+**personality** ≈ the _prose_ half of a role / `AGENTS.md`; **policy** ≈ today's
+`allowedTasks` + skill ceilings + command grammars. Today's **`role`** is the
+bundle that carries personality+access(+policy) together — the axes are the
+decomposition of it, not a replacement noun. So when this doc says "access" and
+the codebase says "role", they are the same thing seen at different grain; the
+decoupling (#17 in `CONTEXT.md` → Roadmap) is what would make them separate
+nouns in code.
+
+Two consequences worth internalising. First, **a project is not a primitive** —
+it dissolves into an access contribution (and maybe a default
+personality/policy) the same way gitignore/secrets/config globs all feed the
+concealment set. The thing other agents (e.g. Claude Code) get wrong is welding
+"which directory" to "which context" to "which conversation"; pagu keeps them as
+independent axes that a project _happens_ to contribute to. Second, **the
+temptation will always be to add a primitive** — resist it. A new concept earns
+axis status only if it speaks to exactly one concern; otherwise it's a bundle (a
+composition of the three). Keeping the axis count at three _is_ the conceptual
+integrity. (Roadmap status of personality-as-decoupled-axis and
+profile-as-composition lives in `CONTEXT.md` → Roadmap; this file owns only the
+model.)
+
+**Session is not on this list, by design.** Axes and bundles are _config_ — the
+static description of an agent. A **session** is _state_ — a running instance of
+a profile, the live event log. The relation is class/instance: many sessions run
+off one profile (the scheduled-job model _requires_ this — every firing is a
+fresh session off one profile), a session forks without forking its profile, a
+profile changes without touching running sessions. This is the same config/state
+line the event-sourcing spine draws elsewhere: config is the _input_ to the
+fold; the session _is_ the fold.
 
 ## The compositional spine
 
@@ -90,7 +160,10 @@ is a **lawful merge**.
 - **Instructions + roles as markdown.** A role (and the base `AGENTS.md`) is a
   markdown file: **prose body + YAML frontmatter**. This composes beautifully
   because the two halves compose by _different, both-lawful_ rules:
-  - **prose** → **concatenate** (a monoid under append; identity = empty).
+  - **prose** → **concatenate** (a monoid under append; identity = empty). But
+    see the **context axis is a trust gradient** (below): the prose that
+    composes is not flat text, it is _labelled_ text, and the labels survive the
+    fold.
   - **frontmatter (config)** → **structural merge** (below). An agent's
     effective instruction+config = fold its base + composed roles with these
     rules. Hierarchy/inheritance isn't a separate mechanism — it's just the
@@ -145,6 +218,64 @@ is a **lawful merge**.
   carrier types. Both `andThen` and `fanOut` fold the same `Flow` "or" monoid —
   `andThen` lazily/sequentially, `fanOut` eagerly/in-parallel — sharing the
   `continue` identity.) `runTask` is just `loop(turn)`.
+
+### The context axis is a trust gradient
+
+The context axis (personality, skill instructions, prior results, observations)
+reads as one thing because it all ends up as tokens in a prompt — but it is one
+axis with a **trust gradient** running through it, and the gradient is
+security-load-bearing, not cosmetic:
+
+- **authored** (personality, base `AGENTS.md`) — static, human-written, trusted
+  by provenance.
+- **conditional-authored** (skill instructions) — authored too, but in scope
+  only while the capability is active.
+- **accumulated-trusted** (the agent's own prior proposals/results in the log).
+- **accumulated-untrusted** (file contents the agent `read`, tool outputs —
+  anything that originated _outside_ the human).
+
+pagu's log already half-encodes this: the event kinds (observation vs proposal
+vs result) _are_ points on the gradient. Naming it gives one invariant:
+
+> **Untrusted context may inform, never instruct.** The further down the
+> gradient a span sits, the less authority it may carry. Personality can
+> instruct; a file the agent read may only inform.
+
+This is the **context-axis sibling of deny-wins**. It changes the prose-monoid
+law: the context axis composes not as flat concatenation but as a **monoid over
+_labelled_ prose**, where the trust label is preserved through the fold (unlike
+permissions, whose provenance is discardable once merged into the effective set
+— here it is not, because prompt-assembly must still know which spans are
+untrusted, to fence them). This is exactly the diagnosis CaMeL / the dual-LLM
+line draws (mixing trust levels in one stream is the root flaw); pagu's _cure_
+differs and lives in `CONTEXT.md` → Threat model (taint-tracking vs.
+absence-of-execute).
+
+### Three axes, three invariants
+
+The two security invariants in the system are not separate facts; they are the
+**same structural job done on different axes**, and there is a third:
+
+| axis       | invariant                                                  | the failure it prevents                                |
+| ---------- | ---------------------------------------------------------- | ------------------------------------------------------ |
+| permission | **deny wins, unconditionally** (lattice)                   | composition silently widening the envelope             |
+| context    | **untrusted may inform, never instruct**                   | prompt injection via the `read` tool / tool output     |
+| policy     | **authority is attested per-invocation, never propagated** | implicit trust propagation (the MCP multi-server flaw) |
+
+The policy invariant is the one that was unstated; the code already enforces it
+(verbatim-match for skills, grammar-match for `run_command`, ceiling re-check in
+the cage at _each_ invocation — never inherited or assumed). Naming it closes
+the symmetry: each axis composes by a law that preserves its own invariant,
+lawful by construction. (The security _consequences_ — threat model, prior-art
+ledger — live in `CONTEXT.md`; this file owns the structural statement.)
+
+These three **axis** invariants are a different framing from — not a renumbering
+of — the numbered **threat-model** invariants in `CONTEXT.md` (#1 no-exec-path,
+#2 boundary=perms+env, etc.). They overlap (the permission/deny-wins axis
+invariant is the compositional face of threat-model #2's envelope) but partition
+the space differently: the axis invariants are organised _by what composes_, the
+threat-model invariants _by what an attacker attempts_. Neither subsumes the
+other; when citing "the invariants," say which framing.
 
 ## Command policy as a type system
 
