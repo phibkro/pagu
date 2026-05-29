@@ -95,7 +95,10 @@ async function runWithPolicy(
   entry: CommandInvocationEntry,
   ctx: AgentContext,
 ): Promise<"stop" | "loop"> {
-  const base = ctx.repo ?? Deno.cwd();
+  // Must equal the run cwd (exec.cwd + the cageOnce cwd below) — both
+  // `ctx.repo ?? ctx.projectBase` — so discovered perms absolutize against the
+  // same dir the task runs in (the cwd/absolutize-base divergence bug).
+  const base = ctx.repo ?? ctx.projectBase;
   const body = commandBody(entry.program, entry.args);
 
   // Load inferred once; both policyGate and taskCeilingGate close over it.

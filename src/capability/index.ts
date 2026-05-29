@@ -120,11 +120,22 @@ export type ReadonlyExec = Omit<Exec, "body" | "perms"> & {
 // ── Cage mechanics ───────────────────────────────────────────────────────────
 
 /**
+ * The directory a cage/run executes a script in: an explicit `cwd`, else the
+ * repo (repo mode), else the invocation dir (`ctx.cwd`) — NEVER the throwaway
+ * script scratch. **This is the single source for the run cwd AND the base that
+ * discovered perms are absolutized against** — they MUST be the same dir, or the
+ * cage discovers a relative-path write against one directory while the run
+ * resolves it against another (the cage-pass-but-NotCapable / wrong-perm bug).
+ * Every absolutize-base in the write/skill cage path goes through here.
+ */
+export const cageCwd = (ctx: AgentContext, cwd?: string): string =>
+  cwd ?? ctx.repo ?? ctx.cwd;
+
+/**
  * Run a script body in the cage (read-allowlist + scratch-write, no net) and
  * return the RunClass. Ceiling enforcement and fix loops are per-capability
- * concerns. cwd defaults to ctx.repo ?? ctx.cwd — the SAME real dir the runner
- * uses, never the throwaway script scratch, so a relative-path write is denied
- * (and thus discovered) here exactly as it would be at run time.
+ * concerns. cwd = {@link cageCwd} — the SAME real dir the runner uses, so a
+ * relative-path write is denied (and thus discovered) here exactly as at run.
  */
 export async function cageOnce(params: {
   body: string;
@@ -145,7 +156,7 @@ export async function cageOnce(params: {
       ...extraPerms,
       ...ctx.denyFlags,
     ],
-    cwd: cwdParam ?? ctx.repo ?? ctx.cwd,
+    cwd: cageCwd(ctx, cwdParam),
     sandbox: ctx.sandboxKind,
     readMask: buildConcealment(ctx.conceal).maskPaths(),
   });
@@ -168,8 +179,15 @@ export async function cageWithinCeiling(params: {
   onBug?: (msg: string) => void;
 }): Promise<string[] | null> {
   const { body, id, ctx, declared, cwd, onExceed, onBug } = params;
-  const base = ctx.repo ?? Deno.cwd();
-  const cls = await cageOnce({ body, id, ctx, extraPerms: declared, cwd });
+  // base == the dir cageOnce ran the script under — never diverge (see cageCwd).
+  const base = cageCwd(ctx, cwd);
+  const cls = await cageOnce({
+    body,
+    id,
+    ctx,
+    extraPerms: declared,
+    cwd: base,
+  });
 
   if (cls.kind === "ok") {
     return ctx.readPaths.map((p) => `allow-read=${p}`);
@@ -227,7 +245,7 @@ export async function performRun(params: {
   const result = await runScript({
     scriptPath: file,
     perms: [...perms, ...ctx.denyFlags],
-    cwd: cwdParam ?? ctx.repo ?? ctx.cwd,
+    cwd: cageCwd(ctx, cwdParam),
     sandbox: ctx.sandboxKind,
     scriptArgs,
     onStdout: streaming ? (chunk) => ctx.ui.stream!(chunk) : undefined,

@@ -6,7 +6,7 @@
 // model). cage → approve → run reproduces the former executeScriptProposal exactly.
 import { absolutizePerm, parsePermission } from "../permissions/index.ts";
 import { shouldAutoApprove } from "../permissions/index.ts";
-import { cageOnce, performRun } from "../capability/index.ts";
+import { cageCwd, cageOnce, performRun } from "../capability/index.ts";
 import { matchesSkillScript } from "../skills/index.ts";
 import { activeGrants, makeGrant } from "../approval.ts";
 import { buildReview, formatReview } from "./review.ts";
@@ -43,7 +43,10 @@ const fullPerms = (p: Proposal): string[] => [
  * `script` (a fix round may replace it) and sets `discovered`. Always continues —
  * even a still-failing self-test presents to approval. */
 export const cage: Handler = async (p) => {
-  const base = p.ctx.repo ?? Deno.cwd();
+  // The absolutize base MUST equal cageOnce's cwd (cageCwd) — else a relative
+  // write is discovered against one dir but runs against another (the non-repo /
+  // ACP-workspace cwd divergence bug).
+  const base = cageCwd(p.ctx);
   let current = p.script;
   let discovered: string[] = [];
 
