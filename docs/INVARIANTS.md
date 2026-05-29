@@ -198,10 +198,23 @@ non-runner path appends to the canonical log is worth adding. Until then,
 Across any sequence of session operations (`new → prompt → fork → load → …`)
 these hold after each step.
 
-`[prose: unchecked]` — **Promote?** This is exactly CONTEXT backlog #7 (model-
-based `fc.commands` stateful testing), currently `open`. The single highest-
-leverage `[prose]`→`[law]` promotion for the stateful surface; listed in the
-roadmap, not yet built.
+`[law: op sequences preserve replayability]` (the replayable half) +
+`[prose: unchecked]` (the envelope half) — **partially promoted 2026-05-29**
+(CONTEXT backlog #7). A model-based `fc.commands` harness
+(`src/config/sessions.test.ts`) generates random sequences of
+`{new, fork,
+append-turn, rename, load, list}` against the real store and
+asserts, after each step, that the active session round-trips through
+persist→`loadSession`, a fork leaves its parent untouched, rename keeps the id,
+and `listSessions` agrees with the in-memory model — fault-injection-verified
+(it shrinks an un-persisted turn to the minimal `[append(1)]`). **Still
+`[prose]`:** "every approved run is within its envelope" across the sequence —
+the harness is store-scoped (no envelope in play), so this half (and "envelope
+after N turns = envelope after 1", below) awaits a context-level harness, which
+needs the session ops extracted from `buildContext`'s closure into a drivable
+seam. The deny-wins permission law and the readonly
+`Envelope`/`AgentContext.envelope` types already make widening unrepresentable;
+what's unwitnessed is specifically the _across-session-switch_ stability.
 
 ### Duration does not widen the envelope
 
