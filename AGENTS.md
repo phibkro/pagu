@@ -279,7 +279,14 @@ Configuration deep module (`buildContext` is the public interface):
   thing.** Pure cores (the merge monoid, envelope, classify, log codec) get
   unit/property tests — correct by construction. The effectful surface (IO,
   runner, providers) is where errors hide, so exercise the _real system_ — real
-  `deno` subprocesses, a real local HTTP server — over isolated mocks.
+  `deno` subprocesses, a real local HTTP server — over isolated mocks. **Caveat
+  (hard-won):** a test can use real subprocesses and a real socket yet still be
+  hollow if it **stubs the model** — that removes exactly the agent-driven
+  behavior (cage discovery, perm inference, multi-turn) where bugs hide. For a
+  feature on the security/capability path, "done" includes one real run of the
+  headline journey against a live model (Ollama), watched to completion — not a
+  model-stubbed "live" test standing in for it. (How `pagu serve`'s cage-perm
+  bug was found: it lived in the seam the stub removed.)
 - **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
   trailer
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
