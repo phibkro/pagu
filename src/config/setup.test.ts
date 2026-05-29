@@ -1,6 +1,31 @@
 import { assertEquals } from "@std/assert";
 import { buildContext, enumerateConcealed, parseArgs } from "./setup.ts";
 import { DEFAULTS } from "./config.ts";
+import { buildConcealment } from "../permissions/concealment.ts";
+import { detectSandbox, runScript } from "../runner/index.ts";
+
+/** Run a script that reads `target`, masked by `maskPaths`, and report whether
+ * the secret surfaced. Shared by the enforcement + reveal cases. */
+async function runMaskedRead(
+  dir: string,
+  target: string,
+  maskPaths: string[],
+  sandbox: Awaited<ReturnType<typeof detectSandbox>>,
+): Promise<string> {
+  const script = `${dir}/s.ts`;
+  await Deno.writeTextFile(
+    script,
+    `try { console.log(await Deno.readTextFile("${target}")); }
+     catch (e) { console.log("denied:", e.name); }`,
+  );
+  const r = await runScript({
+    scriptPath: script,
+    perms: [`allow-read=${dir}`],
+    sandbox,
+    readMask: maskPaths,
+  });
+  return r.stdout;
+}
 
 // parseArgs maps the cliffy-parsed flags onto RunOpts. These encode the
 // contract the rest of the app depends on: scalar/list flag overrides become
@@ -149,6 +174,49 @@ Deno.test("enumerateConcealed: repo mode matches via git ls-files", async () => 
     assertEquals(found.sort(), [`${repo}/.env`, `${repo}/key.pem`]);
   } finally {
     await Deno.remove(repo, { recursive: true });
+  }
+});
+
+// Enforcement: the full chain (config hide glob → enumerate → maskPaths →
+// runner OS-sandbox mask) hides a NON-gitignored secret, and reveal un-hides it.
+// Real sandbox only (skip at tier 1). Repo under $HOME — bwrap tmpfs shadows /tmp.
+Deno.test("concealment enforcement: a config-hidden secret never reaches output", async () => {
+  const kind = await detectSandbox();
+  if (kind === "none") return;
+  const home = Deno.env.get("HOME")!;
+  const dir = await Deno.realPath(
+    await Deno.makeTempDir({ dir: home, prefix: "pagu-conceal-" }),
+  );
+  try {
+    const SECRET = "CONFIG_HIDDEN_SECRET_pem";
+    const target = `${dir}/key.pem`; // not gitignored — a config-hide match
+    await Deno.writeTextFile(target, SECRET);
+    const spec = {
+      vcsPaths: [],
+      hideGlobs: ["*.pem"],
+      secretGlobs: [],
+      revealGlobs: [],
+      roots: [dir],
+      enumerated: await enumerateConcealed([dir], ["*.pem"]),
+    };
+    // hidden → masked → secret absent
+    const hidden = await runMaskedRead(
+      dir,
+      target,
+      buildConcealment(spec).maskPaths(),
+      kind,
+    );
+    assertEquals(hidden.includes(SECRET), false);
+    // revealed → not masked → secret present (the escape hatch works end-to-end)
+    const revealed = await runMaskedRead(
+      dir,
+      target,
+      buildConcealment({ ...spec, revealGlobs: ["key.pem"] }).maskPaths(),
+      kind,
+    );
+    assertEquals(revealed.includes(SECRET), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
   }
 });
 
