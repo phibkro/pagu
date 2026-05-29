@@ -7,6 +7,7 @@
     "check": "deno check src",
     "lint": "deno lint",
     "fmt": "deno fmt",
+    "check:docs": "deno run --allow-read scripts/check-docs.ts",
     "check:layers": "deno run --allow-read=src scripts/check-layers.ts",
     "demo": "deno run --allow-run --allow-read --allow-write --allow-net --allow-env examples/golden-scenario/run.ts",
     "eval": "deno run --allow-run --allow-read --allow-write --allow-net --allow-env examples/eval/run.ts",
