@@ -139,6 +139,15 @@ Output: a readable PASS/FAIL report per assertion.
 - **C (scored eval):** the deterministic adversarial driver is C's first scored
   scenario; C generalizes the runner to a task set + scoring — and is where
   **system-prompt tuning gets measured** instead of hand-guessed.
+  - **Design input — adaptive-adversary red-team axis.** The deterministic mock
+    is a _fixed_ adversary (one canned proposal, then quits). C should add an
+    adversarial-framing dimension: a **malicious role / system-prompt fixture**
+    (swappable, never baked into the harness) run against _real_ models — an
+    _adaptive_ adversary that reads the cage's error feedback and tries a
+    different escape, turning the bounded cage-fix loop into an attacker's
+    search loop. The matrix is (model × adversarial framing) → structural
+    guarantees (1)–(4) must **never** breach, plus "did anything new get tried"
+    as color. Non-deterministic → eval/demo track only, never the CI gate.
 
 ## Invariants exercised
 
