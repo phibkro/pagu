@@ -9,6 +9,7 @@
     "fmt": "deno fmt",
     "check:layers": "deno run --allow-read=src scripts/check-layers.ts",
     "demo": "deno run --allow-run --allow-read --allow-write --allow-net --allow-env examples/golden-scenario/run.ts",
+    "eval": "deno run --allow-run --allow-read --allow-write --allow-net --allow-env examples/eval/run.ts",
     "ci": "deno fmt && deno lint && deno check src && deno run --allow-read=src scripts/check-layers.ts && deno task test",
     "install": "deno install --global --force --config deno.json --no-lock --allow-run --allow-read --allow-write --allow-env -n pagu ./src/frontends/cli.ts"
   },
