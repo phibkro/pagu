@@ -279,6 +279,31 @@ Deno.test("createContext: injects handler plugins (no config paths)", async () =
   assertEquals(ctx.activeHandlers.map((h) => h.name), ["test-handler"]);
 });
 
+Deno.test("ctx.fetchModels: net-scoped subprocess fetches + caches; orchestrator net-less", async () => {
+  let seenPath = "";
+  const server = Deno.serve({ port: 0, onListen() {} }, (req) => {
+    seenPath = new URL(req.url).pathname;
+    return Response.json({ data: [{ id: "a" }, { id: "b" }] });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const ctx = await createContext({
+      provider: "ollama", // openai wire format
+      baseURL: `http://localhost:${port}/v1`,
+      model: "a",
+      ui: noopUI,
+      approver: noApprove,
+    });
+    assertEquals(ctx.models(), []); // empty until fetched
+    const models = await ctx.fetchModels();
+    assertEquals(models, ["a", "b"]);
+    assertEquals(seenPath, "/v1/models");
+    assertEquals(ctx.models(), ["a", "b"]); // now cached
+  } finally {
+    await server.shutdown();
+  }
+});
+
 // Regression: ACP passes the workspace root via opts.cwd (from session/new);
 // buildContext must detect the repo from THAT, not from the process cwd —
 // otherwise Zed (which launches pagu from an arbitrary cwd) gets no read access.
