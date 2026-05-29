@@ -232,7 +232,14 @@ drift.)
   the explicit opts, for consumers building a pagu-CLI-clone. Hermetic is the
   default; add this only if a consumer needs it.
 - **JSR publish + `1.0.0` + semver tags** — flip at the product v1 milestone;
-  the package shape is ready.
+  the package shape is ready. A `deno publish --dry-run` confirmed the public
+  surface is **slow-types-clean**; the remaining publish blockers are a missing
+  `license` field/file and the plugin **dynamic imports**
+  (`capability/
+  handlers.ts`, `phases/handler.ts`) which JSR can't analyze —
+  handler plugins loaded by path won't resolve via an import map post-publish,
+  so this needs addressing (or documenting as a non-published-path feature) at
+  publish time.
 - **CI single-door rule** — a `check-layers.ts` rule that the public surface is
   reachable only via `mod.ts` (no deep-imports around it). Add when an external
   consumer exists who could drift.

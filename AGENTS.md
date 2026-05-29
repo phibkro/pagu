@@ -73,6 +73,9 @@ the blast radius statically enumerable._
     direct import constraint.
   - `gate-never-widen` → `readonly PermissionSet` prevents array mutation;
     `satisfies Capability<Data>` makes literal `entryKind` types mandatory.
+  - Public API surface → `src/mod.ts` is the one stable front door; a floor test
+    (`mod.test.ts`, `EXPECTED ⊆ deno doc --json`) fails CI if a frozen export is
+    removed/renamed. Don't break frozen exports; add freely.
   - Phase input shape → a Zod schema (`phaseInputSchema`) validates at
     `readInput()` (`validatePhaseInput`), failing loud on a malformed contract.
     Shallow on `log` + the complex list fields (the orchestrator is the trusted

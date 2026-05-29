@@ -366,6 +366,15 @@ agent reading the codebase can understand the public interface from the barrel,
 then drill into the implementation only when necessary. The same principle that
 makes a good library makes a good codebase for agents.
 
+**The package front door (`src/mod.ts`).** Distinct from the per-module
+`index.ts` barrels (which are _internal_ seams), `src/mod.ts` is the one
+**external** public surface — the stable API for embedding pagu in another
+program (`createContext` + `runTask` + the loop combinators + the port/reference
+types; the capability set stays closed). It's frozen: a floor test fails CI on
+any backwards-incompatible change. Internals reached around it aren't part of
+the compat promise. The in-repo frontends ship _with_ pagu, so they still import
+internals directly; `mod.ts` is the door for everyone else.
+
 ### 4. Functional core, imperative shell
 
 Pure functions (no I/O) are separated from effectful ones within each module.

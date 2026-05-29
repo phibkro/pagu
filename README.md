@@ -260,6 +260,37 @@ sits in the working directory, pagu offers once per folder to load it — gated 
 a prompt because sourcing cwd env is a small trust decision. Gitignore your
 `.env`.
 
+## Programmatic use
+
+Embed pagu in your own program through its one stable front door, `src/mod.ts`
+(published as `@phibkro/pagu`). Build a context with `createContext` — your own
+`UI` (output sink) and `Approver` (the human gate) — then drive `runTask`:
+
+```typescript
+import { createContext, runTask } from "@phibkro/pagu";
+
+const ctx = await createContext({
+  provider: "ollama",
+  model: "qwen3.5:9b",
+  allow: ["/home/me/project"], // read scope
+  repo: true, // grant + auto-approve within the git repo
+  ui: {
+    status: (m) => console.error(m),
+    show: (m) => console.log(m),
+  },
+  approver: async (_script, _perms) => true, // your y/n gate
+});
+
+await runTask(ctx, "summarize the TODOs in this repo");
+```
+
+`createContext` is **hermetic** — it reads no ambient config, AGENTS.md, or
+`.env`; you pass everything explicitly. Compose your own agent loops with the
+combinators (`loop`/`andThen`/`pipeline`/`fanOut`), and inject `before-approve`
+handlers via `createContext({ handlers })`. The runner + human gate are fixed —
+the capability set is closed (no `execute` tool to add). Everything exported
+from `mod.ts` is API-stable; everything else is internal.
+
 ## Tests
 
 ```sh

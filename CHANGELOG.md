@@ -10,6 +10,19 @@ release milestone, newest first.
 
 ### Added
 
+- **Stable programmatic API** (`src/mod.ts`) — a single public barrel is the one
+  front door for embedding pagu: `runTask` + ports (`AgentContext`/`UI`/
+  `Approver`), the loop combinators (`loop`/`andThen`/`pipeline`/`fanOut` +
+  `Step`/`Flow`), a new **hermetic `createContext(opts)`** constructor (build a
+  context from structured config + your own `UI`/`Approver` + injected handler
+  plugins, with no ambient `config.json`/AGENTS.md/`.env` reads), and the
+  reference types (`HandlerPlugin`/`Capability`/`Entry`/`ScriptEntry`). The
+  capability set stays closed. A **floor test** (`EXPECTED ⊆ deno doc --json`)
+  fails CI on any backwards-incompatible change (removal/rename/kind) — the
+  v1-compat promise made enforceable. `deno.json` is package-shaped
+  (`@phibkro/
+  pagu` `0.1.0`); JSR publish + `1.0.0` deferred to the product v1
+  milestone. (`feat(api)`)
 - **Phase-input schema validation** — `readInput()` validates the `PhaseInput`
   contract via a Zod schema (`phaseInputSchema` / `validatePhaseInput`) instead
   of a blind `JSON.parse(...) as PhaseInput`, failing loud (a field-naming
