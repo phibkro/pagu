@@ -9,6 +9,7 @@
  */
 import { TextLineStream } from "@std/streams";
 import { chatAnthropic, fetchModelsAnthropic } from "./anthropic.ts";
+import { makeThinkSplitter } from "./think.ts";
 
 export type Role = "system" | "user" | "assistant" | "tool";
 
@@ -85,10 +86,11 @@ export function chat(
   messages: ChatMessage[],
   tools: ToolDef[] = [],
   onToken?: TokenSink,
+  onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   return cfg.format === "anthropic"
     ? chatAnthropic(cfg, messages, tools)
-    : chatOpenAI(cfg, messages, tools, onToken);
+    : chatOpenAI(cfg, messages, tools, onToken, onReasoning);
 }
 
 /** List the provider's available model ids. OpenAI-compat: `GET
@@ -168,6 +170,7 @@ async function chatOpenAI(
   messages: ChatMessage[],
   tools: ToolDef[] = [],
   onToken?: TokenSink,
+  onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   const { url, init } = openAIRequest(cfg, messages, tools, !!onToken);
   const res = await fetch(url, init);
@@ -175,19 +178,23 @@ async function chatOpenAI(
     throw await providerError("provider", res);
   }
   return onToken && res.body
-    ? parseStream(res.body, onToken)
+    ? parseStream(res.body, onToken, onReasoning)
     : parseBuffered(await res.json() as OpenAIChatResponse);
 }
 
 function parseBuffered(data: OpenAIChatResponse): ChatResponse {
   const msg = data.choices?.[0]?.message ?? {};
+  // Strip <think> from buffered content (reasoning dropped — no live sink).
+  const splitter = makeThinkSplitter();
+  const seg = splitter.feed(msg.content ?? "");
+  const f = splitter.flush();
   const toolCalls = toToolCalls(
     (msg.tool_calls ?? []).map((tc) => ({
       name: tc.function?.name ?? "",
       args: tc.function?.arguments ?? "",
     })),
   );
-  return { content: msg.content ?? "", toolCalls };
+  return { content: seg.content + f.content, toolCalls };
 }
 
 interface StreamChoice {
@@ -207,9 +214,20 @@ interface StreamChoice {
 async function parseStream(
   body: ReadableStream<Uint8Array>,
   onToken: TokenSink,
+  onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   let content = "";
   const calls = new Map<number, { name: string; args: string }>();
+  // Split <think> reasoning out of the content stream (live, ephemeral): it
+  // streams via onReasoning and never enters `content` (the persisted answer).
+  const think = makeThinkSplitter();
+  const route = (seg: { content: string; reasoning: string }) => {
+    if (seg.content) {
+      content += seg.content;
+      onToken(seg.content);
+    }
+    if (seg.reasoning) onReasoning?.(seg.reasoning);
+  };
 
   // TextLineStream handles the cross-chunk line buffering; we only parse
   // SSE semantics (the `data:` prefix and the `[DONE]` sentinel) on top.
@@ -230,8 +248,7 @@ async function parseStream(
     const delta = choice.delta;
     if (!delta) continue;
     if (typeof delta.content === "string" && delta.content) {
-      content += delta.content;
-      onToken(delta.content);
+      route(think.feed(delta.content));
     }
     for (const tc of delta.tool_calls ?? []) {
       const idx = tc.index ?? 0;
@@ -241,5 +258,6 @@ async function parseStream(
       calls.set(idx, cur);
     }
   }
+  route(think.flush()); // surface any buffered partial-tag text
   return { content, toolCalls: toToolCalls([...calls.values()]) };
 }

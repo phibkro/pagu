@@ -95,6 +95,39 @@ Deno.test("streaming: forwards content tokens live, reassembles tool calls", asy
   }
 });
 
+Deno.test("parseStream: <think> routes to onReasoning; content excludes it", async () => {
+  const frames = [
+    `data: {"choices":[{"delta":{"content":"Hi <think>"}}]}\n`,
+    `data: {"choices":[{"delta":{"content":"reason"}}]}\n`,
+    `data: {"choices":[{"delta":{"content":"</think>answer"}}]}\n`,
+    `data: [DONE]\n`,
+  ];
+  const server = Deno.serve(
+    { port: 0, onListen() {} },
+    () =>
+      new Response(frames.join(""), {
+        headers: { "content-type": "text/event-stream" },
+      }),
+  );
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const content: string[] = [];
+    const reasoning: string[] = [];
+    const r = await chat(
+      { baseURL: `http://localhost:${port}/v1`, model: "m" },
+      [{ role: "user", content: "hi" }],
+      [],
+      (t) => content.push(t),
+      (t) => reasoning.push(t),
+    );
+    assertEquals(content.join(""), "Hi answer"); // <think>…</think> stripped live
+    assertEquals(reasoning.join(""), "reason");
+    assertEquals(r.content, "Hi answer"); // ephemeral: reasoning not in content
+  } finally {
+    await server.shutdown();
+  }
+});
+
 Deno.test("a non-OK response throws a one-line error from the JSON body", async () => {
   const server = Deno.serve(
     { port: 0, onListen() {} },
