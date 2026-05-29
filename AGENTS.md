@@ -106,7 +106,9 @@ Pure domain core (unit-tested — change with care + tests first):
   pure containment check); `gitignore.ts`: the VCS source (ignored paths via
   `git ls-files`); `concealment.ts`: the pure multi-source hide policy
   (`buildConcealment` → `conceals` predicate + `maskPaths`; gitignore-compatible
-  glob matching; `reveal` subtraction); `policy.ts`: a run's permission policy:
+  glob matching; `reveal` subtraction); `concealment-fs.ts`: the **effectful**
+  glob source (`enumerateConcealed` — fs walk + `git ls-files`) feeding that
+  policy, sibling to `gitignore.ts`; `policy.ts`: a run's permission policy:
   `buildEnvelope` (read/write grants + concealment write-denies, pure) and
   `shouldAutoApprove` (the auto-approve gate).
 
@@ -238,10 +240,20 @@ Configuration deep module (`buildContext` is the public interface):
   frontmatter): discovery (project shadows global), load, `listRoles`. Folds via
   the `config.ts` monoid; fail-loud on a missing `--role`.
 - `src/config/setup.ts` — `parseArgs` (flags via `@cliffy/command`: typed flags,
-  generated `--help`/usage, `pagu completions <shell>`) + `buildContext`, which
-  folds `defaults ⋄ config.json ⋄ roles ⋄ flags` and exposes runtime
-  `setProvider`/`setRoles` (the TUI's `/provider`, `/model`, `/roles`). Shared
-  by frontends.
+  generated `--help`/usage, `pagu completions <shell>`) + `buildContext`, the
+  thin **assembly**: resolve repo/session/sandbox, then compose `makeRunState` +
+  `makeSessionStore` + static fields into the `AgentContext`. Shared by
+  frontends.
+- `src/config/run-state.ts` — `makeRunState`: the live, role-dependent slice of
+  a run as a constructible **value** — folds
+  `defaults ⋄ config.json ⋄ roles ⋄
+  skills ⋄ flags`, derives
+  provider/envelope/concealment/prose/capabilities/ command-entries, loads
+  handlers, and owns the runtime mutators
+  (`setProvider`/`setRoles`/`setSkills`/`setAdvisor`/`fetchModels` — the TUI's
+  `/provider`, `/model`, `/roles`). Extracted from `buildContext`'s closure so a
+  run's resolved state is a value, not getters-over-locals (the seam #16/#17
+  fold over). Mirrors `makeSessionStore`.
 - `src/config/envfile.ts` — opt-in, per-folder-consented `.env` loading (via
   `@std/dotenv`) so keys like `ANTHROPIC_API_KEY` need no manual export.
 - `src/config/sessions.ts` — the **session store** (a session = one saved

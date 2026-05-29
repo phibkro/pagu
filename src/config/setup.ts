@@ -3,42 +3,14 @@ import { Command } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { fromFileUrl, resolve } from "@std/path";
 import type { Entry } from "../log/schema.ts";
-import {
-  composeLayers,
-  type ConfigLayer,
-  DEFAULTS,
-  type PaguConfig,
-  resolveProvider,
-} from "./config.ts";
-import { type Envelope, formatFlag } from "../permissions/envelope.ts";
-import { buildEnvelope } from "../permissions/policy.ts";
-import { gitignoreDenies } from "../permissions/gitignore.ts";
-import {
-  buildConcealment,
-  type ConcealmentSpec,
-  DEFAULT_SECRETS,
-} from "../permissions/concealment.ts";
-import { enumerateConcealed } from "../permissions/concealment-fs.ts";
+import { type ConfigLayer, DEFAULTS, type PaguConfig } from "./config.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
-import { listRoles, loadRoles, type Role } from "./roles.ts";
-import {
-  listSkills,
-  loadSkills,
-  type Skill,
-  type SkillScript,
-} from "../skills/skill.ts";
-import { loadHandlers } from "../capability/handlers.ts";
+import { listRoles } from "./roles.ts";
+import { listSkills } from "../skills/skill.ts";
 import type { HandlerPlugin } from "../capability/index.ts";
-import {
-  buildExplicitEntries,
-  type CommandEntry,
-  type DiscoveredTask,
-} from "../tasks/policy.ts";
-import { discoverTasks } from "../tasks/discovery.ts";
 import { presentDefaultRules } from "../tasks/defaults.ts";
-import type { ProviderConfig } from "../providers/chat.ts";
 import {
   latestSession,
   loadSession,
@@ -46,6 +18,7 @@ import {
   sessionPath,
 } from "./sessions.ts";
 import { makeSessionStore } from "./session-store.ts";
+import { makeRunState } from "./run-state.ts";
 import type { AgentContext, Approver, UI } from "../agent.ts";
 
 /**
@@ -373,384 +346,18 @@ export async function buildContext(
     );
   }
 
-  // Config, permissions, prose, and capabilities are all derived from the
-  // folded effective layer, so a runtime /roles switch can re-derive them.
-  // `cfg` is the live resolved config (also mutated by /provider); the boxes
-  // below are what the core reads each turn, refreshed in place by applyRoles.
-  const cfg: PaguConfig = { ...DEFAULTS, allow: ["."] };
-  let liveProvider: ProviderConfig;
-  let liveHost: string;
-  let modelCache: string[] = []; // populated by fetchModels; cleared on provider switch
-  let liveAdvisorConfig: ProviderConfig | undefined;
-  let liveSkillScripts: SkillScript[] = [];
-  let liveSkills: Skill[] = [];
-  let liveHandlers: import("../capability/index.ts").HandlerPlugin[] = [];
-  let liveCommandEntries: CommandEntry[] = [];
-  let liveConceal: ConcealmentSpec = {
-    vcsPaths: [],
-    hideGlobs: [],
-    secretGlobs: [],
-    revealGlobs: [],
-    roots: [],
-    enumerated: [],
-  };
-  const liveDiscoveredTasks: DiscoveredTask[] = await discoverTasks(
+  // The live, role-dependent run-state — provider, envelope, concealment,
+  // prose, capabilities, command entries + the runtime mutators — extracted
+  // into a constructible value (src/config/run-state.ts). Its initial fold of
+  // --role/--skill names happens inside (fail-loud on a bad name).
+  const rs = await makeRunState({
+    opts,
     projectBase,
-  );
-  let readPaths: string[];
-  let envelope: Envelope;
-  let denyFlags: string[];
-  let agentsText: string;
-  let capabilities: string;
-  let activeRoles: string[];
-
-  // Re-derive the role-dependent state from a set of roles. Effective config
-  // = defaults ⋄ config.json (opts.base) ⋄ roles (in order) ⋄ CLI flags; flags
-  // win, permission grants union, deny wins. Roles also contribute prose,
-  // folded after the base AGENTS/CLAUDE instructions. Async because the
-  // envelope reads .gitignore.
-  const applyRoles = async (
-    roleList: Role[],
-    skillList: Skill[],
-  ): Promise<void> => {
-    liveSkills = skillList;
-    const effective = composeLayers([
-      opts.base,
-      ...roleList.map((r) => r.layer),
-      ...skillList.map((s) => s.layer),
-      opts.cli,
-    ]);
-    cfg.provider = effective.provider ?? DEFAULTS.provider;
-    cfg.model = effective.model ?? DEFAULTS.model;
-    cfg.baseURL = effective.baseURL;
-    cfg.apiKeyEnv = effective.apiKeyEnv;
-    cfg.format = effective.format;
-    cfg.allow = effective.allow && effective.allow.length > 0
-      ? effective.allow
-      : ["."];
-
-    const prov = resolveProvider(cfg);
-    const apiKey = prov.apiKeyEnv ? Deno.env.get(prov.apiKeyEnv) : undefined;
-    if (prov.apiKeyEnv && !apiKey) {
-      console.error(
-        `⚠ provider "${cfg.provider}" expects an API key in $${prov.apiKeyEnv}, but it is unset.`,
-      );
-    }
-    liveProvider = {
-      model: cfg.model,
-      baseURL: prov.baseURL,
-      apiKey,
-      format: prov.format,
-    };
-    liveHost = new URL(prov.baseURL).host;
-
-    if (effective.advisorProvider) {
-      const ap = resolveProvider({
-        ...cfg,
-        provider: effective.advisorProvider,
-        model: effective.advisorModel ?? cfg.model,
-      });
-      liveAdvisorConfig = {
-        model: effective.advisorModel ?? cfg.model,
-        baseURL: ap.baseURL,
-        apiKey: ap.apiKeyEnv ? Deno.env.get(ap.apiKeyEnv) : undefined,
-        format: ap.format,
-      };
-    } else if (effective.advisorModel) {
-      liveAdvisorConfig = { ...liveProvider, model: effective.advisorModel };
-    } else if (effective.advisor) {
-      liveAdvisorConfig = { ...liveProvider }; // enabled, same provider as main
-    } else {
-      liveAdvisorConfig = undefined;
-    }
-
-    const roleWrites = effective.write ?? [];
-    const skillFiles = skillList.flatMap((s) => s.files).map((f) =>
-      resolve(projectBase, f)
-    );
-    liveSkillScripts = skillList.flatMap((s) => s.scripts);
-    // Skill script files must be readable so the agent can read them and
-    // propose them verbatim. Add each script's path directly.
-    const skillScriptPaths = liveSkillScripts.map((ss) => ss.path);
-    readPaths = [
-      ...cfg.allow,
-      ...(repo ? [repo] : []),
-      ...skillFiles,
-      ...skillScriptPaths,
-    ].map((p) => resolve(p));
-    const writePaths = [...roleWrites, ...(repo ? [repo] : [])].map((p) =>
-      resolve(p)
-    );
-    // The VCS source: .gitignore'd paths in repo mode (the effectful shell —
-    // git enumeration; concealment.ts stays pure). Toggled by hideGitignored.
-    const vcsPaths = (repo && (effective.hideGitignored ?? true))
-      ? [
-        ...new Set(
-          (await gitignoreDenies(repo)).flatMap((d) =>
-            "scope" in d && d.scope !== undefined ? [d.scope] : []
-          ),
-        ),
-      ]
-      : [];
-    const hideGlobs = effective.hide ?? [];
-    const secretGlobs = (effective.hideSecrets ?? true)
-      ? [...DEFAULT_SECRETS]
-      : [];
-    const enumerated = await enumerateConcealed(
-      readPaths,
-      [...hideGlobs, ...secretGlobs],
-      repo,
-    );
-    liveConceal = {
-      vcsPaths,
-      hideGlobs,
-      secretGlobs,
-      revealGlobs: effective.reveal ?? [],
-      roots: readPaths,
-      enumerated,
-    };
-    const maskPaths = buildConcealment(liveConceal).maskPaths();
-    envelope = buildEnvelope({
-      read: readPaths,
-      write: writePaths,
-      deny: maskPaths,
-    });
-    // deny-WRITE only at runtime (Deno --deny-read of a child breaks readDir
-    // of its parent); read-concealment is enforced at the OS-sandbox tier
-    // (the mask) + the respond phase (handleRead refusal).
-    denyFlags = (envelope.deny ?? []).map((p) => formatFlag(p, "deny"));
-
-    agentsText = [
-      agents,
-      ...roleList.map((r) => r.prose),
-      ...skillList.map((s) => s.prose),
-    ]
-      .filter((s) => s.length > 0)
-      .join("\n\n");
-
-    // Tell the agent its real reach, so it neither under- nor over-claims:
-    // it reads here, and the scripts it authors run on the machine with real
-    // effect within the approved scope (not merely "in a sandbox").
-    capabilities = [
-      `You can read: ${readPaths.join(", ") || "(nothing configured)"}.`,
-      repo
-        ? `Scripts you author can read and write anywhere under the repo ${repo} ` +
-          `(auto-approved within it), except .gitignored paths (write-denied).`
-        : `Scripts you author run under permissions the human grants per run ` +
-          `(e.g. write to a specific directory).`,
-      `An approved script runs on the machine with REAL effect — it genuinely ` +
-      `creates/edits files and can run programs — though with no network ` +
-      `access unless explicitly granted. So within the approved scope you do ` +
-      `have real power to change the system; you are not limited to talking.`,
-    ].join(" ");
-
-    activeRoles = roleList.map((r) => r.name);
-
-    const explicitEntries = buildExplicitEntries(effective.allowedTasks ?? []);
-    if (repo) {
-      // In repo mode, auto-allow all discovered project tasks. You've already
-      // opted into broad trust; running the project's own named tasks is
-      // consistent with that. Permissions are cage-inferred on first run.
-      const discoveredEntries = liveDiscoveredTasks
-        .filter((t) =>
-          !explicitEntries.some(
-            (e) =>
-              e.program === t.program &&
-              e.args.length === t.args.length &&
-              e.args.every((a, i) => a === t.args[i]),
-          )
-        )
-        .map((t) => ({
-          program: t.program,
-          args: t.args,
-          permissions: [] as string[],
-          source: "explicit" as const,
-        }));
-      liveCommandEntries = [...explicitEntries, ...discoveredEntries];
-    } else {
-      liveCommandEntries = explicitEntries;
-    }
-
-    if (liveSkillScripts.length > 0) {
-      const scriptLines = liveSkillScripts
-        .map((ss) => `  - ${ss.name}: ${ss.description}`)
-        .join("\n");
-      capabilities +=
-        ` Pre-approved skill scripts — call \`invoke_skill\` with the script name. Runs verbatim; pass dynamic inputs via args.\n${scriptLines}`;
-    }
-  };
-
-  // Initial fold: --role and --skill names (both fail loud on a bad name).
-  await applyRoles(
-    await loadRoles(opts.roles, projectBase),
-    await loadSkills(opts.skills, projectBase),
-  );
-
-  // Before-approve handlers: injected plugins (programmatic) fully replace
-  // config-path loading; otherwise load from the resolved config stack.
-  const handlerPaths = cfg.handlers?.["before-approve"] ?? [];
-  liveHandlers = injectedHandlers ?? await loadHandlers(handlerPaths);
-
-  // Switch provider/model at runtime (the TUI's /provider, /model). Mutates
-  // cfg directly so a preset switch resets the wire settings (which a layer
-  // union cannot express). Most-recent action wins between this and /roles.
-  const setProvider = (
-    change: { provider?: string; model?: string; baseURL?: string },
-  ): { ok: boolean; message: string } => {
-    if (change.provider) {
-      cfg.provider = change.provider;
-      cfg.baseURL = undefined; // adopt the new preset's wire settings
-      cfg.apiKeyEnv = undefined;
-      cfg.format = undefined;
-    }
-    if (change.baseURL) cfg.baseURL = change.baseURL;
-    if (change.model) cfg.model = change.model;
-    let r;
-    try {
-      r = resolveProvider(cfg);
-    } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : String(e) };
-    }
-    const key = r.apiKeyEnv ? Deno.env.get(r.apiKeyEnv) : undefined;
-    liveProvider = {
-      model: cfg.model,
-      baseURL: r.baseURL,
-      apiKey: key,
-      format: r.format,
-    };
-    liveHost = new URL(r.baseURL).host;
-    // A provider/baseURL switch invalidates the cached model list (a model-only
-    // change keeps it — same provider, same available set).
-    if (change.provider || change.baseURL) modelCache = [];
-    const warn = r.apiKeyEnv && !key ? ` — ⚠ $${r.apiKeyEnv} unset` : "";
-    return { ok: true, message: `${cfg.provider} · ${cfg.model}${warn}` };
-  };
-
-  // Fetch the provider's model list in a net-scoped subprocess (--allow-net to
-  // just the provider host), so the orchestrator stays net-less. Updates the
-  // cache. Mirrors spawnPhase's spawn+drain, but its own I/O shape (a
-  // ProviderConfig in, { models } out).
-  const fetchModels = async (): Promise<string[]> => {
-    const child = new Deno.Command("deno", {
-      args: [
-        "run",
-        "--no-prompt",
-        `--allow-net=${liveHost}`,
-        resolve(phaseDir, "models.ts"),
-      ],
-      stdin: "piped",
-      stdout: "piped",
-      stderr: "piped",
-    }).spawn();
-    const w = child.stdin.getWriter();
-    await w.write(new TextEncoder().encode(JSON.stringify(liveProvider)));
-    await w.close();
-    let out = "";
-    let err = "";
-    const drainOut = async () => {
-      for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
-        out += c;
-      }
-    };
-    const drainErr = async () => {
-      for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
-        err += c;
-      }
-    };
-    await Promise.all([drainOut(), drainErr()]);
-    const { code } = await child.status;
-    if (code !== 0) {
-      throw new Error(`model list failed: ${err.split("\n")[0] || code}`);
-    }
-    modelCache = (JSON.parse(out) as { models?: string[] }).models ?? [];
-    return modelCache;
-  };
-
-  // Set the active role group at runtime: re-fold base ⋄ roles ⋄ flags and
-  // re-derive config/permissions/prose. Fails loud (without changing state)
-  // on an unknown name, since loadRoles throws before applyRoles runs.
-  const setRoles = async (
-    names: string[],
-  ): Promise<{ ok: boolean; message: string }> => {
-    let loaded: Role[];
-    try {
-      loaded = await loadRoles(names, projectBase);
-    } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : String(e) };
-    }
-    await applyRoles(loaded, liveSkills);
-    return {
-      ok: true,
-      message: activeRoles.length ? activeRoles.join(", ") : "(none)",
-    };
-  };
-
-  const setSkills = async (
-    names: string[],
-  ): Promise<{ ok: boolean; message: string }> => {
-    let loaded: Skill[];
-    try {
-      loaded = await loadSkills(names, projectBase);
-    } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : String(e) };
-    }
-    await applyRoles(
-      await loadRoles(activeRoles, projectBase),
-      loaded,
-    );
-    return {
-      ok: true,
-      message: liveSkills.length
-        ? liveSkills.map((s) => s.name).join(", ")
-        : "(none)",
-    };
-  };
-
-  // Toggle/configure the advisory reviewer at runtime (the TUI's /advisor).
-  // advisorConfig being present is the single "enabled" signal — no separate
-  // boolean. enabled:false explicitly disables; bare call toggles.
-  const setAdvisor = (
-    change: { enabled?: boolean; provider?: string; model?: string },
-  ): { ok: boolean; message: string } => {
-    if (change.enabled === false) {
-      liveAdvisorConfig = undefined;
-      return { ok: true, message: "advisor off" };
-    }
-    if (change.provider || change.model) {
-      const base = change.provider
-        ? { ...cfg, provider: change.provider }
-        : cfg;
-      try {
-        const ap = resolveProvider({
-          ...base,
-          model: change.model ?? liveAdvisorConfig?.model ?? cfg.model,
-        });
-        liveAdvisorConfig = {
-          model: change.model ?? liveAdvisorConfig?.model ?? cfg.model,
-          baseURL: ap.baseURL,
-          apiKey: ap.apiKeyEnv ? Deno.env.get(ap.apiKeyEnv) : undefined,
-          format: ap.format,
-        };
-      } catch (e) {
-        return {
-          ok: false,
-          message: e instanceof Error ? e.message : String(e),
-        };
-      }
-      const prov = change.provider ?? cfg.provider;
-      return {
-        ok: true,
-        message: `advisor on · ${prov} · ${liveAdvisorConfig.model}`,
-      };
-    }
-    // Bare toggle: off→on (copy main provider), on→off.
-    if (liveAdvisorConfig) {
-      liveAdvisorConfig = undefined;
-      return { ok: true, message: "advisor off" };
-    }
-    liveAdvisorConfig = { ...liveProvider };
-    return { ok: true, message: `advisor on · ${cfg.provider} · ${cfg.model}` };
-  };
+    repo,
+    agents,
+    phaseDir,
+    injectedHandlers,
+  });
 
   // Resolve which conversation log this run uses. Explicit --log bypasses
   // the store; otherwise sessions live per-project under .pagu/sessions/:
@@ -795,58 +402,61 @@ export async function buildContext(
     entries: log, // === loaded.entries; the store keeps this array identity
   });
 
+  // The run-state fields delegate to `rs` via getters (not a spread — a spread
+  // would snapshot the current values and lose the liveness a /roles or
+  // /provider switch depends on). The rest is session/static state.
   return {
     get provider() {
-      return liveProvider;
+      return rs.provider;
     },
     get providerHost() {
-      return liveHost;
+      return rs.providerHost;
     },
-    setProvider,
-    providerName: () => cfg.provider,
-    models: () => modelCache,
-    fetchModels,
+    setProvider: rs.setProvider,
+    providerName: rs.providerName,
+    models: rs.models,
+    fetchModels: rs.fetchModels,
     projectBase,
-    roleNames: () => activeRoles,
+    roleNames: rs.roleNames,
     availableRoles: () => listRoles(projectBase),
     availableSkills: () => listSkills(projectBase),
-    setRoles,
+    setRoles: rs.setRoles,
     phaseDir,
     get agents() {
-      return agentsText;
+      return rs.agents;
     },
     get readPaths() {
-      return readPaths;
+      return rs.readPaths;
     },
     repo,
     cwd,
     get envelope() {
-      return envelope;
+      return rs.envelope;
     },
     get denyFlags() {
-      return denyFlags;
+      return rs.denyFlags;
     },
     get commandEntries() {
-      return liveCommandEntries;
+      return rs.commandEntries;
     },
     get conceal() {
-      return liveConceal;
+      return rs.conceal;
     },
-    discoveredTasks: liveDiscoveredTasks,
+    discoveredTasks: rs.discoveredTasks,
     availableCommandRules,
     get activeSkillScripts() {
-      return liveSkillScripts;
+      return rs.activeSkillScripts;
     },
-    setSkills,
+    setSkills: rs.setSkills,
     get activeHandlers() {
-      return liveHandlers;
+      return rs.activeHandlers;
     },
     get advisorConfig() {
-      return liveAdvisorConfig;
+      return rs.advisorConfig;
     },
-    setAdvisor,
+    setAdvisor: rs.setAdvisor,
     get capabilities() {
-      return capabilities;
+      return rs.capabilities;
     },
     sandboxKind,
     log,
