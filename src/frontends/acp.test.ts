@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import type { SessionNotification } from "@agentclientprotocol/sdk";
 import {
   acpApprover,
@@ -71,6 +71,27 @@ Deno.test("acpUI.show flushes pending stream output first, preserving order", as
     (updates[1].update as { content: { text: string } }).content.text,
     "RESULT",
   );
+});
+
+Deno.test("acpUI: reasoning + marker → thought chunk; content → message chunk", async () => {
+  const { conn, updates } = fakeConn({ outcome: "cancelled" });
+  const ui = acpUI(conn, "s");
+  ui.stream!("answer", "content");
+  ui.stream!("thinking", "reasoning");
+  ui.stream!("· read x", "marker");
+  ui.show("RESULT"); // flush all channel buffers, then send the result
+  await Promise.resolve();
+  const text = (sk: string) =>
+    updates
+      .filter((u) => u.update.sessionUpdate === sk)
+      .map((u) => (u.update as { content: { text: string } }).content.text)
+      .join("");
+  const thoughts = text("agent_thought_chunk");
+  const messages = text("agent_message_chunk");
+  assertStringIncludes(thoughts, "thinking");
+  assertStringIncludes(thoughts, "· read x");
+  assertStringIncludes(messages, "answer");
+  assertStringIncludes(messages, "RESULT");
 });
 
 Deno.test("acpUI.status is a no-op (no session update)", async () => {

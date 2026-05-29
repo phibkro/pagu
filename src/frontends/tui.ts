@@ -247,9 +247,11 @@ export async function tuiMain(): Promise<void> {
       spinner.stop();
       console.log(m);
     },
-    stream: (chunk) => {
+    stream: (chunk, channel = "content") => {
       spinner.stop();
-      Deno.stdout.writeSync(enc.encode(chunk));
+      // Reasoning + activity markers are dimmed; the answer prints normally.
+      const text = channel === "content" ? chunk : dim(chunk);
+      Deno.stdout.writeSync(enc.encode(text));
     },
   };
   const approve: Approver = async (_script, _perms) => {

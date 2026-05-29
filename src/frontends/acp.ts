@@ -137,30 +137,36 @@ export interface AcpConn {
  * (mapping it to chunks would spam the conversation).
  */
 export function acpUI(conn: AcpConn, sessionId: string, flushMs = 50): UI {
-  const send = (text: string): void => {
+  // content → agent_message_chunk (the answer); reasoning + activity markers →
+  // agent_thought_chunk (kept out of the answer). The model's reasoning carries
+  // no capability — it's a display affordance, like content tokens.
+  const send = (
+    text: string,
+    kind: "agent_message_chunk" | "agent_thought_chunk",
+  ): void => {
     void conn.sessionUpdate({
       sessionId,
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text },
-      },
+      update: { sessionUpdate: kind, content: { type: "text", text } },
     });
   };
-  // Coalesce streamed tokens so we send the editor ~one notification per
-  // `flushMs` window (bounded latency) instead of one per token — a fast model
-  // otherwise floods the client with hundreds of tiny updates. A size guard
-  // bounds the buffer for very fast streams. (CLI/TUI stream per-token; this
-  // batching lives only in the ACP adapter.)
-  let buf = "";
+  // Coalesce streamed tokens per channel (~one notification per `flushMs`
+  // window, bounded latency) instead of one per token. Per-channel so reasoning
+  // and content never merge into a single chunk. (CLI/TUI stream per-token;
+  // this batching lives only in the ACP adapter.)
+  const bufs = { message: "", thought: "" };
   let timer: number | undefined;
   const flush = (): void => {
     if (timer !== undefined) {
       clearTimeout(timer);
       timer = undefined;
     }
-    if (buf) {
-      send(buf);
-      buf = "";
+    if (bufs.message) {
+      send(bufs.message, "agent_message_chunk");
+      bufs.message = "";
+    }
+    if (bufs.thought) {
+      send(bufs.thought, "agent_thought_chunk");
+      bufs.thought = "";
     }
   };
   return {
@@ -169,11 +175,12 @@ export function acpUI(conn: AcpConn, sessionId: string, flushMs = 50): UI {
     // first so ordering is preserved, then send it immediately.
     show: (text: string) => {
       flush();
-      send(text);
+      send(text, "agent_message_chunk");
     },
-    stream: (text: string) => {
-      buf += text;
-      if (buf.length >= 1024) flush();
+    stream: (text: string, channel = "content") => {
+      const key = channel === "content" ? "message" : "thought";
+      bufs[key] += text;
+      if (bufs[key].length >= 1024) flush();
       else if (timer === undefined) timer = setTimeout(flush, flushMs);
     },
     // Surface produced actions as tool calls. Messages are skipped — they
