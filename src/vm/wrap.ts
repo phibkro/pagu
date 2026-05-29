@@ -27,6 +27,8 @@ export interface VMScope {
   /** The image (variant) tag to run. */
   image: string;
   mode: "ephemeral" | "persistent";
+  /** Guest cwd for the pagu entrypoint (the mount point it operates on). */
+  workdir?: string;
 }
 
 /**
@@ -42,6 +44,7 @@ export function wrapForVM(
     const args = ["run"];
     if (scope.mode === "ephemeral") args.push("--rm");
     args.push("--env", "PAGU_IN_VM=1"); // recursion guard (see detect.ts)
+    if (scope.workdir) args.push("--workdir", scope.workdir);
     for (const m of scope.mounts) args.push("--volume", `${m.host}:${m.guest}`);
     if (scope.egress.length === 0) args.push("--network", "none");
     args.push(scope.image, ...argv);

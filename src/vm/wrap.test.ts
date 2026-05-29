@@ -44,3 +44,15 @@ Deno.test("podman: persistent mode omits --rm", () => {
   const { args } = wrapForVM("podman", ARGV, scope({ mode: "persistent" }));
   assertEquals(args.includes("--rm"), false);
 });
+
+Deno.test("podman: workdir → --workdir (guest cwd for the pagu entrypoint)", () => {
+  const { args } = wrapForVM("podman", ARGV, scope({ workdir: "/work" }));
+  assertStringIncludes(args.join(" "), "--workdir /work");
+  // omitted when unset
+  const { args: none } = wrapForVM(
+    "podman",
+    ARGV,
+    scope({ workdir: undefined }),
+  );
+  assertEquals(none.includes("--workdir"), false);
+});
