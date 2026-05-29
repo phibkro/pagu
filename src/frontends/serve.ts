@@ -11,10 +11,25 @@ import { pendingProposal } from "../approval.ts";
 import { loadConfig } from "../config/config.ts";
 import { buildContext, parseArgs } from "../config/setup.ts";
 
+/** Constant-time string equality for the credential check. Hand-rolled (invariant
+ * #5: hand-roll the trivial security core — no crypto dep): compares the full
+ * length regardless of where a mismatch falls, so compare timing doesn't leak the
+ * token byte-by-byte. The token's length isn't secret (fixed-size). */
+function timingSafeEqual(a: string, b: string): boolean {
+  const ab = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
+  let diff = ab.length ^ bb.length; // length mismatch → already nonzero
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ (bb[i] ?? 0);
+  return diff === 0;
+}
+
 /** Bearer-token auth — adapter-owned (Q2). Any access needs the token; reading
  * the pending proposal (the script body) is as sensitive as deciding it. */
 function authed(req: Request, token: string): boolean {
-  return (req.headers.get("authorization") ?? "") === `Bearer ${token}`;
+  return timingSafeEqual(
+    req.headers.get("authorization") ?? "",
+    `Bearer ${token}`,
+  );
 }
 
 /**
@@ -92,7 +107,15 @@ export function parseServeFlags(rawArgs: string[]): {
     }
     const p = take("--port");
     if (p !== null) {
-      port = Number(p);
+      const n = Number(p);
+      if (!Number.isInteger(n) || n < 1 || n > 65535) {
+        throw new Error(
+          `pagu serve: --port must be an integer 1–65535, got ${
+            JSON.stringify(p)
+          }`,
+        );
+      }
+      port = n;
       continue;
     }
     const t = take("--token");
@@ -103,6 +126,17 @@ export function parseServeFlags(rawArgs: string[]): {
     rest.push(a);
   }
   return { host, port, token, bind: `${host}:${port}`, rest };
+}
+
+/** Resolve the auth token: explicit `--token` wins over `PAGU_SERVE_TOKEN` wins
+ * over a generated one (so a token always exists — never tokenless). An empty
+ * value counts as unset. Prefer the env var to keep the token out of the process
+ * arg list (`ps`). Pure (modulo the generated fallback). */
+export function resolveToken(
+  flag: string | undefined,
+  env: string | undefined,
+): string {
+  return flag || env || crypto.randomUUID();
 }
 
 /** Sentinel: set on the re-exec'd child so the launcher runs the server instead
@@ -150,7 +184,7 @@ export async function serveMain(rawArgs: string[]): Promise<never> {
   }
 
   // Server leg (sentinel set): the socket actually opens here.
-  const token = serve.token ?? crypto.randomUUID();
+  const token = resolveToken(serve.token, Deno.env.get("PAGU_SERVE_TOKEN"));
   const { config: fileConfig, agents } = await loadConfig();
   const opts = await parseArgs(fileConfig, serve.rest);
 

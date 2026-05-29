@@ -72,8 +72,9 @@ Bare **`pagu`** in a terminal (or `pagu --tui`) launches an interactive REPL.
 ## Remote approval (`pagu serve`)
 
 ```sh
-pagu serve "diagnose the failing deploy and propose a fix" --repo \
-  --host 0.0.0.0 --port 8787 --token "$SECRET"
+PAGU_SERVE_TOKEN="$SECRET" \
+  pagu serve "diagnose the failing deploy and propose a fix" \
+  --host 0.0.0.0 --port 8787
 ```
 
 Runs the task with a **deferring** approver — when the agent proposes a script,
@@ -85,12 +86,15 @@ decide:
 - `POST /decision` `{ proposalId, verdict: "approve" | "reject" }` → the runner
   runs it **locally** under its cage-vetted perms.
 
-All routes require `Authorization: Bearer <token>` (a token is generated and
-printed if `--token` is omitted; **mandatory** when binding beyond localhost).
-The remote only _submits a decision_ — it can't inject a script or widen perms
-(resolve-only), and the runner stays the single writer of the log. `pagu serve`
-is the **only** frontend that opens a socket; it re-execs itself with inbound
-net scoped to exactly the bind address, so the rest of pagu stays net-less.
+All routes require `Authorization: Bearer <token>`. Supply it via
+`PAGU_SERVE_TOKEN` (preferred — keeps it out of the process list) or `--token`;
+if neither is given, a token is generated and printed at startup. A token is
+**mandatory** when binding beyond localhost (`--host 0.0.0.0`), where it's the
+only barrier. The remote only _submits a decision_ — it can't inject a script or
+widen perms (resolve-only), and the runner stays the single writer of the log.
+`pagu serve` is the **only** frontend that opens a socket; it re-execs itself
+with inbound net scoped to exactly the bind address, so the rest of pagu stays
+net-less.
 
 ## Editor integration (ACP)
 

@@ -1,5 +1,5 @@
-import { assertEquals } from "@std/assert";
-import { parseServeFlags } from "./serve.ts";
+import { assertEquals, assertThrows } from "@std/assert";
+import { parseServeFlags, resolveToken } from "./serve.ts";
 
 Deno.test("parseServeFlags: defaults to localhost:8787, no token, all args pass through", () => {
   const r = parseServeFlags(["count the files", "--repo"]);
@@ -39,4 +39,25 @@ Deno.test("parseServeFlags: bind is host:port (for net scoping)", () => {
     parseServeFlags(["--host", "0.0.0.0", "--port", "80"]).bind,
     "0.0.0.0:80",
   );
+});
+
+Deno.test("parseServeFlags: rejects a non-numeric / out-of-range / empty port (fail loud)", () => {
+  assertThrows(() => parseServeFlags(["--port", "abc"]), Error, "--port");
+  assertThrows(() => parseServeFlags(["--port", "0"]), Error, "--port");
+  assertThrows(() => parseServeFlags(["--port", "70000"]), Error, "--port");
+  assertThrows(() => parseServeFlags(["--port"]), Error, "--port"); // no value
+});
+
+Deno.test("resolveToken: explicit flag wins over env", () => {
+  assertEquals(resolveToken("flagtok", "envtok"), "flagtok");
+});
+
+Deno.test("resolveToken: env used when no flag (avoids the ps leak)", () => {
+  assertEquals(resolveToken(undefined, "envtok"), "envtok");
+  assertEquals(resolveToken("", "envtok"), "envtok"); // empty flag = unset
+});
+
+Deno.test("resolveToken: generates a token when neither is given (never tokenless)", () => {
+  const t = resolveToken(undefined, undefined);
+  assertEquals(t.length, 36); // a UUID
 });
