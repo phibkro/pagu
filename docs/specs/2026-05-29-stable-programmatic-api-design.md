@@ -1,6 +1,6 @@
 # Stable programmatic API — freeze the public surface (design)
 
-> Status: **draft 2026-05-29** (brainstorming → grilling → tdd). The "stable
+> Status: **hardened 2026-05-29** (brainstorm → grill → tdd-ready). The "stable
 > programmatic API" v1-gate item from `CONTEXT.md`. Freezes a small, deliberate
 > public surface so external consumers can build their own frontends / loops
 > without reaching into internals.
@@ -55,8 +55,9 @@ publish wait for the product v1 milestone.
 `src/mod.ts` is the **only** public entry — a pure barrel (re-exports only). The
 frozen surface, grouped:
 
-- **Core loop & ports:** `runTask`; types `AgentContext`, `UI`, `Approver`,
-  `Responder`.
+- **Core loop & ports:** `runTask`; types `AgentContext`, `UI`, `Approver`.
+  (`Responder` stays internal — it's plumbing passed _into_ capability execute
+  fns for fix-rounds, never supplied by a frontend.)
 - **Loop combinators** (pure, lawful): `loop`, `andThen`, `pipeline`, `fanOut`;
   types `Step`, `Flow`.
 - **Construction:** `createContext(opts)` — the high-level programmatic
@@ -80,7 +81,24 @@ the frontends.
 
 A new function in `config/setup.ts` (co-located with `buildContext`, tested
 there), re-exported by `mod.ts`. It gives external consumers a construction path
-that does **not** touch cliffy / argv / `RunOpts`:
+that does **not** touch cliffy / argv / `RunOpts`.
+
+**`createContext` is hermetic** (decided in grill). It does **not** read ambient
+state — no `loadConfig` (global `~/.config/pagu/config.json`), no ambient
+AGENTS.md, no `maybeLoadEnvFile` (cwd `.env` + its terminal consent prompt). An
+embedded consumer controls everything explicitly: config via `opts`, agent
+instructions via `opts.agents` (default `""`), env via their own process. This
+keeps a library embed predictable — no surprise reads of the end-user's machine,
+no blocking prompt. (Ambient/CLI-style loading is a deferred opt-in — see
+Deferred.)
+
+**Required refactor:** `buildContext` currently calls `maybeLoadEnvFile`
+internally (ambient + interactive). Lift that **out** of `buildContext` into the
+CLI/TUI shell (`cli.ts`/`tui.ts` call it _before_ `buildContext`, so provider
+API keys are still visible during their construction). `buildContext` becomes
+env-agnostic, and both the CLI path and `createContext` share it. Clean
+hexagonal split: ambient/interactive loading is shell, context construction is
+core.
 
 ```typescript
 // illustrative — TDD writes the real signature
@@ -98,6 +116,8 @@ export function createContext(opts: {
   hideSecrets?: boolean;
   hideGitignored?: boolean;
   handlers?: HandlerPlugin[];
+  /** Agent instructions (the AGENTS.md text) — explicit, not ambient. */
+  agents?: string;
   // the I/O seam
   ui: UI;
   approver: Approver;
@@ -105,10 +125,10 @@ export function createContext(opts: {
 }): Promise<AgentContext>;
 ```
 
-Internally it composes `loadConfig` → a `ConfigLayer` → `buildContext` (reusing
-the existing internal machinery). The structured opts map onto the same
-`composeLayers` fold the CLI uses, so behavior matches the CLI path; only the
-_construction interface_ is friendlier and frozen.
+Internally it folds `opts` into a `ConfigLayer` via the same `composeLayers` law
+the CLI uses, then calls the (now env-agnostic) `buildContext` with
+`opts.agents ?? ""`. Behavior matches the CLI's construction _minus_ the ambient
+reads; only the construction interface is friendlier and frozen.
 
 ## The freeze mechanism (compatibility floor)
 
@@ -172,7 +192,14 @@ drift.)
 
 - `src/mod.ts` (new) — the public barrel + doc comment (stable API + compat
   promise).
-- `src/config/setup.ts` — `createContext` (new export).
+- `src/config/setup.ts` — `createContext` (new export); lift `maybeLoadEnvFile`
+  out of `buildContext` (env-agnostic core).
+- `src/frontends/cli.ts` + `tui.ts` — call `maybeLoadEnvFile` before
+  `buildContext` (preserve the terminal frontends' ambient `.env` behavior). ACP
+  does **not** get the call — its stdin is the JSON-RPC channel, so it must
+  never prompt there (today only `isTerminal()` saves it); ACP relies on the
+  editor/process env. The lift makes "only terminal frontends load `.env`"
+  explicit (a latent-correctness improvement).
 - `src/mod.test.ts` (new) — the floor test.
 - `src/config/setup.test.ts` — `createContext` test.
 - `deno.json` — `name`/`version`/`exports`.
@@ -182,13 +209,16 @@ drift.)
 
 ## Migration (one step at a time, CI green between each)
 
-1. `createContext` in `config/setup.ts` + test (build ctx from structured opts).
-   CI green.
-2. `src/mod.ts` barrel re-exporting the narrow surface. CI green.
-3. `src/mod.test.ts` floor test (`EXPECTED_PUBLIC_API ⊆ deno doc --json`). CI
+1. Lift `maybeLoadEnvFile` out of `buildContext` into `cli.ts`/`tui.ts` (call it
+   before `buildContext`); `buildContext` env-agnostic. CI green (CLI/TUI `.env`
+   behavior unchanged).
+2. `createContext` in `config/setup.ts` + test (build ctx from structured opts,
+   hermetic — no ambient reads). CI green.
+3. `src/mod.ts` barrel re-exporting the narrow surface. CI green.
+4. `src/mod.test.ts` floor test (`EXPECTED_PUBLIC_API ⊆ deno doc --json`). CI
    green.
-4. `deno.json` `name`/`version`/`exports`. CI green.
-5. Docs.
+5. `deno.json` `name`/`version`/`exports`. CI green.
+6. Docs.
 
 ## Deferred
 
@@ -197,6 +227,10 @@ drift.)
   surface (invariant #1): when built, make it as safe as possible _and_ warn
   loudly about untrusted extensions/plugins. For now the set is closed; the
   handler-plugin slot is the sanctioned bounded extension point.
+- **Ambient/CLI-style loading in `createContext`** — an opt-in (e.g.
+  `loadAmbientConfig: true`) to layer the global `config.json` + AGENTS.md under
+  the explicit opts, for consumers building a pagu-CLI-clone. Hermetic is the
+  default; add this only if a consumer needs it.
 - **JSR publish + `1.0.0` + semver tags** — flip at the product v1 milestone;
   the package shape is ready.
 - **CI single-door rule** — a `check-layers.ts` rule that the public surface is
