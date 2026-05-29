@@ -33,10 +33,13 @@ persistent-mode concern — ephemeral restore is just recreate-from-image.)
    today's tier-1/2-only behavior — no regression). First concrete tier =
    **rootless Podman**; **Firecracker microVM** is a designed-but-deferred
    second tier on the same rootfs.
-3. **Composition** — **purely additive outer layer**: the VM wraps pagu
-   unchanged; tiers 1–2 stay exactly as they are (true nested defense in depth).
-   The VM is _also_ the **restore boundary** (recreate-from-image for ephemeral;
-   real snapshot/restore deferred to persistent mode).
+3. **Composition** — additive outer layer; **tier-1 (Deno perms) unchanged
+   in-guest**. _Tier-2 revised by an impl finding (below):_ `bwrap` **cannot
+   nest** in a rootless container, so in-guest tier-2 = `none` and the
+   **container is tier-2's replacement** for write/net confinement; read
+   concealment moves to the **launcher's mount layer**. The VM is _also_ the
+   **restore boundary** (recreate-from-image for ephemeral; real
+   snapshot/restore deferred to persistent mode).
 4. **What crosses the boundary:**
    - _Filesystem:_ only explicitly **threaded-in dirs** are mounted (Podman
      `--volume`; virtiofs on the Firecracker tier) — blast radius = the mounts.
@@ -220,11 +223,40 @@ at `detectVM === none`.
   `local`-first cut **genuinely useful on its own** (it's exactly what A + C
   consume); confirmed.
 
-## To verify at TDD time (implementation, not design)
+## Implementation findings (2026-05-29)
 
-- That **rootless Podman**'s fs-mount + egress-allowlist boundary actually holds
-  as specified on the dev host (the enforcement test is the proof, not prose).
-- The concrete **egress-allowlist mechanism** (restricted Podman network +
-  firewall vs `pasta`/slirp single-destination vs pinned gateway) — pick
-  whichever the enforcement test shows actually confines egress to the model
-  host.
+- **`bwrap` cannot nest in rootless Podman** (verified: "Creating new namespace
+  failed: Operation not permitted", even with `seccomp=unconfined` +
+  `unmask=ALL`). So tier-2 can't run in-guest. Resolution (shipped):
+  - The guest image **does not install bwrap** → in-guest `detectSandbox`
+    returns `none` cleanly (rather than falsely selecting bwrap then failing at
+    runtime). The **container replaces tier-2** for write confinement (only
+    `/work` mounted) + net confinement (egress policy).
+  - **Read concealment moves to the launcher's mount layer** — concealed paths
+    (`.env`, secrets) are simply **not threaded into the guest** (or bound to
+    `/dev/null`), so the secret never enters the guest. This preserves A's
+    guarantee (1) without nested bwrap. _(Mount-layer masking + the
+    exfil-in-guest test still to implement — see status below.)_
+- **Validated live** (`nix shell nixpkgs#podman`): pagu runs in the `pagu:local`
+  guest, drives the mock model, and A's **destruction** scenario is contained to
+  the mounted `/work` — the out-of-mount sentinel/backup are untouched and
+  restore recovers (`containment_vm.test.ts`).
+
+## Status (2026-05-29)
+
+**Shipped:** `src/vm/` (`detectVM` + recursion guard, pure `wrapForVM`,
+`planVMLaunch`, `modelHostFromBaseURL`; all unit-tested) · `vm/Containerfile`
+(base + `local`, no bwrap) · `containment_vm.test.ts` (destruction-in-guest,
+skips at `detectVM === none`).
+
+**Remaining for the first cut:**
+
+- **Mount-layer concealment** — the launcher applies the concealment policy to
+  the threaded mounts (don't mount concealed paths / bind `/dev/null`), then the
+  **exfil-in-guest** test asserting the canary stays masked through the layer.
+- **`pagu vm` subcommand** — wire `detectVM` + `planVMLaunch` + `wrapForVM` +
+  spawn in the CLI frontend (currently the test drives `podman` directly).
+- **Egress-allowlist mechanism** — replace the test's `--network=host` smoke
+  with model-host-only egress (restricted Podman network + firewall vs
+  `pasta`/slirp single-destination vs pinned gateway); the enforcement test is
+  the proof.
