@@ -415,9 +415,22 @@ when nothing is pending), `resumeTask` resolves the one pending proposal —
 reconstructing the run from the logged `script`+`perms`. The decision is
 **binary by the nature of the effect** (run the one authored script, or don't);
 richer shapes are compositions, not new verdicts — reject-with-feedback is
-`reject` + a follow-up message; allow-for-1h is a _standing approval_ (a
-human-authored temporary ceiling, reusing the envelope lattice — not a bypass).
+`reject` + a follow-up message; allow-for-1h is a _standing approval_ (below).
 Full design: `docs/specs/2026-05-29-async-approval-design.md`.
+
+A **standing approval** amortizes the gate: "auto-approve anything within these
+perms for the next hour." Its artifact is a **`grant`** — a _time-boxed
+allow-set_ (`{id, perms, expires}`), **not** an `Envelope` (it has no `deny` of
+its own); the auto-approve gate checks a proposal against
+`{allow: grant.perms, deny:
+sessionDeny}`, so **deny/concealment always wins**
+over a grant. A grant is **amortized gate authority at the decision layer**,
+_not_ envelope composition — so the never-widen law (which governs config-layer
+folding into `ctx.envelope`) is untouched, and #3 holds (the human pre-vets a
+temporary, expiring, revocable envelope). Its inverse is a **`revoke`** (end a
+grant early); `activeGrants(log,
+now)` folds out the expired and the revoked.
+Full design: `docs/specs/2026-05-29-standing-approvals-design.md`.
 
 ## Derived state and inference chains
 
