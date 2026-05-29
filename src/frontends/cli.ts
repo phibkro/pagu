@@ -30,6 +30,14 @@ if (Deno.args[0] === "completions") {
   Deno.exit(0);
 }
 
+// `pagu vm <task>` runs pagu inside an isolated guest (the coarse outer tier).
+// Handled before the normal flow; it re-execs pagu in a container (or runs
+// directly when no runtime is available).
+if (Deno.args[0] === "vm") {
+  await (await import("./vm.ts")).vmMain(Deno.args.slice(1));
+  Deno.exit(0);
+}
+
 const { config: fileConfig, agents } = await loadConfig();
 const opts = await parseArgs(fileConfig, Deno.args);
 

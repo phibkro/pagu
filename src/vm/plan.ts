@@ -2,11 +2,7 @@
 // the in-guest pagu argv + the VMScope the launcher threads through the runtime.
 import type { VMScope } from "./wrap.ts";
 
-export interface VMLaunchOpts {
-  /** The pagu task to run inside the guest. */
-  task: string;
-  /** Flags passed through to the in-guest pagu (e.g. `--repo`, `--model x`). */
-  passthroughFlags: string[];
+export interface VMScopeOpts {
   /** Host dir pagu operates on — mounted into the guest (the blast radius). */
   cwd: string;
   /** The model host to allowlist for egress; `""` → fully offline. */
@@ -23,12 +19,18 @@ export interface VMLaunchOpts {
   conceal?: { path: string; isDir: boolean }[];
 }
 
-export function planVMLaunch(
-  o: VMLaunchOpts,
-): { argv: string[]; scope: VMScope } {
+export interface VMLaunchOpts extends VMScopeOpts {
+  /** The pagu task to run inside the guest. */
+  task: string;
+  /** Flags passed through to the in-guest pagu (e.g. `--repo`, `--model x`). */
+  passthroughFlags: string[];
+}
+
+/** Build the VMScope (mounts + egress + read-masks) the launcher threads
+ *  through the runtime. Shared by `planVMLaunch` and the `pagu vm` subcommand. */
+export function buildVMScope(o: VMScopeOpts): VMScope {
   const guest = o.guestMount ?? "/work";
-  const argv = ["pagu", o.task, ...o.passthroughFlags];
-  const scope: VMScope = {
+  return {
     mounts: [{ host: o.cwd, guest }],
     egress: o.modelHost ? [o.modelHost] : [],
     image: o.image,
@@ -36,7 +38,15 @@ export function planVMLaunch(
     workdir: guest,
     readMask: toGuestReadMask(o.conceal ?? [], o.cwd, guest),
   };
-  return { argv, scope };
+}
+
+export function planVMLaunch(
+  o: VMLaunchOpts,
+): { argv: string[]; scope: VMScope } {
+  return {
+    argv: ["pagu", o.task, ...o.passthroughFlags],
+    scope: buildVMScope(o),
+  };
 }
 
 /** Map concealed absolute host paths under `host` to guest-path masks under

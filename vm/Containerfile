@@ -35,4 +35,6 @@ FROM base AS local
 COPY examples /pagu/examples
 
 WORKDIR /work
-ENTRYPOINT ["pagu"]
+# No ENTRYPOINT: the launcher passes the full argv (`pagu <task> …`) as the
+# command, and the `pagu` shim is on PATH. (An ENTRYPOINT of `pagu` would
+# double it — `pagu pagu <task>`.)
