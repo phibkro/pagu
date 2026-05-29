@@ -1,13 +1,9 @@
 import { assertEquals } from "@std/assert";
 import { resolve } from "@std/path";
-import {
-  buildContext,
-  createContext,
-  enumerateConcealed,
-  parseArgs,
-} from "./setup.ts";
+import { buildContext, createContext, parseArgs } from "./setup.ts";
 import { DEFAULTS } from "./config.ts";
 import { buildConcealment } from "../permissions/concealment.ts";
+import { enumerateConcealed } from "../permissions/concealment-fs.ts";
 import { detectSandbox, runScript } from "../runner/index.ts";
 import type { Approver, UI } from "../agent.ts";
 import type { HandlerPlugin } from "../capability/index.ts";
