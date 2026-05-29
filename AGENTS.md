@@ -190,8 +190,15 @@ Primary adapters (frontends):
   `acpUI`/`acpApprover` map the same UI/Approver seam onto ACP
   `session/update` + `session/request_permission`; each ACP session = one pagu
   conversation. The runner stays the only exec path; pagu declines the client's
-  terminal/fs capabilities (invariant #1 holds across frontends). All frontends
-  differ _only_ in UI + Approver.
+  terminal/fs capabilities (invariant #1 holds across frontends).
+  `src/frontends/serve.ts` — **HTTP write-back frontend** (`pagu serve`): runs a
+  task with a _deferring_ approver, then exposes the pending proposal over HTTP
+  (`GET /pending` / `POST /decision` + Bearer token) so an out-of-band approver
+  resolves it (`serveHandler` = the pure router; `submitDecision` in `agent.ts`
+  = the transport-agnostic, resolve-only seam). The **only** frontend that opens
+  a socket: it re-execs itself with `--allow-net` scoped to the bind address
+  (the `pagu vm` launcher pattern), so the orchestrator stays net-less. All
+  frontends differ _only_ in UI + Approver.
 
 Secondary adapters:
 
