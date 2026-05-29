@@ -935,9 +935,14 @@ above.)
         time-boxed `grant`/`revoke` events + `activeGrants` fold;
         `shouldAutoApprove` consults them (deny applied, repo-mode-independent);
         the `{grant:{ttlMs}}` gate outcome; `/grants` + `/revoke` commands.
-        **Remaining:** TTL config plumbing (helper exists, off by default).
-        **Deferred:** remote write-back transport, the staleness marker,
-        proactive/human-specified grants.
+        **Remaining:** TTL config plumbing (helper exists, off by default). The
+        **remote write-back transport** (a remote approver submitting a decision
+        the runner appends) is **spec'd**
+        (`docs/specs/2026-05-30-writeback-transport-design.md`, grilled) — a
+        transport-agnostic `submitDecision` seam + an opt-in `pagu serve` HTTP
+        adapter (deferring approver, GET pending / POST decision + token); ACP
+        is already covered by `resumePending`. **Deferred:** the staleness
+        marker, proactive/human-specified grants.
 16. **Scheduled short-lived agents (cron for contained agents).** The
     operationally useful shape of "long-running agent" is **not** an immortal
     process — that accumulates two unbounded quantities (context drift +
