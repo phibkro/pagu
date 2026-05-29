@@ -79,6 +79,23 @@ Deno.test("parseArgs: --advisor-provider and --advisor-model map to cli", async 
   assertEquals(o.cli.advisorModel, "claude-sonnet-4-5");
 });
 
+Deno.test("parseArgs: --hide/--reveal collect; --no-hide-* map to cli", async () => {
+  const o = await parseArgs(DEFAULTS, [
+    "--hide",
+    "*.pem",
+    "--hide",
+    "secrets/",
+    "--reveal",
+    "public.pem",
+    "--no-hide-secrets",
+    "--no-hide-gitignored",
+  ]);
+  assertEquals(o.cli.hide, ["*.pem", "secrets/"]);
+  assertEquals(o.cli.reveal, ["public.pem"]);
+  assertEquals(o.cli.hideSecrets, false);
+  assertEquals(o.cli.hideGitignored, false);
+});
+
 Deno.test("parseArgs: --skill flag collects into skills array", async () => {
   const o = await parseArgs(DEFAULTS, ["--skill", "git", "--skill", "testing"]);
   assertEquals(o.skills, ["git", "testing"]);

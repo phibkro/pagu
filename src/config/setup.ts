@@ -134,6 +134,24 @@ function makeCommand() {
       "Apply a skill (repeatable; folds after roles).",
       { collect: true },
     )
+    .option(
+      "--hide <glob:string>",
+      "Glob to hide from the runner + agent read (repeatable).",
+      { collect: true },
+    )
+    .option(
+      "--reveal <glob:string>",
+      "Glob to un-hide, overriding a hide/secret/gitignore match (repeatable).",
+      { collect: true },
+    )
+    .option(
+      "--no-hide-secrets",
+      "Don't hide the built-in default-secret globs.",
+    )
+    .option(
+      "--no-hide-gitignored",
+      "Don't hide .gitignore'd paths in repo mode.",
+    )
     .option("--advisor", "Enable the advisory reviewer at the approval gate.")
     .option(
       "--advisor-provider <preset:string>",
@@ -172,6 +190,12 @@ export async function parseArgs(
   if (options.advisor) cli.advisor = true;
   if (options.advisorProvider) cli.advisorProvider = options.advisorProvider;
   if (options.advisorModel) cli.advisorModel = options.advisorModel;
+  if (options.hide) cli.hide = options.hide;
+  if (options.reveal) cli.reveal = options.reveal;
+  // cliffy: --no-hide-secrets → hideSecrets === false (absent → true). Set the
+  // layer only when explicitly negated, so an absent flag leaves no opinion.
+  if (options.hideSecrets === false) cli.hideSecrets = false;
+  if (options.hideGitignored === false) cli.hideGitignored = false;
   return {
     base,
     cli,

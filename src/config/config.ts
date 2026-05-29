@@ -31,6 +31,14 @@ export interface PaguConfig {
   advisorModel?: string;
   /** Pluggable handler paths, keyed by injection slot. */
   handlers?: { "before-approve"?: string[] };
+  /** Glob patterns (gitignore syntax) to hide from the runner + agent read. */
+  hide?: string[];
+  /** Glob patterns to un-hide (subtract from the concealment set). */
+  reveal?: string[];
+  /** Hide the built-in default-secrets globs (default true). */
+  hideSecrets?: boolean;
+  /** Hide `.gitignore`'d paths in repo mode — the VCS source (default true). */
+  hideGitignored?: boolean;
 }
 
 /**
@@ -53,6 +61,10 @@ export interface ConfigLayer {
   advisorModel?: string;
   allowedTasks?: string[];
   handlers?: { "before-approve"?: string[] };
+  hide?: string[];
+  reveal?: string[];
+  hideSecrets?: boolean;
+  hideGitignored?: boolean;
 }
 
 /** Provider presets. Most speak OpenAI Chat Completions; anthropic uses its
@@ -81,6 +93,8 @@ export const DEFAULTS: PaguConfig = {
   provider: "ollama",
   model: "qwen3.5:9b",
   allow: [],
+  hideSecrets: true,
+  hideGitignored: true,
 };
 
 /** Resolve a config to its API root + key-env-var (preset, overridable).
@@ -163,6 +177,12 @@ export function mergeConfig(base: PaguConfig, parsed: unknown): PaguConfig {
         out.handlers = { "before-approve": h["before-approve"] };
       }
     }
+    if (isStringArray(p.hide)) out.hide = p.hide;
+    if (isStringArray(p.reveal)) out.reveal = p.reveal;
+    if (typeof p.hideSecrets === "boolean") out.hideSecrets = p.hideSecrets;
+    if (typeof p.hideGitignored === "boolean") {
+      out.hideGitignored = p.hideGitignored;
+    }
   }
   return out;
 }
@@ -217,6 +237,14 @@ export function mergeLayer(a: ConfigLayer, b: ConfigLayer): ConfigLayer {
   if (beforeApprove !== undefined) {
     out.handlers = { "before-approve": beforeApprove };
   }
+  const hide = unionLists(a.hide, b.hide);
+  if (hide !== undefined) out.hide = hide;
+  const reveal = unionLists(a.reveal, b.reveal);
+  if (reveal !== undefined) out.reveal = reveal;
+  const hideSecrets = b.hideSecrets ?? a.hideSecrets;
+  if (hideSecrets !== undefined) out.hideSecrets = hideSecrets;
+  const hideGitignored = b.hideGitignored ?? a.hideGitignored;
+  if (hideGitignored !== undefined) out.hideGitignored = hideGitignored;
   return out;
 }
 
@@ -255,6 +283,12 @@ export function toLayer(data: Record<string, unknown>): ConfigLayer {
     if (isStringArray(h["before-approve"])) {
       l.handlers = { "before-approve": h["before-approve"] };
     }
+  }
+  if (isStringArray(data.hide)) l.hide = data.hide;
+  if (isStringArray(data.reveal)) l.reveal = data.reveal;
+  if (typeof data.hideSecrets === "boolean") l.hideSecrets = data.hideSecrets;
+  if (typeof data.hideGitignored === "boolean") {
+    l.hideGitignored = data.hideGitignored;
   }
   return l;
 }

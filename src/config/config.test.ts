@@ -12,6 +12,30 @@ import {
   toLayer,
 } from "./config.ts";
 
+Deno.test("mergeLayer: hide/reveal union, hide* toggles right-bias", () => {
+  const a: ConfigLayer = { hide: ["*.pem"], hideSecrets: true };
+  const b: ConfigLayer = {
+    hide: [".env"],
+    reveal: ["public.pem"],
+    hideSecrets: false,
+    hideGitignored: false,
+  };
+  const m = mergeLayer(a, b);
+  assertEquals([...(m.hide ?? [])].sort(), ["*.pem", ".env"]);
+  assertEquals(m.reveal, ["public.pem"]);
+  assertEquals(m.hideSecrets, false); // right (later) layer wins
+  assertEquals(m.hideGitignored, false);
+});
+
+Deno.test("toLayer keeps the concealment fields, drops ill-typed", () => {
+  assertEquals(
+    toLayer({ hide: [".env"], reveal: ["x"], hideSecrets: false, junk: 1 }),
+    { hide: [".env"], reveal: ["x"], hideSecrets: false },
+  );
+  assertEquals(toLayer({ hide: [1, 2] }), {}); // not strings → dropped
+  assertEquals(toLayer({ hideGitignored: "no" }), {}); // not boolean → dropped
+});
+
 Deno.test("toLayer keeps well-typed known fields, drops the rest", () => {
   assertEquals(
     toLayer({
@@ -34,6 +58,8 @@ function normalize(l: ConfigLayer): ConfigLayer {
   if (n.allow) n.allow = [...new Set(n.allow)].sort();
   if (n.write) n.write = [...new Set(n.write)].sort();
   if (n.allowedTasks) n.allowedTasks = [...new Set(n.allowedTasks)].sort();
+  if (n.hide) n.hide = [...new Set(n.hide)].sort();
+  if (n.reveal) n.reveal = [...new Set(n.reveal)].sort();
   return n;
 }
 const eqLayer = (a: ConfigLayer, b: ConfigLayer) =>
@@ -56,6 +82,10 @@ const layerG: fc.Arbitrary<ConfigLayer> = fc.record({
   advisorProvider: fc.constantFrom("ollama", "openai"),
   advisorModel: fc.constantFrom("a", "b"),
   allowedTasks: grant(["t1", "t2"]),
+  hide: grant(["*.pem", ".env"]),
+  reveal: grant(["public.pem"]),
+  hideSecrets: fc.boolean(),
+  hideGitignored: fc.boolean(),
 }, { requiredKeys: [] });
 
 Deno.test("mergeLayer monoid: identity — left and right (property)", () => {
@@ -129,6 +159,8 @@ Deno.test("known fields override, unknown keys ignored", () => {
     baseURL: "https://example/v1",
     apiKeyEnv: "MY_KEY",
     allow: ["/home/me/docs"],
+    hideSecrets: true, // seeded by DEFAULTS
+    hideGitignored: true,
   });
 });
 
