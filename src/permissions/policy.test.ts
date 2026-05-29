@@ -2,13 +2,25 @@ import { assertEquals } from "@std/assert";
 import { parsePermission } from "./envelope.ts";
 import { buildEnvelope, shouldAutoApprove } from "./policy.ts";
 
-Deno.test("buildEnvelope maps read/write paths to allow perms (no repo)", async () => {
-  const env = await buildEnvelope({ read: ["/a"], write: ["/b"] });
+Deno.test("buildEnvelope maps read/write paths to allow perms (no deny)", () => {
+  const env = buildEnvelope({ read: ["/a"], write: ["/b"] });
   assertEquals(env.allow, [
     { flag: "read", scope: "/a" },
     { flag: "write", scope: "/b" },
   ]);
   assertEquals(env.deny, []);
+});
+
+Deno.test("buildEnvelope maps explicit deny scopes to write-denies", () => {
+  const env = buildEnvelope({
+    read: ["/repo"],
+    write: ["/repo"],
+    deny: ["/repo/.env", "/repo/node_modules"],
+  });
+  assertEquals(env.deny, [
+    { flag: "write", scope: "/repo/.env" },
+    { flag: "write", scope: "/repo/node_modules" },
+  ]);
 });
 
 Deno.test("shouldAutoApprove: gated by enabled and envelope membership", () => {

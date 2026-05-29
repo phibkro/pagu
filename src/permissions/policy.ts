@@ -1,28 +1,31 @@
-// pure: shouldAutoApprove; effect: buildEnvelope (git)
+// pure
 import { type Envelope, type Permission, withinEnvelope } from "./envelope.ts";
-import { gitignoreDenies } from "./gitignore.ts";
 
 /**
  * A run's permission policy: build its capability envelope and gate
  * auto-approve. (No relation to a conversation `session` — see sessions.ts.)
  *
- * Envelope: `read` paths the agent + scripts may read;
- * `write` paths scripts may write; when `repo` is set (repo mode), the
- * repo's `.gitignore`'d paths are added as denies so secrets stay
- * protected even though the whole repo is granted.
+ * Envelope: `read` paths the agent + scripts may read; `write` paths scripts
+ * may write; `deny` paths (the concealment set's write-protection — see
+ * `concealment.ts`) become write-denies so concealed secrets stay protected
+ * even though the whole repo is granted. Pure: the caller resolves `deny`
+ * (the git/glob enumeration is the effectful shell in setup.ts).
  */
 export interface EnvelopeSpec {
   read: string[];
   write: string[];
-  repo?: string;
+  deny?: string[];
 }
 
-export async function buildEnvelope(spec: EnvelopeSpec): Promise<Envelope> {
+export function buildEnvelope(spec: EnvelopeSpec): Envelope {
   const allow: Permission[] = [
     ...spec.read.map((scope): Permission => ({ flag: "read", scope })),
     ...spec.write.map((scope): Permission => ({ flag: "write", scope })),
   ];
-  const deny = spec.repo ? await gitignoreDenies(spec.repo) : [];
+  const deny: Permission[] = (spec.deny ?? []).map((scope) => ({
+    flag: "write",
+    scope,
+  }));
   return { allow, deny };
 }
 

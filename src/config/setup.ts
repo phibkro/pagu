@@ -13,6 +13,7 @@ import {
 } from "./config.ts";
 import { type Envelope, formatFlag } from "../permissions/envelope.ts";
 import { buildEnvelope } from "../permissions/policy.ts";
+import { gitignoreDenies } from "../permissions/gitignore.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
@@ -390,22 +391,27 @@ export async function buildContext(
     const writePaths = [...roleWrites, ...(repo ? [repo] : [])].map((p) =>
       resolve(p)
     );
-    envelope = await buildEnvelope({
+    // The VCS source: .gitignore'd paths in repo mode (the effectful shell —
+    // git enumeration; buildEnvelope stays pure). Toggled by hideGitignored.
+    const ignoredScopes = (repo && (effective.hideGitignored ?? true))
+      ? [
+        ...new Set(
+          (await gitignoreDenies(repo)).flatMap((d) =>
+            "scope" in d && d.scope !== undefined ? [d.scope] : []
+          ),
+        ),
+      ]
+      : [];
+    envelope = buildEnvelope({
       read: readPaths,
       write: writePaths,
-      repo,
+      deny: ignoredScopes,
     });
     // deny-WRITE only at runtime (Deno --deny-read of a child breaks readDir
-    // of its parent); deny-read stays in the envelope for auto-approve gating
-    // and is enforced at the application layer in the respond phase (handleRead).
-    denyFlags = (envelope.deny ?? [])
-      .filter((p) => p.flag === "write")
-      .map((p) => formatFlag(p, "deny"));
-    liveGitignored = (envelope.deny ?? [])
-      .filter((p): p is { flag: "read"; scope: string } =>
-        p.flag === "read" && (p as { scope?: string }).scope !== undefined
-      )
-      .map((p) => p.scope);
+    // of its parent); read-concealment is enforced at the OS-sandbox tier
+    // (the mask) + the respond phase (handleRead refusal).
+    denyFlags = (envelope.deny ?? []).map((p) => formatFlag(p, "deny"));
+    liveGitignored = ignoredScopes;
 
     agentsText = [
       agents,
