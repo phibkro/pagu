@@ -8,3 +8,8 @@ pagu.log.md
 # Local Claude Code config; .claude/CLAUDE.md is a symlink → AGENTS.md so
 # Claude agents in this repo inherit our operating manual.
 .claude/
+
+coverage/
+
+# macOS Finder metadata (created in any directory).
+.DS_Store
