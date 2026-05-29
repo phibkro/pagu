@@ -30,6 +30,38 @@ Deno.test("planVMLaunch: empty modelHost → offline egress ([])", () => {
   assertEquals(scope.egress, []);
 });
 
+Deno.test("planVMLaunch: maps concealed host paths under cwd to guest readMask", () => {
+  const { scope } = planVMLaunch({
+    task: "t",
+    passthroughFlags: [],
+    cwd: "/home/u/infra",
+    modelHost: "h:1",
+    image: "i",
+    mode: "ephemeral",
+    conceal: [
+      { path: "/home/u/infra/.env", isDir: false },
+      { path: "/home/u/infra/secrets", isDir: true },
+      { path: "/elsewhere/.env", isDir: false }, // outside the mount → dropped
+    ],
+  });
+  assertEquals(scope.readMask, [
+    { guestPath: "/work/.env", isDir: false },
+    { guestPath: "/work/secrets", isDir: true },
+  ]);
+});
+
+Deno.test("planVMLaunch: no conceal → no readMask", () => {
+  const { scope } = planVMLaunch({
+    task: "t",
+    passthroughFlags: [],
+    cwd: "/x",
+    modelHost: "h:1",
+    image: "i",
+    mode: "ephemeral",
+  });
+  assertEquals(scope.readMask, []);
+});
+
 Deno.test("planVMLaunch: custom guest mount point", () => {
   const { scope, argv } = planVMLaunch({
     task: "t",

@@ -56,3 +56,33 @@ Deno.test("podman: workdir → --workdir (guest cwd for the pagu entrypoint)", (
   );
   assertEquals(none.includes("--workdir"), false);
 });
+
+Deno.test("podman: readMask masks a concealed file (/dev/null) and dir (tmpfs)", () => {
+  const { args } = wrapForVM(
+    "podman",
+    ARGV,
+    scope({
+      readMask: [
+        { guestPath: "/work/.env", isDir: false },
+        { guestPath: "/work/secrets", isDir: true },
+      ],
+    }),
+  );
+  const s = args.join(" ");
+  // a concealed file → /dev/null bound read-only over it (read returns EOF)
+  assertStringIncludes(s, "--volume /dev/null:/work/.env:ro");
+  // a concealed dir → empty tmpfs overlay
+  assertStringIncludes(s, "--tmpfs /work/secrets");
+});
+
+Deno.test("podman: masks come AFTER the volume mounts (so they overlay it)", () => {
+  const { args } = wrapForVM(
+    "podman",
+    ARGV,
+    scope({ readMask: [{ guestPath: "/work/.env", isDir: false }] }),
+  );
+  const s = args.join(" ");
+  const mountAt = s.indexOf("--volume /home/u/infra:/work");
+  const maskAt = s.indexOf("--volume /dev/null:/work/.env:ro");
+  assertEquals(mountAt < maskAt, true);
+});

@@ -29,6 +29,12 @@ export interface VMScope {
   mode: "ephemeral" | "persistent";
   /** Guest cwd for the pagu entrypoint (the mount point it operates on). */
   workdir?: string;
+  /** Concealed GUEST paths to mask from the guest's view — tier-2's read-masking
+   *  replacement (bwrap can't nest in a rootless container). A file → `/dev/null`
+   *  bound over it (read returns EOF); a dir → an empty tmpfs overlay. The
+   *  secret never enters the guest. Masks overlay the volume mounts, so they
+   *  come AFTER them. */
+  readMask?: { guestPath: string; isDir: boolean }[];
 }
 
 /**
@@ -46,6 +52,13 @@ export function wrapForVM(
     args.push("--env", "PAGU_IN_VM=1"); // recursion guard (see detect.ts)
     if (scope.workdir) args.push("--workdir", scope.workdir);
     for (const m of scope.mounts) args.push("--volume", `${m.host}:${m.guest}`);
+    // Masks LAST so they overlay the rw volume: a dir → empty tmpfs, a file →
+    // /dev/null bound read-only (read returns EOF → empty). Mirrors bwrap's
+    // readMask, applied at the mount layer (tier-2 can't nest in-guest).
+    for (const m of scope.readMask ?? []) {
+      if (m.isDir) args.push("--tmpfs", m.guestPath);
+      else args.push("--volume", `/dev/null:${m.guestPath}:ro`);
+    }
     if (scope.egress.length === 0) args.push("--network", "none");
     args.push(scope.image, ...argv);
     return { command: "podman", args };
