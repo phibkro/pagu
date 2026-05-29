@@ -15,6 +15,33 @@ import {
 } from "./sessions.ts";
 import { makeSessionStore, type SessionStore } from "./session-store.ts";
 
+Deno.test("makeSessionStore.persist is atomic (temp+rename): canonical complete, no .tmp leftover", async () => {
+  const base = await Deno.makeTempDir({ prefix: "pagu-store-atomic-" });
+  try {
+    const path = sessionPath(base, "s1");
+    const store = makeSessionStore(base, {
+      path,
+      meta: { created: "2026-01-01T00:00:00.000Z" },
+      entries: [],
+    });
+    store.log.push({ kind: "message", role: "user", text: "hi" });
+    store.persist();
+
+    // The canonical file is the full, round-trippable content (rename landed).
+    const { entries } = await loadSession(path);
+    assertEquals(entries, store.log);
+    // No temp artifact survives a successful persist (rename consumed it).
+    let tmpExists = false;
+    try {
+      await Deno.stat(`${path}.tmp`);
+      tmpExists = true;
+    } catch { /* expected: gone */ }
+    assertEquals(tmpExists, false);
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+});
+
 Deno.test("sessionsDir / sessionPath compose under .pagu/sessions", () => {
   assertEquals(sessionsDir("/proj"), "/proj/.pagu/sessions");
   assertEquals(sessionPath("/proj", "abc"), "/proj/.pagu/sessions/abc.log.md");

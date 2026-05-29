@@ -39,7 +39,10 @@ export type ApprovalOutcome =
   | "approve"
   | "reject"
   | "defer"
-  | { grant: { ttlMs: number } };
+  // Tagged (not a bare `{ grant }`) so consumers discriminate on `.kind` rather
+  // than `typeof === "object"` — a future object-shaped outcome stays
+  // distinguishable instead of being silently caught by the type check.
+  | { kind: "grant"; ttlMs: number };
 
 /** The one I/O seam for the human review gate (stdin / TUI prompt / remote).
  * Only called when a proposal is NOT auto-approvable. The perms it would run

@@ -162,6 +162,15 @@ The agent process only ever holds read + net-to-model; it never holds write or
 run. After a run, the result re-enters the log and the loop continues (the model
 wraps up or proposes the next step), bounded by a turn limit.
 
+Two operational bounds make a long-lived/unattended run safe: a **per-run
+wall-clock ceiling** (`RUN_TIMEOUT_MS`, default 120s — both cage and runner kill
+a wedged script and surface a `timed out` result, so a hang can't pin the
+process), and an **atomic log write** (`persist` writes a sibling temp then
+renames over the canonical file — a crash never leaves the event store
+half-written; the synchronous write is also load-bearing for `submitDecision`'s
+double-submit safety). Both are partial answers to #16's "scheduled agents"
+needs; an aggregate budget/iteration ceiling is still open.
+
 Both Cage and Run execute the script with **cwd = the repo (repo mode) else the
 launch directory** (`ctx.cwd`; for `run_task`/`invoke_skill`, the project root —
 those are project tasks), never the throwaway script scratch — so a relative

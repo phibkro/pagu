@@ -49,10 +49,20 @@ export function makeSessionStore(
 
   const persist = (): void => {
     Deno.mkdirSync(dirname(active.path), { recursive: true });
+    // Atomic: write to a sibling temp, then rename over the canonical path. A
+    // crash mid-write corrupts only the temp; the canonical file stays the last
+    // complete version (the event store must never be observed half-written —
+    // `loadSession` would silently parse a torn file to an empty log). The temp
+    // suffix isn't `.log.md`, so a crash-orphaned one can't pollute listSessions.
+    // **Synchronous** is load-bearing: submitDecision's resolve-only idempotency
+    // relies on the decision being persisted before any `await` yields (no
+    // concurrent double-run window). Keep it sync.
+    const tmp = `${active.path}.tmp`;
     Deno.writeTextFileSync(
-      active.path,
+      tmp,
       serializeFrontmatter(active.meta) + serializeLog(log),
     );
+    Deno.renameSync(tmp, active.path);
     events.notify();
   };
   const switchTo = (

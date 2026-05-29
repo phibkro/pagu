@@ -26,6 +26,10 @@ export interface RunResult {
   sandbox: SandboxKind;
 }
 
+/** Default wall-clock ceiling for a single run/cage (ms). Generous enough for
+ * real work (installs, network), short enough that a true hang is bounded. */
+export const RUN_TIMEOUT_MS = 120_000;
+
 /** `allow-read=./x` -> `--allow-read=./x` (idempotent on a leading `--`). */
 function toFlag(p: string): string {
   return p.startsWith("--") ? p : `--${p}`;
@@ -52,6 +56,11 @@ export async function runScript(opts: {
    *  confinement. Canonicalized + classified here, then masked by the OS
    *  sandbox. Ignored at tier 1 ("none"). */
   readMask?: string[];
+  /** Wall-clock ceiling (ms). On expiry the child is killed and the run reports
+   *  a nonzero exit + a "timed out" stderr — so a wedged script (infinite loop,
+   *  hung network read) can't pin the cage or a long-lived `pagu serve` forever.
+   *  Defaults to {@link RUN_TIMEOUT_MS}. */
+  timeoutMs?: number;
 }): Promise<RunResult> {
   const flags = opts.perms.map(toFlag);
   const ranWith = ["--no-prompt", ...flags];
@@ -100,16 +109,35 @@ export async function runScript(opts: {
       stderrText += c;
     }
   };
-  await Promise.all([drainStdout(), drainStderr()]);
-  const { code } = await child.status;
+  // Wall-clock kill: a wedged script must not pin the cage / a long-lived serve.
+  // SIGKILL the wrapper (bwrap/sandbox-exec die with it, reaping the child); the
+  // drains then end as the pipes close. The result is surfaced as an error so
+  // classifyRun treats it as a bug (not needs-perms) and it lands in the log.
+  const timeoutMs = opts.timeoutMs ?? RUN_TIMEOUT_MS;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try {
+      child.kill("SIGKILL");
+    } catch { /* already exited */ }
+  }, timeoutMs);
 
-  return {
-    exit: code,
-    stdout: stdoutText,
-    stderr: stderrText,
-    ranWith,
-    sandbox: kind,
-  };
+  try {
+    await Promise.all([drainStdout(), drainStderr()]);
+    const { code } = await child.status;
+    if (timedOut) {
+      stderrText += `\npagu: run timed out after ${timeoutMs}ms (killed)`;
+    }
+    return {
+      exit: timedOut ? 124 : code, // 124 = conventional timeout exit
+      stdout: stdoutText,
+      stderr: stderrText,
+      ranWith,
+      sandbox: kind,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Resolve granted write perms to existing mount points: bind the target,

@@ -1,6 +1,33 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { runScript } from "./run.ts";
 import { detectSandbox } from "./sandbox.ts";
+
+Deno.test("kills a script that exceeds the run timeout (no unbounded hang)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const script = `${dir}/hang.ts`;
+    // A pending timer keeps Deno's event loop alive (else the runtime self-exits
+    // with "Top-level await never resolved") — so this genuinely hangs until the
+    // run timeout kills it.
+    await Deno.writeTextFile(
+      script,
+      `await new Promise((r) => setTimeout(r, 9e6));`,
+    );
+    const start = Date.now();
+    const r = await runScript({
+      scriptPath: script,
+      perms: [],
+      sandbox: "none",
+      timeoutMs: 300,
+    });
+    const elapsed = Date.now() - start;
+    assert(elapsed < 5000, `expected prompt kill, took ${elapsed}ms`);
+    assert(r.exit !== 0, "a timed-out run must report a nonzero exit");
+    assertStringIncludes(r.stderr, "timed out"); // surfaced for the result entry
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
 
 // These tests spawn real `deno` subprocesses, so run the suite with:
 //   deno test --allow-run --allow-read --allow-write

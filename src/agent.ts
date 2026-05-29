@@ -213,9 +213,10 @@ export async function resumePending(
   );
   const outcome = await ctx.approve(pending.script, pending.perms);
   if (outcome === "defer") return true; // still pending — left for next time
-  if (typeof outcome === "object") { // { grant }: approve + establish a grant
+  if (typeof outcome === "object") { // the tagged `{ kind: "grant" }` outcome
+    // approve + establish a standing grant for the proposal's exact perms
     ctx.log.push(
-      makeGrant(ctx.log, pending.perms, Date.now(), outcome.grant.ttlMs),
+      makeGrant(ctx.log, pending.perms, Date.now(), outcome.ttlMs),
     );
     ctx.persist();
     await resumeTask(ctx, "approve", signal);

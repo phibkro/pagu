@@ -182,8 +182,8 @@ export const approve: Handler = async (p) => {
   // A `{grant}` outcome approves THIS proposal and establishes a standing grant
   // for its perms — log the grant before the decision (its id is referenced for
   // audit/revocation).
-  if (typeof outcome === "object") {
-    const g = makeGrant(p.ctx.log, perms, Date.now(), outcome.grant.ttlMs);
+  if (typeof outcome === "object") { // the tagged `{ kind: "grant" }` outcome
+    const g = makeGrant(p.ctx.log, perms, Date.now(), outcome.ttlMs);
     p.ctx.log.push(g);
     p.ctx.persist();
     p.ctx.ui.show(`· standing grant ${g.id} until ${g.expires}`);

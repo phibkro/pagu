@@ -69,6 +69,40 @@ Deno.test("resumeTask: approve runs the pending proposal reconstructed from the 
   }
 });
 
+Deno.test("submitDecision: concurrent approvals resolve exactly once (TOCTOU-safe)", async () => {
+  // The single-writer / "double-submit is safe" claim rests on an UNNAMED timing
+  // invariant: resumeTask pushes the decision + persists SYNCHRONOUSLY before its
+  // first await (performRun). So a second concurrent submit, running only after
+  // the first yields, sees the decision already in the log and gets not-pending —
+  // never a second run. This test pins that invariant (it would fail if persist
+  // became async or an await crept in before the decision push).
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo);
+    const out = `${repo}/c.txt`;
+    seedPending(
+      ctx,
+      `await Deno.writeTextFile(${JSON.stringify(out)}, "ran");`,
+      [`allow-write=${repo}`, "allow-net=example.com"],
+    );
+
+    const [a, b] = await Promise.all([
+      submitDecision(ctx, "s1", "approve"),
+      submitDecision(ctx, "s1", "approve"),
+    ]);
+
+    assertEquals([a, b].sort(), ["not-pending", "resolved"]);
+    // Exactly one decision + one result ⇒ the script ran once, not twice.
+    assertEquals(ctx.log.filter((e) => e.kind === "decision").length, 1);
+    assertEquals(
+      ctx.log.filter((e) => e.kind === "result" && e.script === "s1").length,
+      1,
+    );
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
 Deno.test("resumeTask: reject records a reject decision and never runs", async () => {
   const repo = await gitRepo();
   try {
@@ -170,7 +204,7 @@ Deno.test("resumePending: no pending proposal returns false", async () => {
 Deno.test("resumePending with a {grant} outcome logs a standing grant and runs the proposal", async () => {
   const repo = await gitRepo();
   try {
-    const ctx = await ctxFor(repo, { grant: { ttlMs: 3_600_000 } });
+    const ctx = await ctxFor(repo, { kind: "grant", ttlMs: 3_600_000 });
     const out = `${repo}/g.txt`;
     seedPending(
       ctx,
