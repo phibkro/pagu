@@ -135,8 +135,9 @@ Flags (run `pagu --help` for the full list; for shell completions,
 - `--log <file>` — use an explicit log file, bypassing the session store.
 
 TUI slash commands: `/roles`, `/skills`, `/provider`, `/model`, `/advisor`,
-`/sessions`, `/new`, `/open`, `/fork`, `/rename`, `/history`, `/log`, `/clear`,
-`/exit`. All tab-complete.
+`/grants`, `/revoke`, `/sessions`, `/new`, `/open`, `/fork`, `/rename`,
+`/history`, `/log`, `/clear`, `/exit`. All tab-complete. `/grants` lists active
+standing approvals (auto-approve grants); `/revoke <id>` ends one early.
 
 ## Skills
 

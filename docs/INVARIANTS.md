@@ -85,14 +85,22 @@ integration checks, not property tests.
 ### #3 — The human gate is the backstop of the capability ladder
 
 Every novel effect (`write`) reaches a human y/n; auto-approve fires _only_
-within a pre-vetted envelope / matched skill ceiling / matched grammar. The gate
-is never removed, only made rare.
+within a pre-vetted envelope / matched skill ceiling / matched grammar / **an
+active standing grant**. The gate is never removed, only made rare.
 
 `[structural]` + `[prose: unchecked]` — the gate's _presence_ is structural (the
 runner will not run without a decision); the claim that auto-approve _only_
 fires within the envelope is the _composition never widens_ law below. The
 residual **un-checkable** part is the human's judgment at the gate itself — see
-_the residual recogniser_ under un-checked claims.
+_the residual recogniser_ under un-checked claims. **Standing grants** (shipped
+2026-05-29, `src/approval.ts`) extend the auto-approve surface but not the
+_authority class_: a grant is amortized gate authority at the decision layer
+(`shouldAutoApprove`), human-authored, **time-boxed**, logged, revocable, and
+checked against the session deny — so it never widens the envelope (the
+never-widen law governs config composition, which grants don't touch) and never
+reaches a concealed path. `shouldAutoApprove`'s grant path is property-tested
+(`permissions/policy.test.ts`); creation/revocation are unit + integration
+tested.
 
 ### #4 — Command policy is deny-by-default
 
