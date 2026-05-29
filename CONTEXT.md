@@ -916,6 +916,19 @@ above.)
     system state X, which may have moved") so a 3am-incident fix isn't blindly
     applied at 9am. Bounds the residual-human -recogniser risk (Threat model) by
     giving the rare gate better async framing rather than more frequent prompts.
+    - **Design spec'd 2026-05-29**
+      (`docs/specs/2026-05-29-async-approval-design.md`, brainstorm→grill). The
+      deep slice — durable suspend/resume — resolves to: `Flow` stays binary
+      (`defer` ends the turn `done`, leaving the proposal pending); pending is a
+      **pure fold** of the log (`script`+`perms`, no `decision`); resume is
+      re-entrant via a second entrypoint `resumeTask` (reconstructs the run from
+      the logged entries) alongside `runTask`; the `Approver` returns
+      `ApprovalOutcome = approve|reject|defer` (vs the log's
+      `verdict = approve|reject|expired`); cage-discovered perms are persisted
+      as the long-latent `perms` entry so a pending proposal is self-contained;
+      single-writer preserved (a remote approver submits an intent, the runner
+      appends). **Deferred:** remote write-back transport, the
+      standing-approvals temporary ceiling, the staleness marker. Next: TDD.
 16. **Scheduled short-lived agents (cron for contained agents).** The
     operationally useful shape of "long-running agent" is **not** an immortal
     process — that accumulates two unbounded quantities (context drift +

@@ -389,6 +389,36 @@ Nix module system (declare options locally, `mkMerge` centrally). Not a generic
 framework — codify one only at a third instance (rule of three; CLI flags / TUI
 slash+pickers / ACP slash+advertise are circling it).
 
+### The approval gate has a lifecycle (derived from the log)
+
+The human gate is not a momentary yes/no — it has a **lifecycle the log encodes
+as events**, so an approval can outlive a turn (or a process) and a
+non-co-located approver fits. A **proposal** (a `script` the agent authored,
+awaiting the gate) moves: `proposed → pending → granted | denied | expired`. The
+state is **derived, not stored** — a `script` + its `perms` with no following
+`decision` _is_ pending (`pendingProposal(log)` is a pure fold). Two
+vocabularies that look alike but aren't:
+
+- **`ApprovalOutcome`** = what a human can answer _now_:
+  `approve | reject |
+  **defer**`. `defer` means "not now" — it persists the
+  pending proposal and ends the turn (the loop stays binary; `defer` is a
+  `done`, not a third `Flow`).
+- **`Decision.verdict`** = the _terminal recorded_ set:
+  `approve | reject |
+  **expired**`. `defer` is not a verdict (it's the
+  _absence_ of a decision); `expired` is a verdict but **system-generated** (a
+  pending proposal past its TTL), not a human answer.
+
+Resuming is re-entrant, not a resumed stack: `runTask` starts a new task (only
+when nothing is pending), `resumeTask` resolves the one pending proposal —
+reconstructing the run from the logged `script`+`perms`. The decision is
+**binary by the nature of the effect** (run the one authored script, or don't);
+richer shapes are compositions, not new verdicts — reject-with-feedback is
+`reject` + a follow-up message; allow-for-1h is a _standing approval_ (a
+human-authored temporary ceiling, reusing the envelope lattice — not a bypass).
+Full design: `docs/specs/2026-05-29-async-approval-design.md`.
+
 ## Derived state and inference chains
 
 A recurring pattern in pagu: effectful inference reads source files and produces
