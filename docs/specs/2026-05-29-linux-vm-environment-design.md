@@ -18,10 +18,11 @@ boundary that A's backup tarball stood in for.
 ## What B is
 
 A new **outer isolation tier** that wraps an entire pagu invocation in a
-reproducible Linux guest, plus the image build and snapshot/restore tooling. It
-is **purely additive**: pagu's trusted core is untouched; inside the guest pagu
-still runs its full tier-1 (Deno perms) + tier-2 (bwrap) per script. B is
-wrapper + image + snapshot — not a change to the security core.
+reproducible Linux guest, plus the image build tooling. It is **purely
+additive**: pagu's trusted core is untouched; inside the guest pagu still runs
+its full tier-1 (Deno perms) + tier-2 (bwrap) per script. B is launcher + image
+— not a change to the security core. (Snapshot/restore tooling is a deferred
+persistent-mode concern — ephemeral restore is just recreate-from-image.)
 
 ## Core decisions (settled in brainstorm)
 
@@ -34,7 +35,8 @@ wrapper + image + snapshot — not a change to the security core.
    second tier on the same rootfs.
 3. **Composition** — **purely additive outer layer**: the VM wraps pagu
    unchanged; tiers 1–2 stay exactly as they are (true nested defense in depth).
-   The VM is _also_ the **snapshot/restore boundary**.
+   The VM is _also_ the **restore boundary** (recreate-from-image for ephemeral;
+   real snapshot/restore deferred to persistent mode).
 4. **What crosses the boundary:**
    - _Filesystem:_ only explicitly **threaded-in dirs** are mounted (Podman
      `--volume`; virtiofs on the Firecracker tier) — blast radius = the mounts.
@@ -63,7 +65,7 @@ it. So B is a **host-side launcher**, not an in-loop tier.
 
 ```
 host launcher (B):  pagu vm <task>  → detectVM → podman | firecracker(deferred) | none
-                       └─ podman run --volume <dirs> --network none  pagu-image  pagu <task>
+                       └─ podman run --volume <dirs> --egress=<model-host-only>  pagu-image  pagu <task>
                                                                                     │
   ───────────────────────────────── guest boundary ───────────────────────────────┤
   pagu (inside guest, runs exactly as today; detectVM === none → no recursion)      │
