@@ -10,6 +10,14 @@ release milestone, newest first.
 
 ### Added
 
+- **`/model` lists the provider's models** — `/model` with no args shows the
+  provider's available model ids (current marked `*`); `/model refresh`
+  re-fetches; `/model <name>` still sets. The list is **fetched in a net-scoped
+  subprocess** (`phases/models.ts`, `--allow-net=<provider host>` only) and
+  **cached** (cleared on a provider switch) — so the orchestrator stays net-less
+  (it never makes the call itself) and repeat `/model` is instant. `fetchModels`
+  (OpenAI `GET /models`, Anthropic `GET /v1/models`) added to the provider
+  client. (`feat(acp)`)
 - **`/roles` + `/skills` over ACP** — both are now shared `SlashCommand`s with a
   **text form** (no-arg lists available + marks active; `<names…>` applies the
   group via `ctx.setRoles`/`setSkills`), so they're advertised and routed over

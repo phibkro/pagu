@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { chat } from "./chat.ts";
+import { chat, fetchModels } from "./chat.ts";
 
 // Hand-rolled HTTP mock (aimock pattern), OpenAI Chat Completions shape.
 // Run with: deno test --allow-net
@@ -33,6 +33,29 @@ Deno.test("parses content + tool calls (arguments is a JSON string)", async () =
     assertEquals(seenAuth, "Bearer sk-x");
     assertEquals(r.content, "looking");
     assertEquals(r.toolCalls, [{ name: "read", args: { path: "./photos" } }]);
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("fetchModels (openai): GETs /models with Bearer, returns ids", async () => {
+  let seenPath = "";
+  let seenAuth: string | null = null;
+  const server = Deno.serve({ port: 0, onListen() {} }, (req) => {
+    seenPath = new URL(req.url).pathname;
+    seenAuth = req.headers.get("authorization");
+    return Response.json({ data: [{ id: "model-a" }, { id: "model-b" }] });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const models = await fetchModels({
+      baseURL: `http://localhost:${port}/v1`,
+      model: "m",
+      apiKey: "sk-x",
+    });
+    assertEquals(seenPath, "/v1/models");
+    assertEquals(seenAuth, "Bearer sk-x");
+    assertEquals(models, ["model-a", "model-b"]);
   } finally {
     await server.shutdown();
   }

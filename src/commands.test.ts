@@ -63,6 +63,47 @@ Deno.test("/roles <names> applies the group via ctx.setRoles", async () => {
   assertEquals(applied, ["dev", "rust"]);
 });
 
+Deno.test("/model: no args fetches when cache empty; refresh forces re-fetch", async () => {
+  const shown: string[] = [];
+  let fetches = 0;
+  let cache: string[] = [];
+  const ctx = {
+    provider: { model: "m1" },
+    models: () => cache,
+    fetchModels: () => {
+      fetches++;
+      cache = ["m1", "m2"];
+      return Promise.resolve(cache);
+    },
+    ui: { show: (m: string) => shown.push(m), status: () => {} },
+  } as unknown as AgentContext;
+
+  await runCommand(slashCommands, "/model", ctx); // cache empty → fetch
+  assertEquals(fetches, 1);
+  assertStringIncludes(shown.join("\n"), "m2");
+
+  await runCommand(slashCommands, "/model", ctx); // cache warm → no fetch
+  assertEquals(fetches, 1);
+
+  await runCommand(slashCommands, "/model refresh", ctx); // forced re-fetch
+  assertEquals(fetches, 2);
+});
+
+Deno.test("/model <name> sets the model (not a fetch)", async () => {
+  let setTo: unknown;
+  const ctx = {
+    setProvider: (c: { model?: string }) => {
+      setTo = c;
+      return { ok: true, message: "" };
+    },
+    fetchModels: () => Promise.reject(new Error("should not fetch")),
+    models: () => [],
+    ui: { show: () => {}, status: () => {} },
+  } as unknown as AgentContext;
+  await runCommand(slashCommands, "/model claude-x", ctx);
+  assertEquals(setTo, { model: "claude-x" });
+});
+
 Deno.test("/skills lists via availableSkills and applies via setSkills", async () => {
   const shown: string[] = [];
   let applied: string[] | undefined;

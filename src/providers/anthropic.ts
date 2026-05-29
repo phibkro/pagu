@@ -21,6 +21,23 @@ import {
 const ANTHROPIC_VERSION = "2023-06-01";
 const MAX_TOKENS = 4096;
 
+/** List Anthropic model ids — `GET {baseURL}/v1/models`, `{ data: [{ id }] }`,
+ * auth via `x-api-key` + `anthropic-version` (not Bearer). */
+export async function fetchModelsAnthropic(
+  cfg: ProviderConfig,
+): Promise<string[]> {
+  const headers: Record<string, string> = {
+    "anthropic-version": ANTHROPIC_VERSION,
+  };
+  if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
+  const res = await fetch(`${cfg.baseURL.replace(/\/$/, "")}/v1/models`, {
+    headers,
+  });
+  if (!res.ok) throw await providerError("anthropic", res);
+  const json = await res.json() as { data?: { id: string }[] };
+  return (json.data ?? []).map((m) => m.id);
+}
+
 interface AnthropicResponse {
   content?: Array<
     | { type: "text"; text: string }

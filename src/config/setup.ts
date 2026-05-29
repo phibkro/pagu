@@ -448,6 +448,7 @@ export async function buildContext(
   const cfg: PaguConfig = { ...DEFAULTS, allow: ["."] };
   let liveProvider: ProviderConfig;
   let liveHost: string;
+  let modelCache: string[] = []; // populated by fetchModels; cleared on provider switch
   let liveAdvisorConfig: ProviderConfig | undefined;
   let liveSkillScripts: SkillScript[] = [];
   let liveSkills: Skill[] = [];
@@ -686,8 +687,51 @@ export async function buildContext(
       format: r.format,
     };
     liveHost = new URL(r.baseURL).host;
+    // A provider/baseURL switch invalidates the cached model list (a model-only
+    // change keeps it — same provider, same available set).
+    if (change.provider || change.baseURL) modelCache = [];
     const warn = r.apiKeyEnv && !key ? ` — ⚠ $${r.apiKeyEnv} unset` : "";
     return { ok: true, message: `${cfg.provider} · ${cfg.model}${warn}` };
+  };
+
+  // Fetch the provider's model list in a net-scoped subprocess (--allow-net to
+  // just the provider host), so the orchestrator stays net-less. Updates the
+  // cache. Mirrors spawnPhase's spawn+drain, but its own I/O shape (a
+  // ProviderConfig in, { models } out).
+  const fetchModels = async (): Promise<string[]> => {
+    const child = new Deno.Command("deno", {
+      args: [
+        "run",
+        "--no-prompt",
+        `--allow-net=${liveHost}`,
+        resolve(phaseDir, "models.ts"),
+      ],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const w = child.stdin.getWriter();
+    await w.write(new TextEncoder().encode(JSON.stringify(liveProvider)));
+    await w.close();
+    let out = "";
+    let err = "";
+    const drainOut = async () => {
+      for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
+        out += c;
+      }
+    };
+    const drainErr = async () => {
+      for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
+        err += c;
+      }
+    };
+    await Promise.all([drainOut(), drainErr()]);
+    const { code } = await child.status;
+    if (code !== 0) {
+      throw new Error(`model list failed: ${err.split("\n")[0] || code}`);
+    }
+    modelCache = (JSON.parse(out) as { models?: string[] }).models ?? [];
+    return modelCache;
   };
 
   // Set the active role group at runtime: re-fold base ⋄ roles ⋄ flags and
@@ -828,6 +872,8 @@ export async function buildContext(
     },
     setProvider,
     providerName: () => cfg.provider,
+    models: () => modelCache,
+    fetchModels,
     projectBase,
     roleNames: () => activeRoles,
     availableRoles: () => listRoles(projectBase),

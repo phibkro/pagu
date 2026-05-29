@@ -8,7 +8,7 @@
  * the Authorization header; omit for local providers.
  */
 import { TextLineStream } from "@std/streams";
-import { chatAnthropic } from "./anthropic.ts";
+import { chatAnthropic, fetchModelsAnthropic } from "./anthropic.ts";
 
 export type Role = "system" | "user" | "assistant" | "tool";
 
@@ -89,6 +89,29 @@ export function chat(
   return cfg.format === "anthropic"
     ? chatAnthropic(cfg, messages, tools)
     : chatOpenAI(cfg, messages, tools, onToken);
+}
+
+/** List the provider's available model ids. OpenAI-compat: `GET
+ * {baseURL}/models`; Anthropic: `GET {baseURL}/v1/models`. Both return
+ * `{ data: [{ id }] }`. Effectful (one GET); the orchestrator never calls this
+ * directly — it runs in a net-scoped subprocess (`phases/models.ts`). */
+export function fetchModels(cfg: ProviderConfig): Promise<string[]> {
+  return cfg.format === "anthropic"
+    ? fetchModelsAnthropic(cfg)
+    : fetchModelsOpenAI(cfg);
+}
+
+async function fetchModelsOpenAI(cfg: ProviderConfig): Promise<string[]> {
+  const headers: Record<string, string> = {};
+  if (cfg.apiKey) headers["authorization"] = `Bearer ${cfg.apiKey}`;
+  const res = await fetch(`${cfg.baseURL.replace(/\/$/, "")}/models`, {
+    headers,
+  });
+  if (!res.ok) {
+    throw new Error(`models request failed: ${res.status} ${res.statusText}`);
+  }
+  const json = await res.json() as { data?: { id: string }[] };
+  return (json.data ?? []).map((m) => m.id);
 }
 
 /** Shared request shape for both the buffered and streaming paths. */

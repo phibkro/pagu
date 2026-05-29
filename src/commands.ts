@@ -81,13 +81,33 @@ export const slashCommands: SlashCommand[] = [
   },
   {
     name: "/model",
-    description: "Set the model: <name>",
-    run: (ctx, args) => {
-      if (!args) {
-        ctx.ui.show("usage: /model <name>");
+    description:
+      "Set the model: <name>  (no args lists provider models; `refresh` re-fetches)",
+    run: async (ctx, args) => {
+      const arg = args.trim();
+      if (arg && arg !== "refresh") {
+        result(ctx, ctx.setProvider({ model: arg }));
         return;
       }
-      result(ctx, ctx.setProvider({ model: args }));
+      try {
+        // Lazy cache: show it if populated, else fetch once. `refresh` forces.
+        const models = arg === "refresh" || ctx.models().length === 0
+          ? await ctx.fetchModels()
+          : ctx.models();
+        ctx.ui.show(
+          models.length === 0
+            ? "no models reported by the provider"
+            : `models (current: ${ctx.provider.model}):\n` +
+              models.map((m) =>
+                `  ${m === ctx.provider.model ? "*" : " "} ${m}`
+              )
+                .join("\n"),
+        );
+      } catch (e) {
+        ctx.ui.show(
+          `✗ could not fetch models: ${e instanceof Error ? e.message : e}`,
+        );
+      }
     },
   },
   {

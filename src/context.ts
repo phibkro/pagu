@@ -64,6 +64,12 @@ export interface AgentContext {
   ) => { ok: boolean; message: string };
   /** The active provider preset name (reflects roles/flags + /provider). */
   providerName: () => string;
+  /** The provider's available model ids, cached — empty until the first
+   * `fetchModels`, cleared on a provider switch. */
+  models: () => string[];
+  /** Re-fetch the provider's models in a net-scoped subprocess and refresh the
+   * cache (the orchestrator itself stays net-less). */
+  fetchModels: () => Promise<string[]>;
   /** Project dir (git root, else cwd) where roles are discovered. */
   projectBase: string;
   /** Names of the currently applied roles, in compose order. */

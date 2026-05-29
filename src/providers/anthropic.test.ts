@@ -1,5 +1,33 @@
 import { assertEquals } from "@std/assert";
 import { chat } from "./chat.ts";
+import { fetchModelsAnthropic } from "./anthropic.ts";
+
+Deno.test("fetchModelsAnthropic: GET /v1/models with x-api-key + version", async () => {
+  let seenPath = "";
+  let seenKey: string | null = null;
+  let seenVer: string | null = null;
+  const server = Deno.serve({ port: 0, onListen() {} }, (req) => {
+    seenPath = new URL(req.url).pathname;
+    seenKey = req.headers.get("x-api-key");
+    seenVer = req.headers.get("anthropic-version");
+    return Response.json({ data: [{ id: "claude-x" }] });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const models = await fetchModelsAnthropic({
+      baseURL: `http://localhost:${port}`,
+      model: "m",
+      apiKey: "k",
+      format: "anthropic",
+    });
+    assertEquals(seenPath, "/v1/models");
+    assertEquals(seenKey, "k");
+    assertEquals(seenVer, "2023-06-01");
+    assertEquals(models, ["claude-x"]);
+  } finally {
+    await server.shutdown();
+  }
+});
 
 // Hand-rolled HTTP mock for the Anthropic Messages API. Run with:
 // deno test --allow-net
