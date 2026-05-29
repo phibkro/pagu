@@ -1,9 +1,10 @@
 # Concealment sources — split discovery from policy (design)
 
-> Status: **draft 2026-05-29** (brainstorming → grilling → tdd). Generalizes the
-> just-shipped gitignore read confinement
-> ([2026-05-29-gitignore-read-confinement-design.md]) from a single git-derived
-> set into a source-neutral **concealment** concept fed by multiple sources.
+> Status: **shipped 2026-05-29** (brainstorm → grill → tdd; commits
+> `008d856`..`f5fbaaa`, 295 tests green). Generalizes the gitignore read
+> confinement ([2026-05-29-gitignore-read-confinement-design.md]) from a single
+> git-derived set into a source-neutral **concealment** concept fed by multiple
+> sources.
 
 ## The conflation
 
@@ -136,10 +137,13 @@ it covers files created mid-run and needs no filesystem walk.
     walk) over the read scope, with a small built-in **skip-list** of heavy dirs
     (`.git`, `node_modules`, `target`, `dist`) so a walk of `.`/`$HOME` stays
     bounded.
-- A glob matching a **directory** masks the whole dir (tmpfs covers new files
-  inside, mirroring git's `--directory` collapse); a file glob masks each
-  concrete match. (run.ts's `statSync` already classifies dir-vs-file for the
-  tmpfs-vs-`/dev/null` decision.)
+- **Gitignored directories** arrive from the VCS source as dir paths (git's
+  `--directory` collapse) → masked whole via tmpfs (covers new files inside);
+  run.ts's `statSync` classifies dir-vs-file for the tmpfs-vs-`/dev/null`
+  decision. **Config/secret globs match files** (the walk pushes matching files,
+  descends dirs). Trailing-slash _config_ dir-globs (`secrets/`) masking a whole
+  directory are **deferred** (see Deferred); the default-secrets list is all
+  file globs, so this gap doesn't touch the security-by-default path.
 
 ### The mid-run gap (accepted, documented)
 
@@ -261,9 +265,10 @@ role-resolution:
 
 **Pure (`concealment.test.ts`) — the bulk:**
 
-- _Example_: `conceals` vcs exact/nested; glob match (`.env` matches,
-  `.env.example` does **not**, `*.pem` matches `foo.pem`, `**/secrets/` nested);
-  reveal precedence (matches both `hide` and `reveal` → not concealed).
+- _Example_: `conceals` vcs exact/nested; glob match (`.env` matches by basename
+  at any depth, `.env.example` does **not**, `*.pem` matches `foo.pem`,
+  leading-`/` glob anchored to root); reveal precedence (matches both `hide` and
+  `reveal` → not concealed; reveal lifts even a vcs match).
 - _Property_ (set-algebra laws, no oracle trap): **reveal dominates**
   `∀p,
   revealMatch(p) ⟹ ¬conceals(p)`; **monotonicity** (more `hide` never
@@ -336,6 +341,11 @@ proving lazy matching.
 
 - **Mid-run file-glob masking** — the accepted gap (low-risk; dirs already
   covered).
+- **Trailing-slash config dir-globs** (`hide: ["secrets/"]` masking a whole
+  directory) — not implemented; config/secret globs match files, and gitignored
+  _dirs_ are covered by the VCS source. Add a dir-glob → tmpfs path if a real
+  config needs to hide a non-gitignored directory tree. (The default-secrets
+  list is all file globs, so the security-by-default path is unaffected.)
 - **Cage classification of a sandbox-exec read-throw** — pre-existing from the
   gitignore feature (a masked read throws on macOS → cage may fix-loop); flag
   for grill, not changed here. Default-on concealment (incl. outside repo mode +
