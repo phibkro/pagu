@@ -140,15 +140,20 @@ trusted → accumulated-untrusted). The further down, the less authority a span
 may carry. Prompt assembly must preserve the trust label of each log entry and
 fence untrusted spans.
 
-`[prose: unchecked]` — **the most important un-witnessed claim in the system.**
-Nothing currently fails if prompt assembly inlines an `observation` as
-instruction, or if the trust label is dropped across a cross-session read
-(CONTEXT #16 risk (b)). **Promote?** Partially tractable: a property over the
-prompt-assembly function asserting every span carries a trust tag and untrusted
-spans are wrapped in the fence delimiter — witnesses the _mechanical_ half
-(labels survive, fences applied). The _semantic_ half (the model actually obeys
-the fence) is not checkable here and reduces to the residual-recogniser /
-model-behavior question. Highest-value promotion target on this list.
+`[law: untrusted spans fenced]` + `[prose: unchecked]` — the **mechanical half
+is now witnessed** (shipped 2026-05-29, `src/phases/messages.test.ts`): `trust`
+labels every log entry (total over the entry union) and `logToMessages` wraps
+every untrusted span in a breakout-resistant named fence (`fenceUntrusted` — the
+chosen `</untrusted-n>` close tag is absent from the content by construction, so
+injected content cannot forge it; the same absent-delimiter guarantee as the log
+codec's variable-length tilde fence). A property test exercises the fence
+against adversarial content stuffed with close-tag lookalikes. The **semantic
+half stays `[prose: unchecked]`** — that the model actually _obeys_ the fence
+(told via the `respond.ts` system prompt that fenced content is data, never
+instructions) is not checkable here and reduces to the residual-recogniser /
+model-behavior question. Still open beyond the per-prompt fence: the trust label
+surviving a **cross-session** read (CONTEXT #16 risk (b)) — the
+slow-motion-injection hop.
 
 ### Policy axis — authority is attested per-invocation, never propagated
 
