@@ -1,0 +1,38 @@
+# The pagu VM-tier guest image (sub-project B). One reproducible base; the
+# `local` variant (test/eval/dev) is the first cut. Built by Podman/Docker.
+#
+#   podman build -t pagu:local -f vm/Containerfile .
+#
+# Inside the guest, pagu's own detectVM returns `none` (the launcher sets
+# PAGU_IN_VM=1) so it never wraps again. Tier-2 (bwrap) is deliberately NOT
+# installed: rootless-container runtimes block nested user namespaces, so bwrap
+# can't run here — and if it were on PATH, detectSandbox would falsely select it
+# then fail at runtime. With it absent, detectSandbox returns `none` cleanly and
+# the CONTAINER is tier-2's replacement (only /work mounted → write confinement;
+# model-host-only egress → net confinement). Read concealment is enforced at the
+# launcher's MOUNT layer (concealed paths are not threaded in), not by bwrap.
+
+FROM docker.io/denoland/deno:debian-2.7.14 AS base
+
+# git only — pagu shells out to it for the gitignore concealment source.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# The pagu source (the TCB) lives at /pagu; a `pagu` shim puts it on PATH.
+WORKDIR /pagu
+COPY deno.json deno.lock* /pagu/
+COPY src /pagu/src
+COPY scripts /pagu/scripts
+# Warm the module cache so the guest needs no network to start pagu itself.
+RUN deno cache --config /pagu/deno.json src/frontends/cli.ts || true
+
+RUN printf '#!/bin/sh\nexec deno run --config /pagu/deno.json -A /pagu/src/frontends/cli.ts "$@"\n' \
+  > /usr/local/bin/pagu && chmod +x /usr/local/bin/pagu
+
+# --- local variant: A's golden-scenario fixture tooling (test/eval/dev) -------
+FROM base AS local
+COPY examples /pagu/examples
+
+WORKDIR /work
+ENTRYPOINT ["pagu"]
