@@ -20,7 +20,8 @@
     "jsr:@std/text@^1.0.17": "1.0.19",
     "jsr:@std/yaml@^1.0.5": "1.1.1",
     "npm:@agentclientprotocol/sdk@*": "0.22.1_zod@4.4.3",
-    "npm:@agentclientprotocol/sdk@0.22": "0.22.1_zod@4.4.3"
+    "npm:@agentclientprotocol/sdk@0.22": "0.22.1_zod@4.4.3",
+    "npm:fast-check@3": "3.23.2"
   },
   "jsr": {
     "@cliffy/command@1.1.0": {
@@ -113,6 +114,15 @@
         "zod"
       ]
     },
+    "fast-check@3.23.2": {
+      "integrity": "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==",
+      "dependencies": [
+        "pure-rand"
+      ]
+    },
+    "pure-rand@6.1.0": {
+      "integrity": "sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA=="
+    },
     "zod@4.4.3": {
       "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="
     }
@@ -126,7 +136,8 @@
       "jsr:@std/front-matter@1",
       "jsr:@std/path@1",
       "jsr:@std/streams@1",
-      "npm:@agentclientprotocol/sdk@0.22"
+      "npm:@agentclientprotocol/sdk@0.22",
+      "npm:fast-check@3"
     ]
   }
 }
