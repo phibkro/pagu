@@ -17,7 +17,7 @@ import {
   type RequestPermissionResponse,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
-import { runTask } from "../agent.ts";
+import { resumePending, runTask } from "../agent.ts";
 import type {
   AgentContext,
   ApprovalOutcome,
@@ -299,6 +299,12 @@ export class PaguAgent implements Agent {
     const controller = new AbortController();
     this.controllers.set(p.sessionId, controller);
     try {
+      // A reopened session may hold a pending proposal (a gate deferred earlier
+      // or a process killed mid-gate); re-present and resolve it before the new
+      // task. Cheap no-op when nothing is pending. Mirrors the CLI/TUI startup
+      // fold — done on prompt here so loadSession's response never blocks on a
+      // human decision.
+      await resumePending(ctx, {}, controller.signal);
       await runTask(ctx, text, controller.signal);
     } finally {
       this.controllers.delete(p.sessionId);
