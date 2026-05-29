@@ -1,5 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
-import { createContext, resumeTask } from "./mod.ts";
+import {
+  type ApprovalOutcome,
+  createContext,
+  resumePending,
+  resumeTask,
+} from "./mod.ts";
 import type { Entry } from "./log/schema.ts";
 
 // Integration: resumeTask against the REAL runner (the effectful surface tested
@@ -14,14 +19,14 @@ async function gitRepo(): Promise<string> {
   return dir;
 }
 
-function ctxFor(repo: string) {
+function ctxFor(repo: string, outcome: ApprovalOutcome = "defer") {
   return createContext({
     provider: "ollama",
     baseURL: "http://127.0.0.1:1", // never contacted in these tests
     repo: true,
     cwd: repo,
     ui: { status() {}, show() {} },
-    approver: () => Promise.resolve("defer" as const),
+    approver: () => Promise.resolve(outcome),
   });
 }
 
@@ -97,6 +102,65 @@ Deno.test("resumeTask: no pending proposal is a no-op", async () => {
     ctx.persist();
     await resumeTask(ctx, "approve");
     assertEquals(ctx.log.some((e) => e.kind === "decision"), false);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+// resumePending — the frontend startup fold (gate re-present + TTL auto-expire).
+
+Deno.test("resumePending: re-presents a pending proposal and runs it on approve", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo, "approve");
+    const out = `${repo}/r.txt`;
+    seedPending(
+      ctx,
+      `await Deno.writeTextFile(${JSON.stringify(out)}, "ok");`,
+      [`allow-write=${repo}`, "allow-net=example.com"],
+    );
+    const handled = await resumePending(ctx);
+    assertEquals(handled, true);
+    assertEquals(await Deno.readTextFile(out), "ok");
+    assertEquals(lastDecision(ctx.log)?.verdict, "approve");
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("resumePending: a reject at re-present records reject and never runs", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo, "reject");
+    seedPending(ctx, "throw new Error('must not run');", []);
+    assertEquals(await resumePending(ctx), true);
+    assertEquals(lastDecision(ctx.log)?.verdict, "reject");
+    assertEquals(ctx.log.some((e) => e.kind === "result"), false);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("resumePending: past its TTL it auto-expires without prompting", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo, "approve"); // would approve, but expiry pre-empts
+    seedPending(ctx, "throw new Error('must not run');", []);
+    assertEquals(await resumePending(ctx, { ttlMs: 1, ageMs: 1000 }), true);
+    assertEquals(lastDecision(ctx.log)?.verdict, "expired");
+    assertEquals(ctx.log.some((e) => e.kind === "result"), false);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("resumePending: no pending proposal returns false", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo);
+    ctx.log.push({ kind: "message", role: "user", text: "hi" });
+    ctx.persist();
+    assertEquals(await resumePending(ctx), false);
   } finally {
     await Deno.remove(repo, { recursive: true });
   }

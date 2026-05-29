@@ -38,3 +38,10 @@ export function pendingProposal(log: Entry[]): PendingProposal | null {
   if (!perms || perms.kind !== "perms") return null; // gate not yet reached
   return { script, perms: perms.perms };
 }
+
+/** Whether a pending proposal of age `ageMs` has outlived `ttlMs`. A
+ * non-positive TTL disables expiry (a pending proposal then persists until
+ * answered). Pure — the frontend supplies the age (now − session mtime). */
+export function isExpired(ageMs: number, ttlMs: number): boolean {
+  return ttlMs > 0 && ageMs > ttlMs;
+}

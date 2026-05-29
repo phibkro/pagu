@@ -10,6 +10,7 @@ import {
 import {
   type AgentContext,
   type Approver,
+  resumePending,
   runTask,
   type UI,
 } from "../agent.ts";
@@ -291,6 +292,11 @@ export async function tuiMain(): Promise<void> {
     });
   };
 
+  // Reopened on a pending proposal (deferred, or a process killed mid-gate)?
+  // Re-present and resolve it before taking new input.
+  await withCancellation(async (s) => {
+    await resumePending(ctx, {}, s);
+  });
   if (opts.task) await withCancellation((s) => runTask(ctx, opts.task!, s));
   const nav = { listing: [] as SessionInfo[] }; // last /sessions, for /open
   while (true) {

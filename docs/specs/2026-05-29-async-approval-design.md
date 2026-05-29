@@ -1,10 +1,16 @@
 # Async approval — a durable, resumable gate (design)
 
-> Status: **draft 2026-05-29** (brainstorming → grilling → tdd). Backlog #15
+> Status: **shipped 2026-05-29** (brainstorm → grill → tdd). Backlog #15
 > ("approval as an event with a lifecycle"), the deep slice: durable
 > suspend/resume of the human gate over the event store, wired toward the #14
 > stream. Touches the core loop and the human-gate invariant (#1/#3) — hardened
-> via grill before TDD.
+> via grill before TDD. Landed: `src/approval.ts`
+> (`pendingProposal`/`isExpired`), the `expired` verdict, `ApprovalOutcome` +
+> `defer`, `approve` persists the `perms` entry + branches, `agent.ts`
+> `resumeTask`/`resumePending`, CLI+TUI startup fold, integration-tested vs the
+> real runner (`agent.resume.test.ts`). **Remaining:** ACP startup-resume (folds
+> into its `session/load`), TTL config plumbing (the helper exists; off by
+> default), and the deferred items below.
 
 ## Goal
 

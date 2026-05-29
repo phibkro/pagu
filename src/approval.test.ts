@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import type { Entry } from "./log/schema.ts";
-import { pendingProposal } from "./approval.ts";
+import { isExpired, pendingProposal } from "./approval.ts";
 
 const script = (id: string): Entry => ({
   kind: "script",
@@ -52,4 +52,12 @@ Deno.test("pendingProposal: a script that never reached the gate (no perms) is n
 
 Deno.test("pendingProposal: no proposal at all → null", () => {
   assertEquals(pendingProposal([msg("hi"), msg("there")]), null);
+});
+
+Deno.test("isExpired: only past a positive TTL (0/negative disables expiry)", () => {
+  assertEquals(isExpired(5_000, 1_000), true); // older than the TTL
+  assertEquals(isExpired(500, 1_000), false); // still within the TTL
+  assertEquals(isExpired(1_000, 1_000), false); // exactly at the TTL — not yet
+  assertEquals(isExpired(999_999, 0), false); // TTL 0 ⇒ never expires
+  assertEquals(isExpired(999_999, -1), false); // negative ⇒ never expires
 });

@@ -4,7 +4,7 @@ import { spawnPhase } from "./phases/spawn.ts";
 import { AgentContext, ApprovalOutcome, Approver, UI } from "./context.ts";
 import { actionCapabilities, isActionEntry } from "./capability/registry.ts";
 import { performRun } from "./capability/index.ts";
-import { pendingProposal } from "./approval.ts";
+import { isExpired, pendingProposal } from "./approval.ts";
 import type { Entry } from "./log/index.ts";
 import { type Flow, loop, type Step } from "./loop.ts";
 import { buildAllowedTasks } from "./tasks/capability.ts";
@@ -185,4 +185,33 @@ export async function resumeTask(
     });
     if (outcome === "loop") await loop(makeTurn(ctx, signal), MAX_TURNS)(ctx);
   });
+}
+
+/**
+ * If the session opens on a pending proposal (a gate deferred earlier, or a
+ * process killed mid-gate), resolve it before normal input: past its TTL →
+ * expire; otherwise re-present the proposal and gate it. Returns true if it
+ * handled one. A frontend calls this at startup; `ageMs`/`ttlMs` drive expiry
+ * (omit → no expiry, the gate is re-presented). Keeps the "answer the gate
+ * before continuing" rule (Q2) across restarts.
+ */
+export async function resumePending(
+  ctx: AgentContext,
+  opts: { ttlMs?: number; ageMs?: number } = {},
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const pending = pendingProposal(ctx.log);
+  if (!pending) return false;
+  if (isExpired(opts.ageMs ?? 0, opts.ttlMs ?? 0)) {
+    await resumeTask(ctx, "expired", signal);
+    return true;
+  }
+  ctx.ui.show(
+    `· proposal ${pending.script.id} is awaiting your decision — runs with: ${
+      pending.perms.join(" ") || "(no perms)"
+    }\n${pending.script.body}`,
+  );
+  const outcome = await ctx.approve(pending.script, pending.perms);
+  if (outcome !== "defer") await resumeTask(ctx, outcome, signal);
+  return true;
 }

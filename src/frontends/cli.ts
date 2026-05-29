@@ -7,7 +7,7 @@ import {
   parseArgs,
   readLine,
 } from "../config/setup.ts";
-import { type Approver, runTask, type UI } from "../agent.ts";
+import { type Approver, resumePending, runTask, type UI } from "../agent.ts";
 import { gitRoot } from "../config/repo.ts";
 import { listSessions } from "../config/sessions.ts";
 
@@ -84,4 +84,6 @@ const approve: Approver = async (_script, _perms) => {
 
 await loadCwdEnv(); // terminal frontend: offer to source cwd .env first
 const ctx = await buildContext(opts, agents, ui, approve);
+// A session reopened (e.g. --continue) on a pending proposal resolves it first.
+await resumePending(ctx);
 await runTask(ctx, opts.task);

@@ -927,8 +927,13 @@ above.)
       `verdict = approve|reject|expired`); cage-discovered perms are persisted
       as the long-latent `perms` entry so a pending proposal is self-contained;
       single-writer preserved (a remote approver submits an intent, the runner
-      appends). **Deferred:** remote write-back transport, the
-      standing-approvals temporary ceiling, the staleness marker. Next: TDD.
+      appends). **Core shipped 2026-05-29** (`src/approval.ts`; `agent.ts`
+      `resumeTask`/`resumePending`; `perms` entry + `expired` verdict +
+      `ApprovalOutcome`; CLI+TUI startup fold; integration-tested vs the real
+      runner). **Remaining:** ACP startup-resume (its `session/load` flow), TTL
+      config plumbing (helper exists, off by default). **Deferred:** remote
+      write-back transport, the standing-approvals temporary ceiling, the
+      staleness marker.
 16. **Scheduled short-lived agents (cron for contained agents).** The
     operationally useful shape of "long-running agent" is **not** an immortal
     process — that accumulates two unbounded quantities (context drift +

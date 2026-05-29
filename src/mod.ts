@@ -17,7 +17,7 @@
  */
 
 // Core loop & ports
-export { resumeTask, runTask } from "./agent.ts";
+export { resumePending, resumeTask, runTask } from "./agent.ts";
 export type { AgentContext, ApprovalOutcome, Approver, UI } from "./agent.ts";
 
 // Loop combinators (pure, lawful)
