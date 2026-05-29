@@ -20,6 +20,8 @@ export function trust(e: Entry): TrustLevel {
     case "message":
       return e.role === "user" ? "authored" : "trusted";
     case "decision":
+    case "grant": // human authorizations — like a decision
+    case "revoke":
       return "authored";
     case "script":
     case "skill-invoke":

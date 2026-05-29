@@ -8,6 +8,7 @@ import { absolutizePerm, parsePermission } from "../permissions/index.ts";
 import { shouldAutoApprove } from "../permissions/index.ts";
 import { cageOnce, performRun } from "../capability/index.ts";
 import { matchesSkillScript } from "../skills/index.ts";
+import { activeGrants, makeGrant } from "../approval.ts";
 import { buildReview, formatReview } from "./review.ts";
 import { formatAdvisory, runAdvisor } from "./advisor.ts";
 import type { AgentContext, ApprovalOutcome, ScriptEntry } from "../context.ts";
@@ -112,8 +113,15 @@ export const approve: Handler = async (p) => {
   );
 
   let outcome: ApprovalOutcome;
-  if (shouldAutoApprove(discoveredPerms, p.ctx.envelope, !!p.ctx.repo)) {
-    p.ctx.ui.status("auto-approved (within session envelope)");
+  if (
+    shouldAutoApprove(
+      discoveredPerms,
+      p.ctx.envelope,
+      !!p.ctx.repo,
+      activeGrants(p.ctx.log, Date.now()),
+    )
+  ) {
+    p.ctx.ui.status("auto-approved (envelope or standing grant)");
     outcome = "approve";
   } else if (matchedSkill) {
     p.ctx.ui.status(`auto-approved (skill script: ${matchedSkill.name})`);
@@ -166,6 +174,16 @@ export const approve: Handler = async (p) => {
     p.ctx.ui.show("rejected.");
     p.outcome = "stop";
     return "done";
+  }
+
+  // A `{grant}` outcome approves THIS proposal and establishes a standing grant
+  // for its perms — log the grant before the decision (its id is referenced for
+  // audit/revocation).
+  if (typeof outcome === "object") {
+    const g = makeGrant(p.ctx.log, perms, Date.now(), outcome.grant.ttlMs);
+    p.ctx.log.push(g);
+    p.ctx.persist();
+    p.ctx.ui.show(`· standing grant ${g.id} until ${g.expires}`);
   }
 
   p.ctx.log.push({

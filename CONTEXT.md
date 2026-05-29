@@ -930,11 +930,14 @@ above.)
       appends). **Shipped 2026-05-29** — durable gate across all three frontends
       (`src/approval.ts`; `agent.ts` `resumeTask`/`resumePending`; `perms` entry
       - `expired` verdict + `ApprovalOutcome`; CLI/TUI/ACP startup fold;
-        integration-tested vs the real runner). **Standing approvals spec'd**
-        (`docs/specs/2026-05-29-standing-approvals-design.md`, grilled) — the
-        time-boxed `grant`/`revoke` events + `activeGrants` fold; next: TDD.
+        integration-tested vs the real runner). **Standing approvals shipped**
+        (`docs/specs/2026-05-29-standing-approvals-design.md`, grilled) —
+        time-boxed `grant`/`revoke` events + `activeGrants` fold;
+        `shouldAutoApprove` consults them (deny applied, repo-mode-independent);
+        the `{grant:{ttlMs}}` gate outcome; `/grants` + `/revoke` commands.
         **Remaining:** TTL config plumbing (helper exists, off by default).
-        **Deferred:** remote write-back transport, the staleness marker.
+        **Deferred:** remote write-back transport, the staleness marker,
+        proactive/human-specified grants.
 16. **Scheduled short-lived agents (cron for contained agents).** The
     operationally useful shape of "long-running agent" is **not** an immortal
     process — that accumulates two unbounded quantities (context drift +

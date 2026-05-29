@@ -178,6 +178,16 @@ const entryG: fc.Arbitrary<Entry> = fc.oneof(
     ranWith: rwG,
     output: bodyG,
   }),
+  fc.record({
+    kind: fc.constant("grant" as const),
+    id: attrG,
+    perms: elemsG,
+    expires: attrG,
+  }),
+  fc.record({
+    kind: fc.constant("revoke" as const),
+    grant: attrG,
+  }),
 );
 
 Deno.test("log round-trips for any entry sequence (property)", () => {

@@ -1,6 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { runCommand, type SlashCommand, slashCommands } from "./commands.ts";
 import type { AgentContext } from "./context.ts";
+import type { Entry } from "./log/schema.ts";
 
 const fakeCtx = {} as AgentContext; // these commands ignore ctx
 
@@ -145,4 +146,30 @@ Deno.test("slashCommands wire args to the right ctx config methods", async () =>
     `provider:{"provider":"openrouter","model":"anthropic/claude"}`,
     `advisor:{"enabled":false}`,
   ]);
+});
+
+Deno.test("/grants lists active grants; /revoke <id> folds one out", async () => {
+  const shown: string[] = [];
+  const log: Entry[] = [{
+    kind: "grant",
+    id: "g1",
+    perms: ["allow-write=/repo"],
+    expires: "2099-01-01T00:00:00.000Z", // far future → active
+  }];
+  const ctx = {
+    log,
+    persist: () => {},
+    ui: { show: (m: string) => shown.push(m), status: () => {} },
+  } as unknown as AgentContext;
+
+  await runCommand(slashCommands, "/grants", ctx);
+  assertStringIncludes(shown.join("\n"), "g1");
+  assertStringIncludes(shown.join("\n"), "allow-write=/repo");
+
+  await runCommand(slashCommands, "/revoke g1", ctx);
+  assertEquals(log.some((e) => e.kind === "revoke" && e.grant === "g1"), true);
+
+  shown.length = 0;
+  await runCommand(slashCommands, "/grants", ctx); // revoked → gone
+  assertStringIncludes(shown.join("\n"), "no active standing approvals");
 });

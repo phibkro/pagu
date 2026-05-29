@@ -52,6 +52,14 @@ export function serializeEntry(e: Entry): string {
       open = head("perms", { script: e.script });
       body = e.perms.join("\n");
       break;
+    case "grant":
+      open = head("grant", { id: e.id, expires: e.expires });
+      body = e.perms.join("\n");
+      break;
+    case "revoke":
+      open = head("revoke", { grant: e.grant });
+      body = "";
+      break;
     case "decision":
       open = head("decision", { script: e.script, verdict: e.verdict });
       body = e.rationale;

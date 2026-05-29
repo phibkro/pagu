@@ -3,6 +3,7 @@
 // the dispatcher itself does no I/O.
 import type { AgentContext } from "./context.ts";
 import { PRESETS } from "./config/config.ts";
+import { activeGrantEntries } from "./approval.ts";
 
 export interface SlashCommand {
   name: string; // e.g. "/model"
@@ -148,5 +149,39 @@ export const slashCommands: SlashCommand[] = [
         () => ctx.activeSkillScripts.map((s) => s.name),
         (names) => ctx.setSkills(names),
       ),
+  },
+  {
+    name: "/grants",
+    description: "List active standing approvals (auto-approve grants)",
+    run: (ctx) => {
+      const active = activeGrantEntries(ctx.log, Date.now());
+      if (active.length === 0) {
+        ctx.ui.show("no active standing approvals");
+        return;
+      }
+      const lines = active
+        .map((g) =>
+          `  ${g.id}  ${
+            g.perms.join(" ") || "(no perms)"
+          }  · expires ${g.expires}`
+        )
+        .join("\n");
+      ctx.ui.show(`standing approvals:\n${lines}\n  revoke one: /revoke <id>`);
+    },
+  },
+  {
+    name: "/revoke",
+    description: "Revoke a standing approval early: <id>  (see /grants)",
+    run: (ctx, args) => {
+      const id = args.trim();
+      if (!id) {
+        ctx.ui.show("usage: /revoke <id> — see /grants for the ids");
+        return;
+      }
+      // Append-only inverse of a grant; activeGrants folds it out immediately.
+      ctx.log.push({ kind: "revoke", grant: id });
+      ctx.persist();
+      ctx.ui.show(`→ revoked ${id}`);
+    },
   },
 ];

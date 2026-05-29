@@ -1,6 +1,11 @@
 import { assertEquals } from "@std/assert";
 import type { Entry } from "./log/schema.ts";
-import { isExpired, pendingProposal } from "./approval.ts";
+import {
+  activeGrants,
+  isExpired,
+  makeGrant,
+  pendingProposal,
+} from "./approval.ts";
 
 const script = (id: string): Entry => ({
   kind: "script",
@@ -60,4 +65,52 @@ Deno.test("isExpired: only past a positive TTL (0/negative disables expiry)", ()
   assertEquals(isExpired(1_000, 1_000), false); // exactly at the TTL — not yet
   assertEquals(isExpired(999_999, 0), false); // TTL 0 ⇒ never expires
   assertEquals(isExpired(999_999, -1), false); // negative ⇒ never expires
+});
+
+// activeGrants — the standing-approval fold.
+const grant = (id: string, perms: string[], expires: string): Entry => ({
+  kind: "grant",
+  id,
+  perms,
+  expires,
+});
+const revoke = (id: string): Entry => ({ kind: "revoke", grant: id });
+const T0 = Date.parse("2026-01-01T00:00:00.000Z");
+const future = "2026-01-01T01:00:00.000Z"; // T0 + 1h
+const past = "2025-01-01T00:00:00.000Z";
+
+Deno.test("activeGrants: an unexpired, unrevoked grant is active (parsed)", () => {
+  assertEquals(activeGrants([grant("g1", ["allow-read=/x"], future)], T0), [
+    [{ flag: "read", scope: "/x" }],
+  ]);
+});
+
+Deno.test("activeGrants: expired grants are inactive", () => {
+  assertEquals(activeGrants([grant("g1", ["allow-read=/x"], past)], T0), []);
+});
+
+Deno.test("activeGrants: a revoked grant is inactive", () => {
+  assertEquals(
+    activeGrants([grant("g1", ["allow-read=/x"], future), revoke("g1")], T0),
+    [],
+  );
+});
+
+Deno.test("activeGrants: a malformed grant (bad expiry or perm) grants nothing", () => {
+  assertEquals(activeGrants([grant("g1", ["allow-read=/x"], "")], T0), []);
+  assertEquals(activeGrants([grant("g2", ["nonsense"], future)], T0), []);
+});
+
+Deno.test("makeGrant: mints the next id, stamps absolute expiry, carries perms", () => {
+  const log: Entry[] = [grant("g1", [], future)];
+  assertEquals(makeGrant(log, ["allow-write=/x"], T0, 3_600_000), {
+    kind: "grant",
+    id: "g2",
+    perms: ["allow-write=/x"],
+    expires: new Date(T0 + 3_600_000).toISOString(),
+  });
+});
+
+Deno.test("makeGrant: the first grant is g1", () => {
+  assertEquals(makeGrant([], [], T0, 1000).id, "g1");
 });

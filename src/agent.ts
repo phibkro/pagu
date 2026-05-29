@@ -4,7 +4,7 @@ import { spawnPhase } from "./phases/spawn.ts";
 import { AgentContext, ApprovalOutcome, Approver, UI } from "./context.ts";
 import { actionCapabilities, isActionEntry } from "./capability/registry.ts";
 import { performRun } from "./capability/index.ts";
-import { isExpired, pendingProposal } from "./approval.ts";
+import { isExpired, makeGrant, pendingProposal } from "./approval.ts";
 import type { Entry } from "./log/index.ts";
 import { type Flow, loop, type Step } from "./loop.ts";
 import { buildAllowedTasks } from "./tasks/capability.ts";
@@ -212,6 +212,15 @@ export async function resumePending(
     }\n${pending.script.body}`,
   );
   const outcome = await ctx.approve(pending.script, pending.perms);
-  if (outcome !== "defer") await resumeTask(ctx, outcome, signal);
+  if (outcome === "defer") return true; // still pending — left for next time
+  if (typeof outcome === "object") { // { grant }: approve + establish a grant
+    ctx.log.push(
+      makeGrant(ctx.log, pending.perms, Date.now(), outcome.grant.ttlMs),
+    );
+    ctx.persist();
+    await resumeTask(ctx, "approve", signal);
+  } else {
+    await resumeTask(ctx, outcome, signal); // "approve" | "reject"
+  }
   return true;
 }

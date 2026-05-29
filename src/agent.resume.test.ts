@@ -165,3 +165,24 @@ Deno.test("resumePending: no pending proposal returns false", async () => {
     await Deno.remove(repo, { recursive: true });
   }
 });
+
+Deno.test("resumePending with a {grant} outcome logs a standing grant and runs the proposal", async () => {
+  const repo = await gitRepo();
+  try {
+    const ctx = await ctxFor(repo, { grant: { ttlMs: 3_600_000 } });
+    const out = `${repo}/g.txt`;
+    seedPending(
+      ctx,
+      `await Deno.writeTextFile(${JSON.stringify(out)}, "ok");`,
+      [`allow-write=${repo}`, "allow-net=example.com"],
+    );
+    await resumePending(ctx);
+    assertEquals(await Deno.readTextFile(out), "ok"); // approved + ran
+    assertEquals(lastDecision(ctx.log)?.verdict, "approve");
+    const g = ctx.log.find((e) => e.kind === "grant");
+    assert(g && g.kind === "grant");
+    assertEquals(g.perms, [`allow-write=${repo}`, "allow-net=example.com"]);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});

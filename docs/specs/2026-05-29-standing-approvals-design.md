@@ -1,10 +1,15 @@
 # Standing approvals — the time-boxed temporary ceiling (design)
 
-> Status: **draft 2026-05-29** (brainstorm → grill → tdd). Backlog #15's
-> standing-approvals piece (deferred from the durable-gate slice,
-> `2026-05-29-async-approval-design.md`). The security-sensitive one: it widens
-> what auto-approves without a human, so it touches invariant #3 directly —
-> hardened via grill before TDD.
+> Status: **shipped 2026-05-29** (brainstorm → grill → tdd). Backlog #15's
+> standing-approvals piece. The security-sensitive one: it widens what
+> auto-approves without a human, so it touches invariant #3 directly — hardened
+> via grill before TDD. Landed: `grant`/`revoke` entry kinds (codec +
+> wire-floor), `activeGrants`/`activeGrantEntries`/`makeGrant`
+> (`src/approval.ts`), `shouldAutoApprove` consults grants (deny applied,
+> repo-mode-independent), the `{grant:{ttlMs}}` `ApprovalOutcome` wired in the
+> approve handler + `resumePending`, and `/grants` + `/revoke` commands.
+> Property/unit/integration-tested. **Deferred (unchanged):** proactive grants,
+> human-specified envelopes, revoke-all.
 
 ## Goal
 

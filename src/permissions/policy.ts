@@ -1,5 +1,10 @@
 // pure
-import { type Envelope, type Permission, withinEnvelope } from "./envelope.ts";
+import {
+  type Envelope,
+  type Permission,
+  type PermissionSet,
+  withinEnvelope,
+} from "./envelope.ts";
 
 /**
  * A run's permission policy: build its capability envelope and gate
@@ -30,14 +35,22 @@ export function buildEnvelope(spec: EnvelopeSpec): Envelope {
 }
 
 /**
- * Whether a cage-discovered permission set may be auto-approved: only when
- * auto-approve is `enabled` (e.g. repo mode) AND every discovered perm is
- * within the session envelope. Outside that, the human gate stands.
+ * Whether a cage-discovered permission set may be auto-approved. Two paths:
+ * the session envelope (when `enabled`, e.g. repo mode), or an active **standing
+ * grant** — a human-authored time-boxed allow-set (see `approval.ts`
+ * `activeGrants`). Grants are **independent of `enabled`** (a grant *is* the
+ * scoped+timed enabling), but each is checked with the **session's `deny`** so a
+ * grant can never reach a concealed path — deny wins over a grant. Outside both
+ * paths the human gate stands.
  */
 export function shouldAutoApprove(
   discovered: Permission[],
   env: Envelope,
   enabled: boolean,
+  grants: PermissionSet[] = [],
 ): boolean {
-  return enabled && withinEnvelope(discovered, env);
+  if (enabled && withinEnvelope(discovered, env)) return true;
+  return grants.some((allow) =>
+    withinEnvelope(discovered, { allow, deny: env.deny })
+  );
 }

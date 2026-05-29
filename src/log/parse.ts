@@ -66,6 +66,17 @@ export function parseLog(md: string): Entry[] {
           perms: body ? body.split("\n") : [],
         });
         break;
+      case "grant":
+        entries.push({
+          kind: "grant",
+          id: a.id ?? "",
+          perms: body ? body.split("\n") : [],
+          expires: a.expires ?? "",
+        });
+        break;
+      case "revoke":
+        entries.push({ kind: "revoke", grant: a.grant ?? "" });
+        break;
       case "decision":
         entries.push({
           kind,

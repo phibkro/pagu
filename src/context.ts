@@ -30,11 +30,16 @@ export const isCommandInvoke = (e: Entry): e is CommandInvocationEntry =>
 
 /** What a human can answer at the gate _now_: approve · reject · **defer**
  * ("not now" — persist the proposal as pending and end the turn; a decision
- * arrives later via `resumeTask`). Distinct from a logged `Decision.verdict`
- * (`approve | reject | expired`): `defer` is the *absence* of a decision,
- * `expired` is system-generated. See the approval lifecycle in
- * `docs/CONCEPTS.md` / `docs/specs/2026-05-29-async-approval-design.md`. */
-export type ApprovalOutcome = "approve" | "reject" | "defer";
+ * arrives later via `resumeTask`) · **`{grant}`** (approve this _and_ establish a
+ * standing approval for its perms for `ttlMs` — see standing approvals). Distinct
+ * from a logged `Decision.verdict` (`approve | reject | expired`): `defer` is the
+ * *absence* of a decision, `expired` is system-generated. See the approval
+ * lifecycle in `docs/CONCEPTS.md` and the specs under `docs/specs/`. */
+export type ApprovalOutcome =
+  | "approve"
+  | "reject"
+  | "defer"
+  | { grant: { ttlMs: number } };
 
 /** The one I/O seam for the human review gate (stdin / TUI prompt / remote).
  * Only called when a proposal is NOT auto-approvable. The perms it would run

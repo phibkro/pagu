@@ -14,7 +14,9 @@ export type Entry =
   | CommandInvocationEntry
   | PermsEntry
   | Decision
-  | ResultEntry;
+  | ResultEntry
+  | GrantEntry
+  | RevokeEntry;
 
 /** A conversational turn (the user's task, or the model's prose). */
 export interface Message {
@@ -78,6 +80,23 @@ export interface Decision {
   script: string;
   verdict: "approve" | "reject" | "expired";
   rationale: string;
+}
+
+/** A standing approval: a human-authored, time-boxed **allow**-set (not an
+ * Envelope — no deny of its own). While active (`now < expires` and not revoked)
+ * the auto-approve gate honors `perms` as additional allow-coverage, evaluated
+ * against the session's deny. See the standing-approvals design. */
+export interface GrantEntry {
+  kind: "grant";
+  id: string; // "g1", "g2", … — addressable for revocation
+  perms: string[]; // the authorized allow-set
+  expires: string; // absolute ISO time
+}
+
+/** Ends a `grant` early — the append-only inverse (never mutate the grant). */
+export interface RevokeEntry {
+  kind: "revoke";
+  grant: string; // the GrantEntry.id being revoked
 }
 
 /** The outcome of running an approved script in the sandboxed runner. */
