@@ -1,9 +1,7 @@
 // effects: config/env/fs (buildContext); parseArgs (cliffy: --help/usage exit)
 import { Command } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
-import { dirname, fromFileUrl, resolve } from "@std/path";
-import { serializeLog } from "../log/serialize.ts";
-import { eventStream } from "../events.ts";
+import { fromFileUrl, resolve } from "@std/path";
 import type { Entry } from "../log/schema.ts";
 import {
   composeLayers,
@@ -45,9 +43,9 @@ import {
   latestSession,
   loadSession,
   newSessionId,
-  serializeFrontmatter,
   sessionPath,
 } from "./sessions.ts";
+import { makeSessionStore } from "./session-store.ts";
 import type { AgentContext, Approver, UI } from "../agent.ts";
 
 /**
@@ -855,19 +853,14 @@ export async function buildContext(
   // here (don't list `rg` if ripgrep is absent — the agent would waste a turn).
   const availableCommandRules = await presentDefaultRules();
 
-  const active = { path: logPath, meta: loaded.meta };
-  // The read side of the log: subscribers tail it; persist is the single notify
-  // chokepoint (every state change appends then persists). On a session switch
-  // the array is mutated in place, so the stream tracks the live log.
-  const events = eventStream(log);
-  const persist = () => {
-    Deno.mkdirSync(dirname(active.path), { recursive: true });
-    Deno.writeTextFileSync(
-      active.path,
-      serializeFrontmatter(active.meta) + serializeLog(log),
-    );
-    events.notify();
-  };
+  // The session store owns the live log, its persistence, and the event stream
+  // (the addressable read side; persist is its notify chokepoint). buildContext,
+  // the TUI, and the model-based test all drive these same ops — no reimpl.
+  const store = makeSessionStore(base, {
+    path: logPath,
+    meta: loaded.meta,
+    entries: log, // === loaded.entries; the store keeps this array identity
+  });
 
   return {
     get provider() {
@@ -923,20 +916,15 @@ export async function buildContext(
     },
     sandboxKind,
     log,
-    persist,
-    events,
+    persist: store.persist,
+    events: store.events,
     sessionBase: base,
-    currentLogPath: () => active.path,
-    switchSession: (path, entries, meta) => {
-      active.path = path;
-      active.meta = meta;
-      log.length = 0;
-      log.push(...entries);
-    },
-    rename: (name) => {
-      active.meta = { ...active.meta, name };
-      persist();
-    },
+    currentLogPath: store.currentPath,
+    switchSession: store.switchTo,
+    newSession: store.newSession,
+    forkSession: store.fork,
+    openSession: store.load,
+    rename: store.rename,
     ui,
     approve,
     // Placeholder — agent.ts overwrites this before the turn loop starts.

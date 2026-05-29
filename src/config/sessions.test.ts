@@ -13,6 +13,7 @@ import {
   sessionPath,
   sessionsDir,
 } from "./sessions.ts";
+import { makeSessionStore, type SessionStore } from "./session-store.ts";
 
 Deno.test("sessionsDir / sessionPath compose under .pagu/sessions", () => {
   assertEquals(sessionsDir("/proj"), "/proj/.pagu/sessions");
@@ -156,37 +157,42 @@ const turnEntry: fc.Arbitrary<Entry> = fc.oneof(
     ),
 );
 
+interface Sess {
+  meta: SessionMeta;
+  entries: Entry[];
+}
 interface Model {
-  store: Map<string, { meta: SessionMeta; entries: Entry[] }>;
-  activeId: string;
+  /** What should be durably on disk — materialized sessions only. */
+  files: Map<string, Sess>;
+  /** The live (in-memory) active session — may not be materialized yet. */
+  activePath: string;
+  active: Sess;
 }
 interface Real {
+  store: SessionStore;
   base: string;
-  activeId: string;
-  activeMeta: SessionMeta;
-  activeLog: Entry[];
   clock: number;
 }
 
-/** Mint a fresh id + created stamp from a monotonic clock (distinct ids). */
-function fresh(r: Real): { id: string; created: string } {
-  const d = new Date(Date.UTC(2026, 0, 1, 0, 0, r.clock++));
-  return { id: newSessionId(d), created: d.toISOString() };
+const clone = (s: Sess): Sess => ({
+  meta: { ...s.meta },
+  entries: [...s.entries],
+});
+
+/** Distinct, monotonic clock so minted session ids never collide. */
+const freshDate = (r: Real): Date =>
+  new Date(Date.UTC(2026, 0, 1, 0, 0, r.clock++));
+
+/** In memory: the store's live log mirrors the model's active session. */
+function assertLiveMirror(r: Real, m: Model): void {
+  assertEquals(r.store.log, m.active.entries);
+  assertEquals(r.store.currentPath(), m.activePath);
 }
 
-/** Persist exactly as buildContext's `persist` does (the contract under test). */
-function persist(r: Real): void {
-  Deno.mkdirSync(sessionsDir(r.base), { recursive: true });
-  Deno.writeTextFileSync(
-    sessionPath(r.base, r.activeId),
-    serializeFrontmatter(r.activeMeta) + serializeLog(r.activeLog),
-  );
-}
-
-/** The replayability invariant: a stored session reloads to the model's view. */
-async function assertRoundTrips(r: Real, m: Model, id: string): Promise<void> {
-  const expected = m.store.get(id)!;
-  const loaded = await loadSession(sessionPath(r.base, id));
+/** Replayability: a materialized session reloads to the model's view. */
+async function assertPersisted(m: Model, path: string): Promise<void> {
+  const expected = m.files.get(path)!;
+  const loaded = await loadSession(path);
   assertEquals(loaded.entries, expected.entries);
   assertEquals(loaded.meta.created, expected.meta.created);
   assertEquals(loaded.meta.name, expected.meta.name);
@@ -194,81 +200,74 @@ async function assertRoundTrips(r: Real, m: Model, id: string): Promise<void> {
 
 class NewSession implements fc.AsyncCommand<Model, Real> {
   check = () => true;
-  async run(m: Model, r: Real): Promise<void> {
-    const { id, created } = fresh(r);
-    r.activeId = id;
-    r.activeMeta = { created };
-    r.activeLog = [];
-    persist(r);
-    m.store.set(id, { meta: { created }, entries: [] });
-    m.activeId = id;
-    await assertRoundTrips(r, m, id);
+  run(m: Model, r: Real): Promise<void> {
+    const d = freshDate(r);
+    r.store.newSession(d);
+    // `new` does NOT persist — the file materializes on the first write.
+    m.activePath = r.store.currentPath();
+    m.active = { meta: { created: d.toISOString() }, entries: [] };
+    assertEquals(r.store.currentPath(), sessionPath(r.base, newSessionId(d)));
+    assertLiveMirror(r, m);
+    return Promise.resolve();
   }
   toString = () => "new";
-}
-
-class Fork implements fc.AsyncCommand<Model, Real> {
-  check = () => true;
-  async run(m: Model, r: Real): Promise<void> {
-    const parentId = r.activeId;
-    const { id, created } = fresh(r);
-    r.activeLog = [...r.activeLog]; // a fork is a copy, not an alias
-    r.activeId = id;
-    r.activeMeta = { created };
-    persist(r);
-    m.store.set(id, {
-      meta: { created },
-      entries: [...m.store.get(parentId)!.entries],
-    });
-    m.activeId = id;
-    await assertRoundTrips(r, m, id);
-    await assertRoundTrips(r, m, parentId); // isolation: parent untouched
-  }
-  toString = () => "fork";
 }
 
 class AppendTurn implements fc.AsyncCommand<Model, Real> {
   constructor(private es: Entry[]) {}
   check = () => true;
   async run(m: Model, r: Real): Promise<void> {
-    r.activeLog.push(...this.es);
-    persist(r);
-    m.store.get(r.activeId)!.entries.push(...this.es);
-    await assertRoundTrips(r, m, r.activeId);
+    r.store.log.push(...this.es); // the orchestrator's ctx.log.push
+    r.store.persist();
+    m.active.entries.push(...this.es);
+    m.files.set(m.activePath, clone(m.active)); // persist materializes it
+    assertLiveMirror(r, m);
+    await assertPersisted(m, m.activePath);
   }
   toString = () => `append(${this.es.length})`;
+}
+
+class Fork implements fc.AsyncCommand<Model, Real> {
+  check = () => true;
+  async run(m: Model, r: Real): Promise<void> {
+    const parent = m.activePath;
+    const d = freshDate(r);
+    const carried = [...m.active.entries];
+    r.store.fork(d); // copies the live log + persists the new session
+    m.activePath = r.store.currentPath();
+    m.active = { meta: { created: d.toISOString() }, entries: carried };
+    m.files.set(m.activePath, clone(m.active));
+    assertLiveMirror(r, m);
+    await assertPersisted(m, m.activePath);
+    if (m.files.has(parent)) await assertPersisted(m, parent); // isolation
+  }
+  toString = () => "fork";
 }
 
 class Rename implements fc.AsyncCommand<Model, Real> {
   constructor(private name: string) {}
   check = () => true;
   async run(m: Model, r: Real): Promise<void> {
-    const idBefore = r.activeId;
-    r.activeMeta = { ...r.activeMeta, name: this.name };
-    persist(r);
-    const md = m.store.get(r.activeId)!;
-    md.meta = { ...md.meta, name: this.name };
-    assertEquals(r.activeId, idBefore); // id immutable across rename
-    await assertRoundTrips(r, m, r.activeId);
+    const before = r.store.currentPath();
+    r.store.rename(this.name); // rewrites frontmatter + persists
+    m.active.meta = { ...m.active.meta, name: this.name };
+    m.files.set(m.activePath, clone(m.active));
+    assertEquals(r.store.currentPath(), before); // id immutable across rename
+    await assertPersisted(m, m.activePath);
   }
   toString = () => `rename(${JSON.stringify(this.name)})`;
 }
 
 class Load implements fc.AsyncCommand<Model, Real> {
   constructor(private i: number) {}
-  check = () => true;
+  check = (m: Readonly<Model>) => m.files.size > 0;
   async run(m: Model, r: Real): Promise<void> {
-    const ids = [...m.store.keys()];
-    const id = ids[this.i % ids.length];
-    const loaded = await loadSession(sessionPath(r.base, id));
-    r.activeId = id;
-    r.activeMeta = loaded.meta;
-    r.activeLog = loaded.entries;
-    m.activeId = id;
-    const expected = m.store.get(id)!;
-    assertEquals(loaded.entries, expected.entries);
-    assertEquals(loaded.meta.created, expected.meta.created);
-    assertEquals(loaded.meta.name, expected.meta.name);
+    const paths = [...m.files.keys()];
+    const path = paths[this.i % paths.length];
+    await r.store.load(path);
+    m.activePath = path;
+    m.active = clone(m.files.get(path)!);
+    assertLiveMirror(r, m);
   }
   toString = () => `load(${this.i})`;
 }
@@ -278,11 +277,11 @@ class List implements fc.AsyncCommand<Model, Real> {
   async run(m: Model, r: Real): Promise<void> {
     const infos = await listSessions(r.base);
     assertEquals(
-      new Set(infos.map((s) => s.id)),
-      new Set([...m.store.keys()]),
+      new Set(infos.map((s) => s.path)),
+      new Set([...m.files.keys()]),
     );
     for (const s of infos) {
-      assertEquals(s.entries, m.store.get(s.id)!.entries.length);
+      assertEquals(s.entries, m.files.get(s.path)!.entries.length);
     }
   }
   toString = () => "list";
@@ -306,23 +305,23 @@ Deno.test("session store: op sequences preserve replayability + isolation", asyn
   try {
     await fc.assert(
       fc.asyncProperty(commands, async (cmds) => {
-        const base = `${parent}/run${runId++}`;
         const setup = () => {
-          // Start with one active, persisted session (mirrors buildContext).
-          const r: Real = {
-            base,
-            activeId: "",
-            activeMeta: { created: "" },
-            activeLog: [],
-            clock: 0,
-          };
-          const { id, created } = fresh(r);
-          r.activeId = id;
-          r.activeMeta = { created };
-          persist(r);
+          const base = `${parent}/run${runId++}`;
+          // Mirrors buildContext: an initial active session, unmaterialized
+          // (no file on disk until the first persist).
+          const d0 = new Date(Date.UTC(2026, 0, 1));
+          const created = d0.toISOString();
+          const path0 = sessionPath(base, newSessionId(d0));
+          const store = makeSessionStore(base, {
+            path: path0,
+            meta: { created },
+            entries: [],
+          });
+          const r: Real = { store, base, clock: 1 };
           const m: Model = {
-            store: new Map([[id, { meta: { created }, entries: [] }]]),
-            activeId: id,
+            files: new Map(),
+            activePath: path0,
+            active: { meta: { created }, entries: [] },
           };
           return { model: m, real: r };
         };

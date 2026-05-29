@@ -128,7 +128,15 @@ export interface AgentContext {
   events: EventStream;
   sessionBase: string;
   currentLogPath: () => string;
+  /** Repoint to another session, replacing the live log in place (the
+   * primitive; the high-level ops below are built on it). */
   switchSession: (path: string, entries: Entry[], meta: SessionMeta) => void;
+  /** Start a fresh empty session (materialized on first write). */
+  newSession: (now: Date) => void;
+  /** Branch the active conversation into a fresh session, materialized now. */
+  forkSession: (now: Date) => void;
+  /** Open a stored session by path, replacing the live log. */
+  openSession: (path: string) => Promise<void>;
   rename: (name: string) => void;
   ui: UI;
   approve: Approver;

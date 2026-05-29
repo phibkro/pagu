@@ -13,13 +13,7 @@ import {
   runTask,
   type UI,
 } from "../agent.ts";
-import {
-  listSessions,
-  loadSession,
-  newSessionId,
-  type SessionInfo,
-  sessionPath,
-} from "../config/sessions.ts";
+import { listSessions, type SessionInfo } from "../config/sessions.ts";
 import { listRoles } from "../config/roles.ts";
 import { listSkills } from "../skills/skill.ts";
 import { selectFromList } from "./select.ts";
@@ -434,11 +428,7 @@ async function handleCommand(
       return true;
     }
     case "/new":
-      ctx.switchSession(
-        sessionPath(ctx.sessionBase, newSessionId(new Date())),
-        [],
-        { created: new Date().toISOString() },
-      );
+      ctx.newSession(new Date());
       console.log(dim("  started a new conversation"));
       return true;
     case "/open": {
@@ -472,20 +462,14 @@ async function handleCommand(
         console.log(dim("  usage: /open <n> — see /sessions for the numbers"));
         return true;
       }
-      const { meta, entries } = await loadSession(s.path);
-      ctx.switchSession(s.path, entries, meta);
+      await ctx.openSession(s.path);
       console.log(dim(`  opened: ${s.title}`));
       return true;
     }
     case "/fork": {
-      const entries = [...ctx.log];
-      ctx.switchSession(
-        sessionPath(ctx.sessionBase, newSessionId(new Date())),
-        entries,
-        { created: new Date().toISOString() },
-      );
-      ctx.persist(); // materialize the fork so it shows up in /sessions
-      console.log(dim(`  forked into a new conversation (${entries.length})`));
+      const n = ctx.log.length;
+      ctx.forkSession(new Date()); // copies the current log + materializes it
+      console.log(dim(`  forked into a new conversation (${n})`));
       return true;
     }
     case "/rename": {
@@ -530,11 +514,7 @@ async function handleCommand(
       try {
         Deno.removeSync(ctx.currentLogPath());
       } catch { /* not persisted yet — nothing to delete */ }
-      ctx.switchSession(
-        sessionPath(ctx.sessionBase, newSessionId(new Date())),
-        [],
-        { created: new Date().toISOString() },
-      );
+      ctx.newSession(new Date());
       console.log(dim("  deleted — started a fresh conversation"));
       return true;
     }
