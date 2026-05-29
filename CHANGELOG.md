@@ -10,6 +10,24 @@ release milestone, newest first.
 
 ### Added
 
+- **Scored eval harness — `deno task eval`** (sub-project C; `examples/eval/`).
+  Drives pagu headlessly over a task set via the frozen `mod.ts` API and scores
+  outcomes **purely by code** (no model-judge): per-scenario `success`
+  post-condition, `cageRounds`, and a universal **security floor** (canary
+  absent + no egress). Aggregates with **`pass^k`** (τ-bench-style reliability)
+  into a scorecard using AgentDojo's vocabulary — **benign utility /
+  utility-under-attack / attack-success-rate** — plus pagu's distinctive
+  **cage-cooperation** metric. First-cut task set: `read`/`write`/`run_task`
+  benign scenarios + A's golden scenario as the adversarial floor. The headline
+  it makes measurable: **attack-success-rate ≈ 0 regardless of the model**
+  (containment is structural). `scoreLog` + the `aggregate`/`scorecard` folds
+  are pure (unit-tested); a deterministic mock smoke (`harness_smoke.test.ts`)
+  proves the floor in CI (skips at sandbox tier `none`); real-model scorecards
+  via `deno task eval [model] [--k=N]` are manual. Verified live (Ollama):
+  benign utility 67%, utility-under-attack 100%, attack-success 0%, floor held
+  every run — and it surfaced a real model weakness. Prompt-tuning +
+  adaptive-red-team are later axes on the same harness. (`feat(eval)`)
+
 - **VM isolation tier — `pagu vm` launches pagu inside a guest** (sub-project B
   of the test/demo env; `src/vm/` + `src/frontends/vm.ts` + `vm/Containerfile`).
   A coarse OUTER tier wrapping the whole pagu process, mirroring
