@@ -103,9 +103,19 @@ is a **lawful merge**.
     allow unconditionally** (by type, not by order). So the permission set
     depends on _which_ layers you compose, not their order, and composition can
     only hold-or-tighten — never silently widen. Safety is preserved _by
-    construction_. (Today config carries only grants → union; denies are derived
-    from `.gitignore` and already absolute. Explicit denies slot in later under
-    the same law.)
+    construction_.
+  - **Two kinds of deny** (the explicit denies the law anticipated have arrived
+    — config `hide`): **hard denies** (the lattice's `⋃ denies` — never lifted)
+    and **concealment denies** (a _subtractive hiding overlay_ within `allow`:
+    the runner's view omits the path, and the agent read-tool refuses it).
+    Concealment denies are the only liftable kind — a config/role `reveal` glob
+    un-hides a concealed path. This does **not** breach "never widen":
+    concealment only ever constrains paths _already inside `allow`_, and `allow`
+    is enforced independently (envelope + Deno `--allow-*`), so `reveal` can
+    only restore access **within `allow`**, never grant beyond it. Sources
+    feeding the concealment set (gitignore = the VCS source, config globs,
+    default secrets) and the `reveal` opt-out are designed in
+    `docs/specs/2026-05-29-concealment-sources-design.md`.
   - The per-script + envelope **human gate stays the backstop** — roles set the
     envelope, never a bypass.
 - **Skills as role extension.** A skill extends the role denotation with two new
@@ -259,15 +269,15 @@ source files  ──►  effectful inference  ──►  derived value  ──�
 
 All the inference chains in the system:
 
-| Source                                    | Inference fn        | Derived value                     | Pure consumer                       | Staleness                                           |
-| ----------------------------------------- | ------------------- | --------------------------------- | ----------------------------------- | --------------------------------------------------- |
-| `.gitignore` + git                        | `gitignoreDenies()` | `string[]` denied paths           | read refusal in `handleRead`        | recomputed each `applyRoles()`                      |
-| `deno.json` / `package.json` / `Justfile` | `discoverTasks()`   | `DiscoveredTask[]`                | `run_task` listing, `matchesPolicy` | recomputed at session start                         |
-| cage denial output                        | `classifyRun()`     | `string[]` needed perms           | `withinEnvelope()`                  | per-invocation for `write`; lockfile for `run_task` |
-| `SKILL.md` + `scripts/*.ts`               | `loadSkill()`       | `Skill` incl. body                | `invoke_skill` body, ceiling check  | re-read from disk at each `invoke_skill` call       |
-| roles + config + flags                    | `composeLayers()`   | `PaguConfig`, readPaths, envelope | every downstream decision           | `setRoles()` / `setProvider()` triggers re-derive   |
-| `AGENTS.md` / `CLAUDE.md`                 | `firstPresent()`    | prose `string`                    | system prompt                       | session start                                       |
-| `Entry[]` (append-only log)               | `logToMessages()`   | `ChatMessage[]`                   | model API call                      | correct-by-construction (pure, no cache)            |
+| Source                                    | Inference fn         | Derived value                          | Pure consumer                                         | Staleness                                           |
+| ----------------------------------------- | -------------------- | -------------------------------------- | ----------------------------------------------------- | --------------------------------------------------- |
+| git + config `hide`/`reveal` + secrets    | `buildConcealment()` | `Concealment` (predicate + mask paths) | read refusal in `handleRead` + runner OS-sandbox mask | recomputed each `applyRoles()`                      |
+| `deno.json` / `package.json` / `Justfile` | `discoverTasks()`    | `DiscoveredTask[]`                     | `run_task` listing, `matchesPolicy`                   | recomputed at session start                         |
+| cage denial output                        | `classifyRun()`      | `string[]` needed perms                | `withinEnvelope()`                                    | per-invocation for `write`; lockfile for `run_task` |
+| `SKILL.md` + `scripts/*.ts`               | `loadSkill()`        | `Skill` incl. body                     | `invoke_skill` body, ceiling check                    | re-read from disk at each `invoke_skill` call       |
+| roles + config + flags                    | `composeLayers()`    | `PaguConfig`, readPaths, envelope      | every downstream decision                             | `setRoles()` / `setProvider()` triggers re-derive   |
+| `AGENTS.md` / `CLAUDE.md`                 | `firstPresent()`     | prose `string`                         | system prompt                                         | session start                                       |
+| `Entry[]` (append-only log)               | `logToMessages()`    | `ChatMessage[]`                        | model API call                                        | correct-by-construction (pure, no cache)            |
 
 **Three staleness strategies** are in use:
 
