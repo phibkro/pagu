@@ -1,6 +1,6 @@
 # Reasoning tokens + read markers — typed stream channels (design)
 
-> Status: **draft 2026-05-29** (brainstorming → grilling → tdd). The "ACP
+> Status: **hardened 2026-05-29** (brainstorm → grill → tdd-ready). The "ACP
 > thinking tokens + read markers" v1 item. Separates the model's reasoning from
 > its answer and surfaces each appropriately per frontend, via a typed live
 > stream channel. Scoped to `<think>`-tag reasoning (ephemeral); structured
@@ -75,17 +75,28 @@ End-to-end seam changes:
   tokens → `content`; in-`<think>` text → `reasoning`; the `· read X` lines →
   `marker`. (`JSON.stringify` escapes newlines, so each frame is exactly one
   line.)
-- **spawnPhase** drains stderr through the `TextLineStream` it already uses;
-  each line that parses as a `StreamChunk` → a new typed `onStream(chunk)`
+- **spawnPhase** today drains stderr through `TextDecoderStream` (raw chunks);
+  the design pipes it `TextDecoderStream → TextLineStream` (from `@std/streams`,
+  already a dep and used this way in `chat.ts`) so it reads **whole lines**.
+  Each line that parses as a `StreamChunk` → a new typed `onStream(chunk)`
   callback; lines that **don't** parse (genuine diagnostics — Deno warnings,
   errors) are accumulated as before for the `phase exited N: <stderr>` message.
   So real error output still surfaces; only frames are demuxed.
-- **`UI.stream`** widens to `stream?(text: string, channel?: StreamChannel)`
-  (defaults to `"content"`).
+- **`UI.stream`** widens to
+  `stream?(text: string, channel?: "content" |
+  "reasoning" | "marker")` — an
+  **inline union**, not the named `StreamChannel`. `UI` is a **frozen public
+  export** (`src/mod.ts`); adding an _optional_ param is backwards-compatible
+  (existing `stream: (chunk) => …` implementers and `stream(text)` callers still
+  satisfy it; the floor test checks `{name, kind}`, and `UI` stays `interface`).
+  Keeping the union inline avoids growing the frozen surface with a new named
+  type — `StreamChunk`/`StreamChannel` stay **internal** to `phases/`.
 - **agent.ts** wires `onStream: (c) => ctx.ui.stream?.(c.text, c.channel)`.
 
 Carries no capability (just `{channel, text}`, display-only) — invariant #1
-untouched; the side-channel stays a display affordance.
+untouched; the side-channel stays a display affordance. The frozen public API
+grows only by a backwards-compatible optional param on `UI.stream` (no new
+public export, no floor-manifest change).
 
 ## Provider parsing — the `<think>` splitter
 
@@ -115,10 +126,16 @@ No `ChatResponse.reasoning` field, no Anthropic `thinking` param, no
   - `content` → `agent_message_chunk` (the answer).
   - `reasoning` → `agent_thought_chunk`.
   - `marker` → `agent_thought_chunk` (activity meta, keeping the answer clean).
+  - _Intended:_ per-channel buffers preserve order **within** a channel but not
+    strictly **across** channels at the ACP boundary (a reasoning chunk between
+    two content chunks may flush after the content) — fine, since editors render
+    thoughts and messages in separate regions. `show()` flushes all channel
+    buffers first to keep discrete output ordered.
 - **TUI** — its `stream` consumer gains the channel: `content` normal,
   `reasoning` + `marker` **dimmed** (existing `dim()`).
-- **CLI** (one-shot) — print `content`; drop or dim `reasoning`/`marker`
-  (simplest).
+- **CLI** (one-shot) — has **no** `ui.stream` (it's batch: the answer is shown
+  from the returned message entry after the turn), so all live frames are no-ops
+  there and reasoning is simply absent. No CLI change needed.
 
 ## Invariants preserved
 
