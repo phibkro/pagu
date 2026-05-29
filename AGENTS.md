@@ -286,7 +286,12 @@ Configuration deep module (`buildContext` is the public interface):
   feature on the security/capability path, "done" includes one real run of the
   headline journey against a live model (Ollama), watched to completion — not a
   model-stubbed "live" test standing in for it. (How `pagu serve`'s cage-perm
-  bug was found: it lived in the seam the stub removed.)
+  bug was found: it lived in the seam the stub removed.) **`deno task ci:live`**
+  is that lane: it drives the eval scenarios through a real model and asserts
+  the security floor AND benign utility (the cage bug failed _closed_, so a
+  security-only gate misses it — benign>0 is the catch); it **loud-skips**
+  (exits 0 with a banner) when no model is reachable, so it never silently
+  passes.
 - **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
   trailer
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
