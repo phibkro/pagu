@@ -93,9 +93,12 @@ Pure domain core (unit-tested — change with care + tests first):
 
 - `src/log/` — `pagu:*` block parse/serialize (the event store format).
 - `src/permissions/` — `envelope.ts`: `covers`/`within`/`withinEnvelope` (the
-  pure containment check); `gitignore.ts`: deny derivation via `git ls-files`;
-  `policy.ts`: a run's permission policy: `buildEnvelope` (read/write grants +
-  gitignore denies) and `shouldAutoApprove` (the auto-approve gate).
+  pure containment check); `gitignore.ts`: the VCS source (ignored paths via
+  `git ls-files`); `concealment.ts`: the pure multi-source hide policy
+  (`buildConcealment` → `conceals` predicate + `maskPaths`; gitignore-compatible
+  glob matching; `reveal` subtraction); `policy.ts`: a run's permission policy:
+  `buildEnvelope` (read/write grants + concealment write-denies, pure) and
+  `shouldAutoApprove` (the auto-approve gate).
 
 Capability modules — application layer (also pure/tested; neither holds an exec
 path):
@@ -276,10 +279,13 @@ Configuration deep module (`buildContext` is the public interface):
 
 - Deno `--deny-read=<child>` breaks `readDir` of its parent → gitignore denies
   are **write-only** at the Deno (tier-1) layer. Read-protection is enforced at
-  the **OS-sandbox tier** instead: the runner masks gitignored paths from its
+  the **OS-sandbox tier** instead: the runner masks **concealed** paths from its
   filesystem view (`src/runner/sandbox.ts` `readMask` — bwrap binds
-  `/dev/null`/empty-tmpfs over them, sandbox-exec denies the read). At tier 1
-  only (no OS sandbox — Windows, `--no-sandbox`) the read gap persists.
+  `/dev/null`/empty-tmpfs over them, sandbox-exec denies the read). Concealment
+  is multi-source (`src/permissions/concealment.ts`): the VCS source
+  (`.gitignore`), config `hide` globs, and an on-by-default secret-glob list,
+  minus a `reveal` opt-out. At tier 1 only (no OS sandbox — Windows,
+  `--no-sandbox`) the read gap persists.
 - Deno reports denied paths _as the script referenced them_ (often relative) →
   `absolutizePerm` before envelope checks.
 - `prompt()` returns `null` on piped stdin → use `readLine` (raw stdin).

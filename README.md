@@ -117,6 +117,14 @@ Flags (run `pagu --help` for the full list; for shell completions,
   auto-approve scripts confined to it, and auto-allow all discovered project
   tasks (`deno.json`, `package.json`, `Justfile`) via `run_task`.
 - `--write <dir>` (repeatable) — directories scripts may write to.
+- `--hide <glob>` (repeatable) — hide matching paths from the runner and the
+  agent's read tool (gitignore-style globs). Adds to the default-secret list and
+  `.gitignore` (in repo mode).
+- `--reveal <glob>` (repeatable) — un-hide matching paths (overrides a hide /
+  default-secret / gitignore match) for this run — e.g. `--reveal node_modules`.
+- `--no-hide-secrets` — don't hide the built-in default-secret globs (`.env`,
+  `*.pem`, `*.key`, `id_rsa`, …).
+- `--no-hide-gitignored` — don't hide `.gitignore`'d paths in repo mode.
 - `--no-sandbox` — disable the OS sandbox tier (Deno-permission floor applies).
 - `--advisor` — enable the advisory reviewer: sends `{task, script, perms}` to a
   model before the approval prompt and shows structured `[advisory]` flags.
@@ -213,11 +221,20 @@ Zero-config works. To customize, drop files in `~/.config/pagu/` (or
   "model": "anthropic/claude-sonnet-4.5",
   "allow": ["/home/me/work", "/home/me/notes"],
   "allowedTasks": ["deno task lint", "deno task test"],
+  "hide": ["*.secret", "private/"],
+  "reveal": [".env.example"],
   "advisor": true,
   "advisorProvider": "openrouter",
   "advisorModel": "anthropic/claude-haiku-4-5"
 }
 ```
+
+`hide` / `reveal` (gitignore-style globs) control **concealment** — paths the
+sandboxed runner can't read and the agent's read tool refuses. A built-in secret
+list (`.env`, `*.pem`, `*.key`, `id_rsa`, …) is hidden by default
+(`hideSecrets: false` to disable), and in repo mode `.gitignore`'d paths are
+hidden too (`hideGitignored: false` to disable). `reveal` is the escape hatch
+for a path you explicitly want readable.
 
 `provider` is a preset (`ollama` / `openrouter` / `openai` / `anthropic`); each
 knows its base URL and which **env var** holds the API key. Secrets never live
@@ -229,7 +246,9 @@ in the config file.
 
 > **Privacy:** with a **cloud** provider, the agent's _observations_ (file
 > contents it reads) are sent to that provider. Local Ollama keeps everything on
-> your machine.
+> your machine. Concealment (above) keeps secret files — `.env`, keys,
+> gitignored paths — out of both the agent's reads and the runner's view by
+> default, so they don't leak into the conversation.
 
 `AGENTS.md` — free-form agent instructions, injected into the prompts. The
 cross-tool standard (also read by Codex, Cursor, Copilot, …). pagu merges a

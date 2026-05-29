@@ -10,6 +10,20 @@ release milestone, newest first.
 
 ### Added
 
+- **Concealment sources — multi-source hide policy**
+  (`src/permissions/concealment.ts`) — generalizes gitignore read confinement
+  from a single git-derived set into a source-neutral concealment fed by three
+  sources: the **VCS source** (`.gitignore`, togglable via `hideGitignored`,
+  auto-on in repo mode), an explicit **config `hide`** glob list, and a
+  **default-secrets** glob list (`.env`/`*.pem`/`*.key`/… — on by default via
+  `hideSecrets`). A **`reveal`** glob list is the bounded escape hatch (lifts
+  concealment within `allow`, never widens the envelope). Glob matching is
+  gitignore-compatible; the same `Concealment` drives both the agent
+  read-refusal and the runner OS-sandbox mask. Config keys
+  `hide`/`reveal`/`hideSecrets`/`hideGitignored` + CLI
+  `--hide`/`--reveal`/`--no-hide-secrets`/`--no-hide-gitignored`. Now covers
+  non-gitignored secrets and applies outside repo mode too.
+  (`feat(permissions)`)
 - **gitignore read confinement** — the runner masks gitignored paths from its
   OS-sandbox filesystem view, closing the read gap where a script could read a
   secret (`.env`, keys) and surface its contents into the log → model provider.

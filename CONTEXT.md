@@ -264,23 +264,29 @@ double-gate output for net-less runs.
    The runner wraps each `deno run` in **bubblewrap** (Linux, when `bwrap` is on
    PATH) or **sandbox-exec** (macOS). v1 hardens the escape vectors that matter:
    it **denies network** (unless granted), **confines writes** to the granted
-   paths + scratch, and **masks gitignored paths** from the runner's filesystem
+   paths + scratch, and **masks concealed paths** from the runner's filesystem
    view (read confinement — bwrap binds `/dev/null`/empty-tmpfs over them,
-   sandbox-exec denies reads). Crucially this contains a subprocess spawned via
-   `--allow-run` — which Deno does _not_ permission-bound — at the kernel level.
-   It wraps both the cage self-test (unreviewed code) and the approved run.
-   Auto-detected; falls back to tier 1 with a note when unavailable
-   (`src/runner/sandbox.ts`). Windows (AppContainer/Job Objects) is open.
+   sandbox-exec denies reads). The concealment set is multi-source —
+   `.gitignore` (the VCS source), the config `hide` globs, and an on-by-default
+   secret-glob list (`.env`/`*.pem`/…) — with a `reveal` opt-out
+   (`src/permissions/concealment.ts`). Crucially this contains a subprocess
+   spawned via `--allow-run` — which Deno does _not_ permission-bound — at the
+   kernel level. It wraps both the cage self-test (unreviewed code) and the
+   approved run. Auto-detected; falls back to tier 1 with a note when
+   unavailable (`src/runner/sandbox.ts`). Windows (AppContainer/Job Objects) is
+   open.
 
-   _Scope of v1:_ reads of granted (non-gitignored) repo content stay broad at
-   the OS layer (Deno bounds the script's own reads); secrets are masked.
-   Arbitrary per-path read confinement (Landlock) is a roadmap item; at tier 1
-   only (no OS sandbox — e.g. Windows or `--no-sandbox`) gitignored masking is
-   absent and the read gap persists.
+   _Scope of v1:_ reads of granted, non-concealed content stay broad at the OS
+   layer (Deno bounds the script's own reads); concealed paths (gitignore +
+   config `hide` + default secrets) are masked. Arbitrary per-path read
+   confinement (Landlock) is a roadmap item; at tier 1 only (no OS sandbox —
+   e.g. Windows or `--no-sandbox`) the masking is absent and the read gap
+   persists.
 
 Honest ceiling: with only tier 1, a Deno/V8 escape would breach isolation; tier
-2 closes the write/network escape (incl. via subprocesses) and masks gitignored
-secrets from reads where the OS supports it.
+2 closes the write/network escape (incl. via subprocesses) and masks concealed
+paths (gitignore + config + default secrets) from reads where the OS supports
+it.
 
 ```mermaid
 flowchart TD
