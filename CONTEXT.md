@@ -262,24 +262,29 @@ double-gate output for net-less runs.
    phase still cannot read the disk).
 2. **OS isolation — platform-specific hardening (implemented for Linux/macOS).**
    The runner wraps each `deno run` in **bubblewrap** (Linux, when `bwrap` is on
-   PATH) or **sandbox-exec** (macOS). v1 hardens the two escape vectors that
-   matter: it **denies network** (unless granted) and **confines writes** to the
-   granted paths + scratch. Crucially this contains a subprocess spawned via
+   PATH) or **sandbox-exec** (macOS). v1 hardens the escape vectors that matter:
+   it **denies network** (unless granted), **confines writes** to the granted
+   paths + scratch, and **masks gitignored paths** from the runner's filesystem
+   view (read confinement — bwrap binds `/dev/null`/empty-tmpfs over them,
+   sandbox-exec denies reads). Crucially this contains a subprocess spawned via
    `--allow-run` — which Deno does _not_ permission-bound — at the kernel level.
    It wraps both the cage self-test (unreviewed code) and the approved run.
    Auto-detected; falls back to tier 1 with a note when unavailable
    (`src/runner/sandbox.ts`). Windows (AppContainer/Job Objects) is open.
 
-   _Scope of v1:_ **reads stay broad** at the OS layer (Deno still bounds the
-   script's own reads). OS-layer read isolation + Landlock are roadmap items.
+   _Scope of v1:_ reads of granted (non-gitignored) repo content stay broad at
+   the OS layer (Deno bounds the script's own reads); secrets are masked.
+   Arbitrary per-path read confinement (Landlock) is a roadmap item; at tier 1
+   only (no OS sandbox — e.g. Windows or `--no-sandbox`) gitignored masking is
+   absent and the read gap persists.
 
 Honest ceiling: with only tier 1, a Deno/V8 escape would breach isolation; tier
-2 closes the write/network escape (incl. via subprocesses) where the OS supports
-it. Read confinement of subprocesses is the remaining tier-2 gap.
+2 closes the write/network escape (incl. via subprocesses) and masks gitignored
+secrets from reads where the OS supports it.
 
 ```mermaid
 flowchart TD
-  subgraph tier2["Tier 2 · OS sandbox — bwrap / sandbox-exec (Linux/macOS)<br/>denies network · confines writes · contains --allow-run subprocesses"]
+  subgraph tier2["Tier 2 · OS sandbox — bwrap / sandbox-exec (Linux/macOS)<br/>denies network · confines writes · masks gitignored reads · contains --allow-run subprocesses"]
     subgraph tier1["Tier 1 · Deno permissions — always on, portable<br/>--allow-read / write / net / run, exactly scoped"]
       script["approved script"]
     end
@@ -506,14 +511,10 @@ portable tier-1 floor around it (no regression).
 
 - **Verify the macOS `sandbox-exec` profile on a Mac** — implemented but not yet
   exercised on real hardware (developed/tested on Linux).
-- **OS-layer read isolation + Landlock (Linux).** Tier 2 confines writes +
-  network but leaves reads broad at the OS layer; per-path read binding / a
-  Landlock backend would close subprocess read-confinement.
-- **`.gitignore` read-protection.** `--deny-read=<child>` breaks `readDir` of
-  the parent, so repo mode applies gitignore denies as **deny-write only**. A
-  broad-read script can thus surface a secret's _contents_ to the (local) model
-  — no internet exfil, the runner has no net. Fix: per-file read allowlisting,
-  content redaction, or a narrower granted read set.
+- **Arbitrary per-path read confinement + Landlock (Linux).** Tier 2 now masks
+  _gitignored_ paths (the secret-read gap, closed), but reads of granted repo
+  content stay broad at the OS layer; a Landlock backend would allow narrowing
+  reads to an arbitrary per-path allowlist beyond the gitignore set.
 - **Windows OS isolation** (AppContainer / Job Objects).
 - **Permission modes** — named envelope bundles generalizing repo mode.
 - **A credential-injecting egress proxy** so net-granted scripts never see raw
@@ -760,27 +761,27 @@ v1 is a true milestone, not MVP. It means: multi-platform, security-verified,
 stable programmatic API, production-quality ACP, egress security. The items
 below are the gate; the backlog ideas continue past v1.
 
-| Item                                           | What it requires                                                                                                                                                                                                                                 | Status                                                                            |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| **macOS sandbox verified**                     | Run the live-verify recipe on real Mac hardware; assert `sandbox: "sandbox-exec"` in result entries                                                                                                                                              | ✅ 2026-05-29                                                                     |
-| **Windows sandbox**                            | AppContainer or Job Objects wrapping the runner; `detectSandbox` tier for Windows                                                                                                                                                                | open                                                                              |
-| **WASM runner (investigate)**                  | Assess running the Deno-TS runner under WASM for portable capability-scoped isolation; decision: adopt or explicitly defer                                                                                                                       | open                                                                              |
-| **Remote microVM execution**                   | Run pagu in remote infra with granular VPS access (Firecracker / krun / Apple container framework; virtiofs threads only the allowed dirs into the guest)                                                                                        | open                                                                              |
-| **Egress security — Claw Patrol**              | Integrate a credential-injecting egress proxy so net-granted scripts never see raw secrets; tested end-to-end                                                                                                                                    | open                                                                              |
-| **Stable programmatic API**                    | Freeze the public surface (`context.ts` / `UI` / `Approver` / `Capability<Data>` / the loop combinators); SDK consumers can build their own loops without touching internals                                                                     | open                                                                              |
-| **ACP — full coverage**                        | `/roles` and `/skills` over ACP (no TUI-only picker fallback); verified with Zed + at least one other editor                                                                                                                                     | open                                                                              |
-| **Provider coverage**                          | Verify model tool-call format against Anthropic, OpenAI, Gemini, and at least one local (Ollama); automated smoke test per provider                                                                                                              | open                                                                              |
-| **Model compatibility tests**                  | Automated eval: standard task set → score proposal quality + cage-fix rounds; baseline for regression detection                                                                                                                                  | open                                                                              |
-| **gitignore read protection**                  | Close the read gap: per-file allowlisting, content redaction, or narrower granted read scope so secrets don't reach the model even without net                                                                                                   | open                                                                              |
-| **Phase input schema validation**              | Zod or equivalent at `readInput()` — makes the process-boundary contract explicit and catches orchestrator bugs                                                                                                                                  | open                                                                              |
-| **CHANGELOG + git-cliff**                      | Automated changelog generation from conventional commits (`cliff.toml` config) as part of the release flow                                                                                                                                       | open                                                                              |
-| **Landlock / OS-layer read isolation (Linux)** | Per-path read binding closes `--allow-run` subprocess read-confinement gap; Landlock backend behind `detectSandbox`                                                                                                                              | open                                                                              |
-| **Permission modes**                           | Named envelope bundles generalising repo mode (e.g. `scratch-readonly`); without this the envelope system is only usable in one configuration                                                                                                    | open                                                                              |
-| **ACP — thinking tokens + read markers**       | Provider-layer reasoning separation (`<think>` / `reasoning_content`) → `agent_thought_chunk`; `· read X` markers; verify Zed slash-command invocation format                                                                                    | open                                                                              |
-| **`fanOut` combinator**                        | The loop substrate (`Step<C>`, `loop`, `andThen`, `pipeline`) is not a complete API without `fanOut` (eager-parallel fold of the `Flow` monoid, dual to `pipeline`'s lazy-sequential fold); freezing the surface before this would be premature. | ✅ 2026-05-29 (6 laws property-tested; pipeline is the oracle)                    |
-| **Config-driven pluggability**                 | Insert custom handlers; the point where the gate-never-widen law is type-enforced and SDK consumers can extend safely. Requires `ReadonlyExec` (layer 2 of gate-never-widen)                                                                     | ✅ 2026-05-29 (before-approve slot; ACP display + post-result observers deferred) |
-| **`ReadonlyExec` — gate-never-widen layer 2**  | Prerequisite for config-driven pluggability; makes terminal handlers provably non-widening at the type level                                                                                                                                     | ✅ 2026-05-29                                                                     |
-| **Model-based stateful property testing**      | `fc.commands`-style harness asserting invariants across random operation sequences: permissions never widen, log always replayable, every approved run within envelope                                                                           | open                                                                              |
+| Item                                                       | What it requires                                                                                                                                                                                                                                 | Status                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| **macOS sandbox verified**                                 | Run the live-verify recipe on real Mac hardware; assert `sandbox: "sandbox-exec"` in result entries                                                                                                                                              | ✅ 2026-05-29                                                                     |
+| **Windows sandbox**                                        | AppContainer or Job Objects wrapping the runner; `detectSandbox` tier for Windows                                                                                                                                                                | open                                                                              |
+| **WASM runner (investigate)**                              | Assess running the Deno-TS runner under WASM for portable capability-scoped isolation; decision: adopt or explicitly defer                                                                                                                       | open                                                                              |
+| **Remote microVM execution**                               | Run pagu in remote infra with granular VPS access (Firecracker / krun / Apple container framework; virtiofs threads only the allowed dirs into the guest)                                                                                        | open                                                                              |
+| **Egress security — Claw Patrol**                          | Integrate a credential-injecting egress proxy so net-granted scripts never see raw secrets; tested end-to-end                                                                                                                                    | open                                                                              |
+| **Stable programmatic API**                                | Freeze the public surface (`context.ts` / `UI` / `Approver` / `Capability<Data>` / the loop combinators); SDK consumers can build their own loops without touching internals                                                                     | open                                                                              |
+| **ACP — full coverage**                                    | `/roles` and `/skills` over ACP (no TUI-only picker fallback); verified with Zed + at least one other editor                                                                                                                                     | open                                                                              |
+| **Provider coverage**                                      | Verify model tool-call format against Anthropic, OpenAI, Gemini, and at least one local (Ollama); automated smoke test per provider                                                                                                              | open                                                                              |
+| **Model compatibility tests**                              | Automated eval: standard task set → score proposal quality + cage-fix rounds; baseline for regression detection                                                                                                                                  | open                                                                              |
+| **gitignore read protection**                              | Close the read gap: mask gitignored paths from the runner's OS-sandbox view (bwrap `/dev/null`/tmpfs, sandbox-exec deny-read) so secrets don't reach the model even without net                                                                  | ✅ 2026-05-29 (tier 2)                                                            |
+| **Phase input schema validation**                          | Zod or equivalent at `readInput()` — makes the process-boundary contract explicit and catches orchestrator bugs                                                                                                                                  | open                                                                              |
+| **CHANGELOG + git-cliff**                                  | Automated changelog generation from conventional commits (`cliff.toml` config) as part of the release flow                                                                                                                                       | open                                                                              |
+| **Landlock / arbitrary per-path read confinement (Linux)** | Beyond gitignore masking (done): a Landlock backend behind `detectSandbox` to narrow reads to an arbitrary per-path allowlist                                                                                                                    | open                                                                              |
+| **Permission modes**                                       | Named envelope bundles generalising repo mode (e.g. `scratch-readonly`); without this the envelope system is only usable in one configuration                                                                                                    | open                                                                              |
+| **ACP — thinking tokens + read markers**                   | Provider-layer reasoning separation (`<think>` / `reasoning_content`) → `agent_thought_chunk`; `· read X` markers; verify Zed slash-command invocation format                                                                                    | open                                                                              |
+| **`fanOut` combinator**                                    | The loop substrate (`Step<C>`, `loop`, `andThen`, `pipeline`) is not a complete API without `fanOut` (eager-parallel fold of the `Flow` monoid, dual to `pipeline`'s lazy-sequential fold); freezing the surface before this would be premature. | ✅ 2026-05-29 (6 laws property-tested; pipeline is the oracle)                    |
+| **Config-driven pluggability**                             | Insert custom handlers; the point where the gate-never-widen law is type-enforced and SDK consumers can extend safely. Requires `ReadonlyExec` (layer 2 of gate-never-widen)                                                                     | ✅ 2026-05-29 (before-approve slot; ACP display + post-result observers deferred) |
+| **`ReadonlyExec` — gate-never-widen layer 2**              | Prerequisite for config-driven pluggability; makes terminal handlers provably non-widening at the type level                                                                                                                                     | ✅ 2026-05-29                                                                     |
+| **Model-based stateful property testing**                  | `fc.commands`-style harness asserting invariants across random operation sequences: permissions never widen, log always replayable, every approved run within envelope                                                                           | open                                                                              |
 
 Suggested sequencing: security verification (macOS + gitignore + Landlock) →
 provider coverage + model tests → ACP full coverage → `fanOut` + pluggability +

@@ -48,6 +48,10 @@ export async function runScript(opts: {
   /** Called with each stdout chunk as it arrives. When present, stdout is
    *  streamed incrementally; the full text is still returned in RunResult. */
   onStdout?: (chunk: string) => void;
+  /** Gitignored paths (absolute) to hide from the sandbox view — read
+   *  confinement. Canonicalized + classified here, then masked by the OS
+   *  sandbox. Ignored at tier 1 ("none"). */
+  readMask?: string[];
 }): Promise<RunResult> {
   const flags = opts.perms.map(toFlag);
   const ranWith = ["--no-prompt", ...flags];
@@ -65,6 +69,7 @@ export async function runScript(opts: {
   const scope: SandboxScope = {
     writableMounts: resolveWritable(scratch, opts.perms),
     allowNet: grantsNet(opts.perms),
+    readMask: classifyReadMask(opts.readMask ?? []),
   };
   const { command, args } = wrapForSandbox(kind, denoArgs, scope);
   // Under a sandbox the host DENO_DIR is read-only, so point it at scratch.
@@ -123,4 +128,22 @@ function resolveWritable(scratch: string, perms: readonly string[]): string[] {
     mounts.add(path);
   }
   return [...mounts];
+}
+
+/** Canonicalize (symlink-resolve) + classify (file vs dir) each masked path.
+ * Canonicalization is load-bearing: the OS sandbox enforces against the real
+ * path, and `resolve()` (used upstream) does not deref symlinks — without it a
+ * deny rule silently misses (a leak, not an error). A path git lists but is
+ * since deleted throws on realPathSync → skip it (nothing to hide). */
+function classifyReadMask(paths: string[]): { path: string; isDir: boolean }[] {
+  const out: { path: string; isDir: boolean }[] = [];
+  for (const p of paths) {
+    try {
+      const real = Deno.realPathSync(p);
+      out.push({ path: real, isDir: Deno.statSync(real).isDirectory });
+    } catch {
+      // path no longer exists — nothing to mask
+    }
+  }
+  return out;
 }

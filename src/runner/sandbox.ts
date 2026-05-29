@@ -44,6 +44,11 @@ export interface SandboxScope {
   writableMounts: string[];
   /** Whether network was granted (else the sandbox denies it). */
   allowNet: boolean;
+  /** Gitignored paths to hide from the sandbox view (read confinement).
+   *  Paths must be canonical (symlink-resolved) — the OS sandbox enforces
+   *  against the real path. `isDir` drives the bwrap masking primitive;
+   *  sandbox-exec ignores it (subpath handles file or dir uniformly). */
+  readMask: { path: string; isDir: boolean }[];
 }
 
 /**
@@ -87,6 +92,12 @@ function bwrapArgs(scope: SandboxScope): string[] {
     "--die-with-parent",
   ];
   for (const m of dedupe(scope.writableMounts)) args.push("--bind-try", m, m);
+  // Masks come LAST so they overlay the rw repo bind: a dir → empty tmpfs,
+  // a file → /dev/null (reads return EOF → empty string).
+  for (const { path, isDir } of scope.readMask) {
+    if (isDir) args.push("--tmpfs", path);
+    else args.push("--ro-bind-try", "/dev/null", path);
+  }
   if (!scope.allowNet) args.push("--unshare-net");
   return args;
 }
@@ -102,6 +113,9 @@ function sbplProfile(scope: SandboxScope): string {
     "(allow default)", // reads/exec allowed; Deno still bounds the script
     "(deny file-write*)",
     ...writable.map((p) => `(allow file-write* (subpath ${q(p)}))`),
+    // Deny reads of masked paths — a later deny overrides (allow default).
+    // subpath handles file or dir uniformly, so isDir is unused on macOS.
+    ...scope.readMask.map((m) => `(deny file-read* (subpath ${q(m.path)}))`),
   ];
   if (!scope.allowNet) lines.push("(deny network*)");
   return lines.join("\n");

@@ -23,18 +23,18 @@ held if the model provider was trusted.
 The Deno-flag approaches are ruled out by the same constraint that created the
 gap: you cannot express "read the repo except `.env`" with `--allow-read` /
 `--deny-read`. The fix must live **below Deno**, at the OS-sandbox tier, where
-the runner's *filesystem view* simply doesn't contain the gitignored paths.
-This is enforcement at the actual security boundary (the sandbox), not a
-code-level band-aid — consistent with pagu's stance that the boundary is the
-runner's Deno perms + OS sandbox, never our code.
+the runner's _filesystem view_ simply doesn't contain the gitignored paths. This
+is enforcement at the actual security boundary (the sandbox), not a code-level
+band-aid — consistent with pagu's stance that the boundary is the runner's Deno
+perms + OS sandbox, never our code.
 
 ### The bar (decided)
 
-Close it **at the OS-sandbox tier**: bwrap (Linux) and sandbox-exec (macOS).
-On tier-1-only (no OS sandbox, e.g. Windows or `--no-sandbox`), the gap
-persists — **documented** as a known tier-1 limitation, consistent with how
-writes/net are already described (tier 2 is best-effort defense-in-depth). No
-fragile content-redaction fallback (it would invite false confidence).
+Close it **at the OS-sandbox tier**: bwrap (Linux) and sandbox-exec (macOS). On
+tier-1-only (no OS sandbox, e.g. Windows or `--no-sandbox`), the gap persists —
+**documented** as a known tier-1 limitation, consistent with how writes/net are
+already described (tier 2 is best-effort defense-in-depth). No fragile
+content-redaction fallback (it would invite false confidence).
 
 ### Masking scope (decided)
 
@@ -86,7 +86,7 @@ Append one deny-read rule per path — SBPL handles file or dir uniformly via
 
 ### Platform behavioural difference (intended)
 
-The two masks differ in *how* the read fails, and that's fine — both achieve
+The two masks differ in _how_ the read fails, and that's fine — both achieve
 "the secret never reaches stdout":
 
 - **bwrap** (`/dev/null` bind / empty tmpfs): the read **succeeds but returns
@@ -95,8 +95,8 @@ The two masks differ in *how* the read fails, and that's fine — both achieve
   script errors on that read.
 
 Either way the secret content is absent from the output. Tests assert **"the
-secret string does not appear in the run output,"** not "output is empty" —
-that invariant holds on both platforms.
+secret string does not appear in the run output,"** not "output is empty" — that
+invariant holds on both platforms.
 
 ### Threading
 
@@ -110,7 +110,7 @@ flows into the runner:
   (consumes the canonicalized, classified list).
 - **Canonicalization is load-bearing, not cosmetic.** `gitignoreDenies` builds
   paths with `resolve()`, which normalizes `.`/`..` but does **not** resolve
-  symlinks. The OS sandbox enforces against the *real* path: on macOS,
+  symlinks. The OS sandbox enforces against the _real_ path: on macOS,
   `makeTempDir` hands back `/var/folders/…` and `/tmp/…` symlinks while the
   sandbox sees `/private/…` (the existing `sbplProfile` hardcodes the two
   `/private/*` write prefixes for exactly this reason — a hack that doesn't
@@ -124,16 +124,16 @@ flows into the runner:
   run, so a script reads `.env` as empty consistently in rehearsal and for real.
 
 When `kind === "none"` (tier 1), `readMask` is ignored — no masking, gap
-persists (the documented limitation). Outside **repo mode**, `ctx.gitignored`
-is empty (it's only populated from `gitignoreDenies` when a repo is opted in),
-so `readMask` is empty and masking is a no-op — correct, because outside repo
-mode the read scope is the explicit allowlist, not the whole repo, so there's
-no broad-read gap to close.
+persists (the documented limitation). Outside **repo mode**, `ctx.gitignored` is
+empty (it's only populated from `gitignoreDenies` when a repo is opted in), so
+`readMask` is empty and masking is a no-op — correct, because outside repo mode
+the read scope is the explicit allowlist, not the whole repo, so there's no
+broad-read gap to close.
 
 ## Invariants preserved
 
 - **#1** unchanged — the runner is still the only exec path; this only narrows
-  what it can *read*.
+  what it can _read_.
 - **#2 strengthened** — read confinement is added at the OS-sandbox boundary,
   closing the one tier-2 gap CONTEXT.md called out ("reads stay broad at the OS
   layer").
@@ -157,10 +157,12 @@ no broad-read gap to close.
 
 ## Files
 
-- `src/runner/sandbox.ts` — `SandboxScope.readMask`; bwrap masking; SBPL deny-read.
+- `src/runner/sandbox.ts` — `SandboxScope.readMask`; bwrap masking; SBPL
+  deny-read.
 - `src/runner/run.ts` — `runScript` `readMask?` opt; statSync classification.
 - `src/capability/index.ts` — `cageOnce` + `performRun` pass `ctx.gitignored`.
-- Tests: `src/runner/sandbox.test.ts` (pure), an integration test (real sandbox).
+- Tests: `src/runner/sandbox.test.ts` (pure), an integration test (real
+  sandbox).
 - Docs: CONTEXT.md (security tiers — read confinement closed at tier 2; resolve
   the Open item); AGENTS.md (update the `--deny-read` gotcha to note OS-sandbox
   masking now covers it at tier 2); CHANGELOG.
@@ -169,7 +171,8 @@ no broad-read gap to close.
 
 1. `SandboxScope.readMask` + `bwrapArgs`/`sbplProfile` masking; pure tests for
    arg construction. CI green.
-2. `runScript` `readMask?` opt + statSync classification; thread into scope. CI green.
+2. `runScript` `readMask?` opt + statSync classification; thread into scope. CI
+   green.
 3. `cageOnce` + `performRun` pass `ctx.gitignored`. CI green.
 4. Integration test (real sandbox masks a gitignored read to empty). CI green.
 5. Docs: CONTEXT security tiers, AGENTS gotcha, CHANGELOG.

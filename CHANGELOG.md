@@ -10,6 +10,13 @@ release milestone, newest first.
 
 ### Added
 
+- **gitignore read confinement** — the runner masks gitignored paths from its
+  OS-sandbox filesystem view, closing the read gap where a script could read a
+  secret (`.env`, keys) and surface its contents into the log → model provider.
+  bwrap binds `/dev/null`/empty-tmpfs over the path (read returns empty);
+  sandbox-exec denies the read (read throws). Applies to both the cage self-test
+  and the approved run; tier 1 (no OS sandbox) still has the gap, documented.
+  (`feat(runner)`)
 - **`fanOut` combinator** (`src/loop.ts`) — the eager-parallel fold of the
   `Flow` monoid, dual to `pipeline`'s lazy-sequential fold; shares the
   `continue` identity. Runs all branches concurrently (`Promise.allSettled`),
@@ -152,10 +159,11 @@ release milestone, newest first.
 
 ## Known limitations (v1 scope)
 
-- **gitignore read gap** — `.gitignore` denies are applied as write-denies only
-  at runtime (`--deny-read=<child>` breaks `readDir` of the parent). A
-  broad-read script can surface secret file contents to the (local) model. No
-  internet exfil (runner has no net), but model context is polluted.
+- **gitignore read gap at tier 1** — on a platform with no OS sandbox (Windows,
+  `--no-sandbox`), `.gitignore` denies are write-only (`--deny-read=<child>`
+  breaks `readDir` of the parent), so a broad-read script can surface secret
+  file contents to the (local) model. Closed at tier 2 (bwrap/sandbox-exec
+  masking); persists only where tier 2 is unavailable.
 - **macOS `sandbox-exec`** — implemented and wired but not exercised on real Mac
   hardware. The Deno permission floor (tier 1) always applies; tier 2 may
   silently degrade to `none` if the profile is wrong.

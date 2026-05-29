@@ -275,7 +275,11 @@ Configuration deep module (`buildContext` is the public interface):
 ## Gotchas (hard-won)
 
 - Deno `--deny-read=<child>` breaks `readDir` of its parent → gitignore denies
-  are **write-only** at runtime (read-protection deferred).
+  are **write-only** at the Deno (tier-1) layer. Read-protection is enforced at
+  the **OS-sandbox tier** instead: the runner masks gitignored paths from its
+  filesystem view (`src/runner/sandbox.ts` `readMask` — bwrap binds
+  `/dev/null`/empty-tmpfs over them, sandbox-exec denies the read). At tier 1
+  only (no OS sandbox — Windows, `--no-sandbox`) the read gap persists.
 - Deno reports denied paths _as the script referenced them_ (often relative) →
   `absolutizePerm` before envelope checks.
 - `prompt()` returns `null` on piped stdin → use `readLine` (raw stdin).
