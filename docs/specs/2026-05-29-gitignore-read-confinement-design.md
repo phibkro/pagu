@@ -103,16 +103,32 @@ that invariant holds on both platforms.
 `ctx.gitignored` (absolute gitignored paths, already computed in `setup.ts`)
 flows into the runner:
 
-- `runScript` (`run.ts`) gains `readMask?: string[]`. It classifies each via
-  `Deno.statSync` (file vs dir) — the same effectful-shell pattern
-  `resolveWritable` already uses — and puts `{ path, isDir }[]` on the scope.
-  `sandbox.ts` stays pure (consumes the classified list).
+- `runScript` (`run.ts`) gains `readMask?: string[]`. For each path it
+  **canonicalizes via `Deno.realPathSync` and classifies via `Deno.statSync`**
+  (file vs dir) — the same effectful-shell pattern `resolveWritable` already
+  uses — producing `{ path, isDir }[]` on the scope. `sandbox.ts` stays pure
+  (consumes the canonicalized, classified list).
+- **Canonicalization is load-bearing, not cosmetic.** `gitignoreDenies` builds
+  paths with `resolve()`, which normalizes `.`/`..` but does **not** resolve
+  symlinks. The OS sandbox enforces against the *real* path: on macOS,
+  `makeTempDir` hands back `/var/folders/…` and `/tmp/…` symlinks while the
+  sandbox sees `/private/…` (the existing `sbplProfile` hardcodes the two
+  `/private/*` write prefixes for exactly this reason — a hack that doesn't
+  generalize to arbitrary gitignored paths). `realPathSync` makes the mask
+  target what the sandbox actually checks, on both platforms. Without it the
+  failure mode is a **silent leak** (the deny rule misses, the read succeeds),
+  not an error — the worst kind. If `realPathSync` throws (git listed a
+  now-deleted path), skip that entry — there's nothing to hide.
 - `cageOnce` **and** `performRun` (`capability/index.ts`) pass `ctx.gitignored`
   as `readMask`. Masking applies in **both** the cage self-test and the real
   run, so a script reads `.env` as empty consistently in rehearsal and for real.
 
 When `kind === "none"` (tier 1), `readMask` is ignored — no masking, gap
-persists (the documented limitation).
+persists (the documented limitation). Outside **repo mode**, `ctx.gitignored`
+is empty (it's only populated from `gitignoreDenies` when a repo is opted in),
+so `readMask` is empty and masking is a no-op — correct, because outside repo
+mode the read scope is the explicit allowlist, not the whole repo, so there's
+no broad-read gap to close.
 
 ## Invariants preserved
 
