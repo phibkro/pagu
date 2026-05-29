@@ -31,3 +31,11 @@ export { createContext } from "./config/setup.ts";
 export type { Capability, HandlerPlugin } from "./capability/index.ts";
 export type { Entry } from "./log/index.ts";
 export type { ScriptEntry } from "./context.ts";
+
+// Event stream — the addressable/streamable read side of the log, and the first
+// projection over it (CONTEXT → State model / #14). Subscribe from an offset,
+// then tail; fold the stream into your own views.
+export { eventStream } from "./events.ts";
+export type { EventStream, Indexed } from "./events.ts";
+export { observe } from "./observe.ts";
+export type { ObservabilitySummary } from "./observe.ts";

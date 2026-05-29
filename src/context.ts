@@ -8,6 +8,7 @@ import type { Entry } from "./log/index.ts";
 import type { ProviderConfig } from "./providers/index.ts";
 import type { SessionMeta } from "./config/index.ts";
 import type { HandlerPlugin } from "./capability/index.ts";
+import type { EventStream } from "./events.ts";
 import type { SkillScript } from "./skills/index.ts";
 import type { CommandEntry, DiscoveredTask } from "./tasks/index.ts";
 import type { CommandRule } from "./tasks/grammar.ts";
@@ -121,6 +122,10 @@ export interface AgentContext {
   /** The active conversation — append events here; call persist to save. */
   log: Entry[];
   persist: () => void;
+  /** The addressable/streamable read side of the log: a subscriber asks for
+   * everything after an offset, then tails. `persist` wakes it (the single
+   * notify chokepoint). The markdown stays the source-of-truth projection. */
+  events: EventStream;
   sessionBase: string;
   currentLogPath: () => string;
   switchSession: (path: string, entries: Entry[], meta: SessionMeta) => void;

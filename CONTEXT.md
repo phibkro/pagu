@@ -883,6 +883,24 @@ above.)
     real core cost; everything else is a subscriber. Dovetails with the North
     Star's workflow-IR (both are "the value is the source; interpretation is the
     read side").
+    - **First cut shipped 2026-05-29.** The seam: `src/events.ts` `eventStream`
+      — `offset` / `since(n)` (pure addressable read; event id = the entry's
+      index in the single-writer log) + `subscribe(from, signal)` (backlog then
+      live). The single notify chokepoint is `persist` (`setup.ts`); no
+      `ctx.log.push` sites needed rewiring. Exposed as `ctx.events` and on the
+      SDK surface (`mod.ts`, additive). The first subscriber: `src/observe.ts`
+      `observe` — the observability projection
+      (reads/approvals/rejections/runs/failures/ net-granted) as a pure fold,
+      proving "observability is a filtered projection of the one log" end to end
+      (`observe.test.ts`). The **event schema as public API** is floored: a
+      typed wire contract (one entry per kind) that fails `deno check` on a
+      removed/renamed kind + a round-trip test (`events.test.ts`). **Deferred:**
+      a persisted JSONL/SQLite store (markdown stays source-of-truth for now),
+      remote transport, and **per-session event ids** — the stream is bound to
+      the live `log` array, which is mutated in place on a session switch, so
+      offsets are per-array-lifetime, not yet per-session (fine for the
+      single-session case #15/#16 need; revisit when a live remote client tails
+      across switches).
 15. **Approval as an event with a lifecycle (async-gate prerequisite).** With a
     co-located TUI the gate is synchronous and the loop just `await`s a fast
     human. A non-co-located approver (phone, on a train) makes approval latency

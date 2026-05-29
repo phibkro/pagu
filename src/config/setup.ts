@@ -3,6 +3,7 @@ import { Command } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { dirname, fromFileUrl, resolve } from "@std/path";
 import { serializeLog } from "../log/serialize.ts";
+import { eventStream } from "../events.ts";
 import type { Entry } from "../log/schema.ts";
 import {
   composeLayers,
@@ -855,12 +856,17 @@ export async function buildContext(
   const availableCommandRules = await presentDefaultRules();
 
   const active = { path: logPath, meta: loaded.meta };
+  // The read side of the log: subscribers tail it; persist is the single notify
+  // chokepoint (every state change appends then persists). On a session switch
+  // the array is mutated in place, so the stream tracks the live log.
+  const events = eventStream(log);
   const persist = () => {
     Deno.mkdirSync(dirname(active.path), { recursive: true });
     Deno.writeTextFileSync(
       active.path,
       serializeFrontmatter(active.meta) + serializeLog(log),
     );
+    events.notify();
   };
 
   return {
@@ -918,6 +924,7 @@ export async function buildContext(
     sandboxKind,
     log,
     persist,
+    events,
     sessionBase: base,
     currentLogPath: () => active.path,
     switchSession: (path, entries, meta) => {

@@ -181,6 +181,20 @@ containing fence characters).
 fence-collision data-loss bug (fixed 2026-05-28 with variable-length fences). A
 model case of a semantic claim defending itself.
 
+### The event schema is public API — no incompatible change while on v1
+
+Once a non-co-located subscriber reads events (CONTEXT #14), the `Entry` wire
+contract carries the same freeze discipline as `src/mod.ts`: removing or
+renaming an entry kind (or changing a field's shape) is a backwards-incompatible
+break.
+
+`[structural]` + `[law: wire schema every entry kind round-trips]` — a typed
+wire contract in `events.test.ts` (one entry per `Entry["kind"]`) stops
+satisfying its mapped type if a kind is dropped/renamed, so `deno check` fails;
+the bound test additionally round-trips one entry of each kind through the codec
+the wire form rides on. Additive change (a new kind) is fine, mirroring the
+`mod.ts` surface floor.
+
 ### The conversation log is single-writer authoritative
 
 Per session, exactly one writer (the runner's host) owns event ordering; clients
