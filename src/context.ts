@@ -103,6 +103,11 @@ export interface AgentContext {
   agents: string;
   readPaths: string[];
   repo?: string;
+  /** The invocation working directory (`opts.cwd ?? Deno.cwd()`). Where the cage
+   * and the runner execute a script when not in repo mode — so a relative path
+   * resolves where the user launched pagu, and the cage observes the script under
+   * the same cwd the real run uses (cage-pass ⟺ run-success). */
+  cwd: string;
   readonly envelope: Envelope;
   denyFlags: string[];
   /** The concealment policy spec — VCS paths + hide/reveal/secret globs that

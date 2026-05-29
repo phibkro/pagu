@@ -122,7 +122,9 @@ export type ReadonlyExec = Omit<Exec, "body" | "perms"> & {
 /**
  * Run a script body in the cage (read-allowlist + scratch-write, no net) and
  * return the RunClass. Ceiling enforcement and fix loops are per-capability
- * concerns. cwd defaults to ctx.repo ?? the cage scratch dir.
+ * concerns. cwd defaults to ctx.repo ?? ctx.cwd — the SAME real dir the runner
+ * uses, never the throwaway script scratch, so a relative-path write is denied
+ * (and thus discovered) here exactly as it would be at run time.
  */
 export async function cageOnce(params: {
   body: string;
@@ -143,7 +145,7 @@ export async function cageOnce(params: {
       ...extraPerms,
       ...ctx.denyFlags,
     ],
-    cwd: cwdParam ?? ctx.repo ?? scratch,
+    cwd: cwdParam ?? ctx.repo ?? ctx.cwd,
     sandbox: ctx.sandboxKind,
     readMask: buildConcealment(ctx.conceal).maskPaths(),
   });
@@ -202,8 +204,9 @@ export async function cageWithinCeiling(params: {
 /**
  * Execute an approved script: write body to scratch, run with granted perms,
  * log the result entry, apply the net-output gate, return "stop" or "loop".
- * cwd defaults to ctx.repo ?? the run scratch dir (behavior-identical with
- * write's original run handler, which also used its scratch as the fallback).
+ * cwd defaults to ctx.repo ?? ctx.cwd — the dir the user launched pagu from, so
+ * relative paths land where they expect (matching the cage). Every effect is
+ * still bounded by the granted perms; cwd only sets relative-path resolution.
  */
 export async function performRun(params: {
   ctx: AgentContext;
@@ -224,7 +227,7 @@ export async function performRun(params: {
   const result = await runScript({
     scriptPath: file,
     perms: [...perms, ...ctx.denyFlags],
-    cwd: cwdParam ?? ctx.repo ?? scratch,
+    cwd: cwdParam ?? ctx.repo ?? ctx.cwd,
     sandbox: ctx.sandboxKind,
     scriptArgs,
     onStdout: streaming ? (chunk) => ctx.ui.stream!(chunk) : undefined,

@@ -162,6 +162,14 @@ The agent process only ever holds read + net-to-model; it never holds write or
 run. After a run, the result re-enters the log and the loop continues (the model
 wraps up or proposes the next step), bounded by a turn limit.
 
+Both Cage and Run execute the script with **cwd = the repo (repo mode) else the
+launch directory** (`ctx.cwd`), never the throwaway script scratch — so a
+relative path (`answer.txt`) resolves where the user is, and the cage observes
+the script under the _same_ cwd the run will use. This is load-bearing: it's why
+a relative-path write is _discovered_ by the cage (denied there exactly as at
+run) rather than silently absorbed by the scratch. cwd sets only relative-path
+resolution; every effect is still bounded by the granted perms.
+
 The three action paths diverge at the Respond→Cage transition:
 
 | Tool called    | Cage purpose              | Auto-approve rule                        | Fix loop?                                     |

@@ -886,6 +886,7 @@ export async function buildContext(
       return readPaths;
     },
     repo,
+    cwd,
     get envelope() {
       return envelope;
     },
