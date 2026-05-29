@@ -65,10 +65,10 @@ tier 1:      Deno --allow-* permissions                          ← per phase (
   `mounts` (host→guest dir pairs, the only fs the guest sees), `allowNet` (false
   by default; the model host is the lone allowlisted egress), `image` (the
   variant tag), `mode` (`ephemeral | persistent`).
-- **Where it lives** — `src/vm/` (barrel `index.ts`): `detect.ts` (detection +
-  tiers), `wrap.ts` (pure command construction), `image.ts` (build
-  - variant selection), `snapshot.ts` (snapshot/restore). It does **not** import
-    the security core; it composes _around_ it.
+- **Where it lives** — `src/vm/` (barrel `index.ts`): `detect.ts` (detection and
+  tiers), `wrap.ts` (pure command construction), `image.ts` (build and variant
+  selection), `snapshot.ts` (snapshot/restore). It does **not** import the
+  security core; it composes _around_ it.
 
 ## The image — one base, pruned variants
 
@@ -137,7 +137,7 @@ a native VM snapshot.
 **Deferred (designed, not built):**
 
 - **Firecracker microVM tier** — the hardware wall, on the same rootfs (virtiofs
-  - native snapshot); added where the host has KVM.
+  mounts and native snapshot); added where the host has KVM.
 - **Persistent / remote-deploy mode + the remote-drive transport** — how an
   operator talks to pagu in a remote guest (ACP over a transport? an audited
   control channel?). **Needs its own design** — flagged, not solved here.
