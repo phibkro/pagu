@@ -9,6 +9,7 @@
 //     Exec, cageOnce, cageWithinCeiling, performRun, autoApprove, run
 import {
   absolutizePerm,
+  buildConcealment,
   parsePermission,
   withinEnvelope,
 } from "../permissions/index.ts";
@@ -144,7 +145,7 @@ export async function cageOnce(params: {
     ],
     cwd: cwdParam ?? ctx.repo ?? scratch,
     sandbox: ctx.sandboxKind,
-    readMask: ctx.gitignored,
+    readMask: buildConcealment(ctx.conceal).maskPaths(),
   });
   await Deno.remove(scratch, { recursive: true });
   return classifyRun(r.exit, r.stderr);
@@ -227,7 +228,7 @@ export async function performRun(params: {
     sandbox: ctx.sandboxKind,
     scriptArgs,
     onStdout: streaming ? (chunk) => ctx.ui.stream!(chunk) : undefined,
-    readMask: ctx.gitignored,
+    readMask: buildConcealment(ctx.conceal).maskPaths(),
   });
   await Deno.remove(scratch, { recursive: true });
 

@@ -53,7 +53,7 @@ export async function runTask(
       name: ss.name,
       description: ss.description,
     })),
-    gitignored: ctx.gitignored,
+    conceal: ctx.conceal,
     allowedTasks: buildAllowedTasks(ctx),
     commandRules: ctx.availableCommandRules,
   });

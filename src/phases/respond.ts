@@ -9,6 +9,7 @@ import {
 } from "../tasks/capability.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
+import { buildConcealment } from "../permissions/concealment.ts";
 import type { Entry } from "../log/schema.ts";
 import type { AnyCapability } from "../capability/index.ts";
 
@@ -51,14 +52,21 @@ const system = input.capabilities
 const messages = logToMessages(input.log, withAgents(system, input.agents));
 const out: Entry[] = [];
 
-const gitignored = input.gitignored ?? [];
+const concealment = buildConcealment(
+  input.conceal ?? {
+    vcsPaths: [],
+    hideGlobs: [],
+    secretGlobs: [],
+    revealGlobs: [],
+    roots: [],
+    enumerated: [],
+  },
+);
 
-/** True if path is gitignored (exact match or nested under a gitignored dir). */
-function isGitignored(filePath: string): boolean {
+/** True if the path is concealed (a hide source matches ∧ not revealed). */
+function isConcealed(filePath: string): boolean {
   const abs = filePath.startsWith("/") ? filePath : `${Deno.cwd()}/${filePath}`;
-  return gitignored.some(
-    (g) => abs === g || abs.startsWith(g + "/"),
-  );
+  return concealment.conceals(abs);
 }
 
 // Named-field pairing: capability object ↔ its slice of the phase input.
@@ -131,11 +139,12 @@ async function converse(): Promise<void> {
     for (const call of readCalls) {
       const path = String(call.args.path ?? "");
       try {
-        if (isGitignored(path)) {
-          onToken(`\n· read ${path} (gitignored — access denied)\n`);
+        if (isConcealed(path)) {
+          onToken(`\n· read ${path} (hidden — access denied)\n`);
           const msg =
-            `read denied: ${path} is gitignored. Reading gitignored files ` +
-            `is not permitted — they may contain secrets.`;
+            `read denied: ${path} is hidden (gitignored or a configured ` +
+            `secret). Reading hidden files is not permitted — they may ` +
+            `contain secrets.`;
           out.push({ kind: "observation", source: "error", content: msg });
           messages.push({ role: "tool", content: msg });
         } else {

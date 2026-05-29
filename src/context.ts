@@ -2,7 +2,7 @@
 // terms: interfaces that define how frontends drive the core, and how the
 // core exposes its state. Extracted here so capability modules can import
 // AgentContext without creating a circular dependency with agent.ts.
-import type { Envelope } from "./permissions/index.ts";
+import type { ConcealmentSpec, Envelope } from "./permissions/index.ts";
 import type { SandboxKind } from "./runner/index.ts";
 import type { Entry } from "./log/index.ts";
 import type { ProviderConfig } from "./providers/index.ts";
@@ -77,9 +77,10 @@ export interface AgentContext {
   repo?: string;
   readonly envelope: Envelope;
   denyFlags: string[];
-  /** Absolute paths of gitignored files — the agent's read tool refuses
-   * these to prevent surfacing secrets to the model (CF3). */
-  gitignored: string[];
+  /** The concealment policy spec — VCS paths + hide/reveal/secret globs that
+   * fold into the predicate (agent read-refusal, CF3) and the runner mask via
+   * buildConcealment(conceal). */
+  conceal: ConcealmentSpec;
   /** Explicit command policy entries (from allowed-tasks config + inferred). */
   commandEntries: CommandEntry[];
   /** Discovered project tasks (for the run_task tool listing). */

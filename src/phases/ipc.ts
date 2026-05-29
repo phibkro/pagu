@@ -2,6 +2,7 @@
 import type { Entry } from "../log/schema.ts";
 import type { ProviderConfig } from "../providers/chat.ts";
 import type { CommandRule } from "../tasks/grammar.ts";
+import type { ConcealmentSpec } from "../permissions/concealment.ts";
 
 /** What a phase subprocess receives on stdin. The log carries all prior
  * context (including the user's task as the latest message), so a phase
@@ -24,10 +25,11 @@ export interface PhaseInput {
   >;
   /** Read-only command rules available for run_command (installed here). */
   commandRules?: CommandRule[];
-  /** Gitignored paths the agent must not read. Deno --deny-read breaks
-   * readDir of the parent, so we enforce this at the application layer
-   * in respond.ts instead of via a Deno flag. Absolute paths. */
-  gitignored?: string[];
+  /** The concealment spec — the agent's read tool refuses any path
+   * buildConcealment(conceal).conceals(p) returns true for. Deno --deny-read
+   * breaks readDir of the parent, so the read-refusal is enforced at the
+   * application layer here (the OS-sandbox mask is the runner-side wall). */
+  conceal?: ConcealmentSpec;
 }
 
 /** Read+parse the PhaseInput a parent piped to this phase's stdin. */

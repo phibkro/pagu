@@ -14,6 +14,10 @@ import {
 import { type Envelope, formatFlag } from "../permissions/envelope.ts";
 import { buildEnvelope } from "../permissions/policy.ts";
 import { gitignoreDenies } from "../permissions/gitignore.ts";
+import {
+  buildConcealment,
+  type ConcealmentSpec,
+} from "../permissions/concealment.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
@@ -303,7 +307,14 @@ export async function buildContext(
   let liveSkills: Skill[] = [];
   let liveHandlers: import("../capability/index.ts").HandlerPlugin[] = [];
   let liveCommandEntries: CommandEntry[] = [];
-  let liveGitignored: string[] = [];
+  let liveConceal: ConcealmentSpec = {
+    vcsPaths: [],
+    hideGlobs: [],
+    secretGlobs: [],
+    revealGlobs: [],
+    roots: [],
+    enumerated: [],
+  };
   const liveDiscoveredTasks: DiscoveredTask[] = await discoverTasks(
     projectBase,
   );
@@ -392,8 +403,8 @@ export async function buildContext(
       resolve(p)
     );
     // The VCS source: .gitignore'd paths in repo mode (the effectful shell —
-    // git enumeration; buildEnvelope stays pure). Toggled by hideGitignored.
-    const ignoredScopes = (repo && (effective.hideGitignored ?? true))
+    // git enumeration; concealment.ts stays pure). Toggled by hideGitignored.
+    const vcsPaths = (repo && (effective.hideGitignored ?? true))
       ? [
         ...new Set(
           (await gitignoreDenies(repo)).flatMap((d) =>
@@ -402,16 +413,24 @@ export async function buildContext(
         ),
       ]
       : [];
+    liveConceal = {
+      vcsPaths,
+      hideGlobs: effective.hide ?? [],
+      secretGlobs: [], // step 5: DEFAULT_SECRETS when hideSecrets
+      revealGlobs: effective.reveal ?? [],
+      roots: readPaths,
+      enumerated: [], // step 5: glob enumeration
+    };
+    const maskPaths = buildConcealment(liveConceal).maskPaths();
     envelope = buildEnvelope({
       read: readPaths,
       write: writePaths,
-      deny: ignoredScopes,
+      deny: maskPaths,
     });
     // deny-WRITE only at runtime (Deno --deny-read of a child breaks readDir
     // of its parent); read-concealment is enforced at the OS-sandbox tier
     // (the mask) + the respond phase (handleRead refusal).
     denyFlags = (envelope.deny ?? []).map((p) => formatFlag(p, "deny"));
-    liveGitignored = ignoredScopes;
 
     agentsText = [
       agents,
@@ -673,8 +692,8 @@ export async function buildContext(
     get commandEntries() {
       return liveCommandEntries;
     },
-    get gitignored() {
-      return liveGitignored;
+    get conceal() {
+      return liveConceal;
     },
     discoveredTasks: liveDiscoveredTasks,
     availableCommandRules,
