@@ -204,12 +204,16 @@ Secondary adapters:
 - `src/phases/respond.ts` — the single phase entrypoint: converses, calls `read`
   to inspect files, and proposes a script with `write` only when an action is
   needed (read stdin, call the model, emit events); `spawn.ts`, `messages.ts`,
-  `ipc.ts` support it. **Streaming:** the phase writes model tokens to its
-  **stderr** as a live display side-channel (`spawn.ts` forwards them to the
-  `UI.stream` sink); its **stdout** stays reserved for the structured
-  `{entries}` JSON. The side-channel carries no capability — the security
-  boundary is unchanged. Only the model's text streams; exfil-gated run output
-  never does.
+  `ipc.ts` support it. **Streaming:** the phase writes typed **`StreamChunk`
+  frames** (NDJSON: `content`/`reasoning`/`marker`; `phases/stream.ts`) to its
+  **stderr** as a live display side-channel — `spawn.ts` line-demuxes them to a
+  typed `onStream` callback (non-frame lines stay diagnostics), and `agent.ts`
+  forwards to the `UI.stream(text, channel)` sink (ACP → `agent_message_chunk`/
+  `agent_thought_chunk`, TUI dims reasoning/markers). `<think>` reasoning is
+  split out by the provider (`providers/think.ts`) and is **ephemeral** (live
+  display only — never logged or re-sent). Its **stdout** stays reserved for the
+  structured `{entries}` JSON. The side-channel carries no capability — the
+  security boundary is unchanged; exfil-gated run output never streams.
 
 Configuration deep module (`buildContext` is the public interface):
 

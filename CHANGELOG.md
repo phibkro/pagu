@@ -10,6 +10,18 @@ release milestone, newest first.
 
 ### Added
 
+- **Reasoning tokens + read markers — typed stream channels** — the phase's live
+  display side-channel is now typed `StreamChunk` frames (`content`/`reasoning`/
+  `marker` NDJSON over stderr; `phases/stream.ts`). A pure `ThinkSplitter`
+  (`providers/think.ts`) splits `<think>…</think>` reasoning out of the content
+  stream (handling tags split across tokens); reasoning streams live but is
+  **ephemeral** — never in `ChatResponse.content`, the log, or the next prompt.
+  ACP routes `reasoning`/`marker` → `agent_thought_chunk` and `content` →
+  `agent_message_chunk` (per-channel coalescing); the TUI dims
+  reasoning/markers. Structured reasoning (`reasoning_content`/Anthropic
+  `thinking`) is deferred — both require reasoning re-sent across tool-call
+  continuations (else 400), which needs preserve-and-resend + a richer log
+  structure. (`feat(acp)`)
 - **`/model` lists the provider's models** — `/model` with no args shows the
   provider's available model ids (current marked `*`); `/model refresh`
   re-fetches; `/model <name>` still sets. The list is **fetched in a net-scoped
