@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { runCommand, type SlashCommand, slashCommands } from "./commands.ts";
 import type { AgentContext } from "./context.ts";
 
@@ -29,6 +29,56 @@ Deno.test("runCommand returns false for unknown commands and ordinary input", as
     await runCommand(cmds, "what is in /etc/hosts?", fakeCtx),
     false,
   );
+});
+
+Deno.test("/roles with no args lists available roles, marking active", async () => {
+  const shown: string[] = [];
+  const ctx = {
+    availableRoles: () =>
+      Promise.resolve([
+        { name: "dev", scope: "project" },
+        { name: "rust", scope: "global" },
+      ]),
+    roleNames: () => ["dev"],
+    ui: { show: (m: string) => shown.push(m), status: () => {} },
+  } as unknown as AgentContext;
+  const handled = await runCommand(slashCommands, "/roles", ctx);
+  assertEquals(handled, true);
+  const out = shown.join("\n");
+  assertStringIncludes(out, "dev");
+  assertStringIncludes(out, "rust");
+  assertStringIncludes(out, "*"); // active marker (dev is active)
+});
+
+Deno.test("/roles <names> applies the group via ctx.setRoles", async () => {
+  let applied: string[] | undefined;
+  const ctx = {
+    setRoles: (names: string[]) => {
+      applied = names;
+      return Promise.resolve({ ok: true, message: "dev, rust" });
+    },
+    ui: { show: () => {}, status: () => {} },
+  } as unknown as AgentContext;
+  await runCommand(slashCommands, "/roles dev rust", ctx);
+  assertEquals(applied, ["dev", "rust"]);
+});
+
+Deno.test("/skills lists via availableSkills and applies via setSkills", async () => {
+  const shown: string[] = [];
+  let applied: string[] | undefined;
+  const ctx = {
+    availableSkills: () => Promise.resolve([{ name: "git", scope: "project" }]),
+    activeSkillScripts: [],
+    setSkills: (names: string[]) => {
+      applied = names;
+      return Promise.resolve({ ok: true, message: "git" });
+    },
+    ui: { show: (m: string) => shown.push(m), status: () => {} },
+  } as unknown as AgentContext;
+  await runCommand(slashCommands, "/skills", ctx);
+  assertStringIncludes(shown.join("\n"), "git");
+  await runCommand(slashCommands, "/skills git", ctx);
+  assertEquals(applied, ["git"]);
 });
 
 Deno.test("slashCommands wire args to the right ctx config methods", async () => {

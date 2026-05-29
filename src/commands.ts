@@ -28,10 +28,37 @@ export async function runCommand(
   return true;
 }
 
-// The shared config-mutating commands. /help, /roles, /skills are not here
-// (frontend-specific / TUI-only picker — see the spec).
+// The shared config-mutating commands. /help is frontend-specific. /roles and
+// /skills appear here as the **text form** (list + apply-by-name) that works
+// over any frontend; the TUI additionally offers an interactive picker, which
+// it handles itself before delegating here.
 const result = (ctx: AgentContext, r: { ok: boolean; message: string }) =>
   ctx.ui.show(`${r.ok ? "→" : "✗"} ${r.message}`);
+
+/** Render `* name (scope)` lines (active marked) as one message — ACP
+ * concatenates show() chunks with no separator, so newlines go inline. */
+function listOrApply(
+  ctx: AgentContext,
+  args: string,
+  noun: "roles" | "skills",
+  available: () => Promise<{ name: string; scope: string }[]>,
+  activeNames: () => string[],
+  set: (names: string[]) => Promise<{ ok: boolean; message: string }>,
+): Promise<void> {
+  const names = args.split(/\s+/).filter(Boolean);
+  if (names.length > 0) return set(names).then((r) => result(ctx, r));
+  return available().then((list) => {
+    if (list.length === 0) {
+      ctx.ui.show(`no ${noun} found (add under .pagu/${noun}/)`);
+      return;
+    }
+    const active = new Set(activeNames());
+    const lines = list
+      .map((x) => `  ${active.has(x.name) ? "*" : " "} ${x.name} (${x.scope})`)
+      .join("\n");
+    ctx.ui.show(`${noun}:\n${lines}\n  apply a group: /${noun} <name> [name…]`);
+  });
+}
 
 export const slashCommands: SlashCommand[] = [
   {
@@ -75,5 +102,31 @@ export const slashCommands: SlashCommand[] = [
         : ctx.setAdvisor({ provider: parts[0], model: parts[1] });
       result(ctx, r);
     },
+  },
+  {
+    name: "/roles",
+    description: "List roles, or apply a group: <name> [name…]",
+    run: (ctx, args) =>
+      listOrApply(
+        ctx,
+        args,
+        "roles",
+        () => ctx.availableRoles(),
+        () => ctx.roleNames(),
+        (names) => ctx.setRoles(names),
+      ),
+  },
+  {
+    name: "/skills",
+    description: "List skills, or apply a group: <name> [name…]",
+    run: (ctx, args) =>
+      listOrApply(
+        ctx,
+        args,
+        "skills",
+        () => ctx.availableSkills(),
+        () => ctx.activeSkillScripts.map((s) => s.name),
+        (names) => ctx.setSkills(names),
+      ),
   },
 ];

@@ -68,6 +68,9 @@ export interface AgentContext {
   projectBase: string;
   /** Names of the currently applied roles, in compose order. */
   roleNames: () => string[];
+  /** Roles discoverable at this project/global scope (for `/roles` listing,
+   * over any frontend — the ACP text form doesn't have the TUI picker). */
+  availableRoles: () => Promise<{ name: string; scope: string }[]>;
   /** Set the active role group at runtime: re-folds config and re-derives
    * permissions/prose. Fails loud (state unchanged) on an unknown name. */
   setRoles: (names: string[]) => Promise<{ ok: boolean; message: string }>;
@@ -90,6 +93,8 @@ export interface AgentContext {
   availableCommandRules: CommandRule[];
   /** Pre-approved scripts from active skills. */
   activeSkillScripts: SkillScript[];
+  /** Skills discoverable at this project/global scope (for `/skills` listing). */
+  availableSkills: () => Promise<{ name: string; scope: string }[]>;
   /** Loaded before-approve handlers; empty when none configured. */
   activeHandlers: HandlerPlugin[];
   /** Replace the active skill group at runtime (the TUI's /skills). */

@@ -10,6 +10,13 @@ release milestone, newest first.
 
 ### Added
 
+- **`/roles` + `/skills` over ACP** — both are now shared `SlashCommand`s with a
+  **text form** (no-arg lists available + marks active; `<names…>` applies the
+  group via `ctx.setRoles`/`setSkills`), so they're advertised and routed over
+  ACP like `/provider`/`/model` — closing the "ACP can't switch roles/skills"
+  gap. `ctx.availableRoles()`/`availableSkills()` expose the discoverable set
+  via the port (no config-internal imports). The TUI keeps its interactive
+  picker (it intercepts before delegating). (`feat(acp)`)
 - **Stable programmatic API** (`src/mod.ts`) — a single public barrel is the one
   front door for embedding pagu: `runTask` + ports (`AgentContext`/`UI`/
   `Approver`), the loop combinators (`loop`/`andThen`/`pipeline`/`fanOut` +
@@ -203,5 +210,3 @@ release milestone, newest first.
   silently degrade to `none` if the profile is wrong.
 - **Windows** — no OS-level isolation layer. Deno permissions (tier 1) are the
   only boundary.
-- **ACP — partial** — `/roles` and `/skills` still require TUI pickers (no ACP
-  text-listing equivalent yet).

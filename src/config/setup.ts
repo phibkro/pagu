@@ -23,8 +23,13 @@ import {
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
-import { loadRoles, type Role } from "./roles.ts";
-import { loadSkills, type Skill, type SkillScript } from "../skills/skill.ts";
+import { listRoles, loadRoles, type Role } from "./roles.ts";
+import {
+  listSkills,
+  loadSkills,
+  type Skill,
+  type SkillScript,
+} from "../skills/skill.ts";
 import { loadHandlers } from "../capability/handlers.ts";
 import type { HandlerPlugin } from "../capability/index.ts";
 import {
@@ -825,6 +830,8 @@ export async function buildContext(
     providerName: () => cfg.provider,
     projectBase,
     roleNames: () => activeRoles,
+    availableRoles: () => listRoles(projectBase),
+    availableSkills: () => listSkills(projectBase),
     setRoles,
     phaseDir,
     get agents() {
