@@ -159,9 +159,23 @@ hideGitignored?: boolean; // default true in repo mode    → scalar right-bias 
 - `parseLayer` validates: `isStringArray` for the lists, boolean for the toggles
   (mirrors `allowedTasks`/`advisor`).
 
-**CLI flags** (`--reveal <glob>`, `--no-hide-secrets`) are **deferred** — config +
-roles cover the design; flags are a thin interface onto the same fields when a
-one-off need appears.
+**CLI flags** — a thin interface onto the same `cli` `ConfigLayer` (folded last,
+so flags win), mirroring the existing `--allow`/`--write`/`--no-sandbox` patterns
+in `makeCommand`/`parseArgs`:
+
+```
+--hide <glob:string>        (collect: true)  → cli.hide
+--reveal <glob:string>      (collect: true)  → cli.reveal
+--no-hide-secrets                            → cli.hideSecrets = false
+--no-hide-gitignored                         → cli.hideGitignored = false
+```
+
+The two `--no-*` flags follow `--no-sandbox` (cliffy delivers them as
+`hideSecrets: false` / `hideGitignored: false`); `parseArgs` sets the `cli` field
+**only when the flag is present** (`if (options.hideSecrets === false) …`), so an
+absent flag leaves no opinion and `DEFAULTS`/config decide. `--hide`/`--reveal`
+collect like `--allow`/`--role`. Useful one-offs: `--reveal node_modules` to let a
+single run read a build dep, `--no-hide-secrets` to debug.
 
 ## Wiring & data flow
 
@@ -251,12 +265,15 @@ proving lazy matching.
   (extend), a real-FS enumeration test.
 - Docs: `docs/CONCEPTS.md` (hide/source/conceal/mask nouns); `CONTEXT.md`
   (security tiers — concealment is multi-source now; config surface); `AGENTS.md`
-  (the gotcha note); `CHANGELOG.md`; `README.md` (the `hide`/`reveal` config).
+  (the gotcha note); `CHANGELOG.md`; `README.md` (the `hide`/`reveal` config +
+  the `--hide`/`--reveal`/`--no-hide-*` flags).
 
 ## Migration (one step at a time, CI green between each)
 
 1. `concealment.ts` + pure tests (`conceals`, `maskPaths`, the laws). CI green.
-2. Config fields + merge/parse + extended monoid-law tests. CI green.
+2. Config fields + merge/parse + extended monoid-law tests; CLI flags in
+   `makeCommand`/`parseArgs` (`--hide`/`--reveal`/`--no-hide-secrets`/
+   `--no-hide-gitignored` → `cli`). CI green.
 3. setup.ts: build concealment, derive envelope `deny` from it, `ctx.concealment`;
    `policy.ts`/`buildEnvelope` takes explicit `deny`. CI green (gitignore source
    still the only populated one until config is set → behavior identical).
@@ -269,8 +286,6 @@ proving lazy matching.
 
 ## Deferred
 
-- **CLI flags** (`--reveal`, `--no-hide-secrets`) — add when a one-off need
-  appears; config + roles suffice.
 - **Mid-run file-glob masking** — the accepted gap (low-risk; dirs already
   covered).
 - **Cage classification of a sandbox-exec read-throw** — pre-existing from the
