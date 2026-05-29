@@ -75,7 +75,12 @@ the blast radius statically enumerable._
     `satisfies Capability<Data>` makes literal `entryKind` types mandatory.
   - Public API surface → `src/mod.ts` is the one stable front door; a floor test
     (`mod.test.ts`, `EXPECTED ⊆ deno doc --json`) fails CI if a frozen export is
-    removed/renamed. Don't break frozen exports; add freely.
+    removed/renamed. The freeze is **planned for launch, not yet active** (no
+    API consumers): _pre-launch_, change a public shape freely for the correct
+    model and update the floor (+ `EXPECTED`) deliberately — correctness-by-
+    construction outranks compat; _post-launch_, don't break frozen exports, add
+    freely. The floor guards against _accidental_ drift, not intentional
+    improvement.
   - Phase input shape → a Zod schema (`phaseInputSchema`) validates at
     `readInput()` (`validatePhaseInput`), failing loud on a malformed contract.
     Shallow on `log` + the complex list fields (the orchestrator is the trusted
