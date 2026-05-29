@@ -998,8 +998,23 @@ above.)
     grammar/ceiling bounds _what_ a skill does but the trigger bounds
     _when/why_, so triggers join the trust surface (same class as prompt
     injection, different hat). External scheduler keeps this as "trust your
-    cron," a problem admins already reason about. **Two interaction risks to
-    carry before building:** (a) a batch of pending approvals reviewed at 9am is
+    cron," a problem admins already reason about. **Resolved (design — the
+    payload half):** a trigger decomposes along the _existing_ trust gradient,
+    so no new trust level is needed. The schedule's standing _instruction_ is
+    **authored** (the human wrote it at schedule-creation time — may instruct);
+    the trigger _payload_ (alert/email/webhook body, attacker-influenceable) is
+    **untrusted** — it must enter as a fenced `observation`, never as an
+    `authored` `role:"user"` message. So `runTask(task)` (task = authored) is
+    the wrong shape for a trigger: #16 provides a typed seam —
+    `scheduledRun({
+    instruction, payload })` — that constructs the log with
+    `instruction →
+    authored` + `payload → fenced observation`, making
+    "promote a payload to an instruction" _unrepresentable_ rather than a
+    discipline (the enforcement ladder: type, not prose). This composes with
+    risk (b) below — the payload, as an observation, already carries the
+    untrusted label across the session hop. **Two interaction risks to carry
+    before building:** (a) a batch of pending approvals reviewed at 9am is
     _itself_ the approval-fatigue condition (Threat model) — #15's async framing
     improves presentation but batching can _worsen_ per-item attention; design
     the queue to resist rubber-stamping, not just to hold items. (b) "continuity
