@@ -26,6 +26,7 @@ import { maybeLoadEnvFile } from "./envfile.ts";
 import { loadRoles, type Role } from "./roles.ts";
 import { loadSkills, type Skill, type SkillScript } from "../skills/skill.ts";
 import { loadHandlers } from "../capability/handlers.ts";
+import type { HandlerPlugin } from "../capability/index.ts";
 import {
   buildExplicitEntries,
   type CommandEntry,
@@ -228,19 +229,19 @@ async function walkForGlobs(
   match: (p: string) => boolean,
   out: string[],
 ): Promise<void> {
-  let entries: AsyncIterable<Deno.DirEntry>;
   try {
-    entries = Deno.readDir(dir);
-  } catch {
-    return; // unreadable dir — nothing to enumerate
-  }
-  for await (const e of entries) {
-    const p = `${dir}/${e.name}`;
-    if (e.isDirectory) {
-      if (!SKIP_DIRS.has(e.name)) await walkForGlobs(p, match, out);
-    } else if (match(p)) {
-      out.push(p);
+    // Deno.readDir is lazy — a missing/unreadable dir throws on iteration, not
+    // on the call, so the try must wrap the loop (an allow path needn't exist).
+    for await (const e of Deno.readDir(dir)) {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory) {
+        if (!SKIP_DIRS.has(e.name)) await walkForGlobs(p, match, out);
+      } else if (match(p)) {
+        out.push(p);
+      }
     }
+  } catch {
+    // missing / unreadable dir — nothing to enumerate
   }
 }
 
@@ -319,11 +320,79 @@ export async function loadCwdEnv(): Promise<void> {
   if (loaded.length > 0) console.error(`· loaded .env (${loaded.join(", ")})`);
 }
 
+/**
+ * Build an `AgentContext` programmatically from structured config — the public
+ * SDK constructor (re-exported by `src/mod.ts`). **Hermetic:** unlike the CLI
+ * path it reads no ambient state — no global `config.json`, no ambient
+ * AGENTS.md, no cwd `.env` (those are the terminal frontends' job). The embedder
+ * controls everything: config via `opts`, instructions via `opts.agents`, env
+ * via their own process. Folds `opts` into a `ConfigLayer` over `DEFAULTS` and
+ * delegates to `buildContext`, so behavior matches the CLI minus the ambient
+ * reads.
+ */
+export function createContext(opts: {
+  provider?: string;
+  model?: string;
+  baseURL?: string;
+  allow?: string[];
+  write?: string[];
+  repo?: boolean;
+  roles?: string[];
+  hide?: string[];
+  reveal?: string[];
+  hideSecrets?: boolean;
+  hideGitignored?: boolean;
+  /** Pre-built before-approve handler plugins (the injection affordance). */
+  handlers?: HandlerPlugin[];
+  /** Agent instructions (the AGENTS.md text) — explicit, not ambient. */
+  agents?: string;
+  ui: UI;
+  approver: Approver;
+  cwd?: string;
+}): Promise<AgentContext> {
+  const cli: ConfigLayer = {};
+  if (opts.provider !== undefined) cli.provider = opts.provider;
+  if (opts.model !== undefined) cli.model = opts.model;
+  if (opts.baseURL !== undefined) cli.baseURL = opts.baseURL;
+  if (opts.allow !== undefined) cli.allow = opts.allow;
+  if (opts.write !== undefined) cli.write = opts.write;
+  if (opts.hide !== undefined) cli.hide = opts.hide;
+  if (opts.reveal !== undefined) cli.reveal = opts.reveal;
+  if (opts.hideSecrets !== undefined) cli.hideSecrets = opts.hideSecrets;
+  if (opts.hideGitignored !== undefined) {
+    cli.hideGitignored = opts.hideGitignored;
+  }
+  const runOpts: RunOpts = {
+    base: DEFAULTS,
+    cli,
+    roles: opts.roles ?? [],
+    task: "",
+    cont: false,
+    listSessions: false,
+    noSandbox: false,
+    repo: opts.repo ?? false,
+    tui: false,
+    skills: [],
+    acp: false,
+    cwd: opts.cwd,
+  };
+  return buildContext(
+    runOpts,
+    opts.agents ?? "",
+    opts.ui,
+    opts.approver,
+    opts.handlers,
+  );
+}
+
 export async function buildContext(
   opts: RunOpts,
   agents: string,
   ui: UI,
   approve: Approver,
+  /** Pre-built handler plugins (the programmatic injection path). When given,
+   * they fully replace config-path handler loading. */
+  injectedHandlers?: HandlerPlugin[],
 ): Promise<AgentContext> {
   const phaseDir = fromFileUrl(new URL("../phases/", import.meta.url));
 
@@ -579,9 +648,10 @@ export async function buildContext(
     await loadSkills(opts.skills, projectBase),
   );
 
-  // Load before-approve handlers from the resolved config stack.
+  // Before-approve handlers: injected plugins (programmatic) fully replace
+  // config-path loading; otherwise load from the resolved config stack.
   const handlerPaths = cfg.handlers?.["before-approve"] ?? [];
-  liveHandlers = await loadHandlers(handlerPaths);
+  liveHandlers = injectedHandlers ?? await loadHandlers(handlerPaths);
 
   // Switch provider/model at runtime (the TUI's /provider, /model). Mutates
   // cfg directly so a preset switch resets the wire settings (which a layer

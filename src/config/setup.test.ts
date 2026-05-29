@@ -1,8 +1,19 @@
 import { assertEquals } from "@std/assert";
-import { buildContext, enumerateConcealed, parseArgs } from "./setup.ts";
+import { resolve } from "@std/path";
+import {
+  buildContext,
+  createContext,
+  enumerateConcealed,
+  parseArgs,
+} from "./setup.ts";
 import { DEFAULTS } from "./config.ts";
 import { buildConcealment } from "../permissions/concealment.ts";
 import { detectSandbox, runScript } from "../runner/index.ts";
+import type { Approver, UI } from "../agent.ts";
+import type { HandlerPlugin } from "../capability/index.ts";
+
+const noopUI: UI = { status() {}, show() {} };
+const noApprove: Approver = () => Promise.resolve(false);
 
 /** Run a script that reads `target`, masked by `maskPaths`, and report whether
  * the secret surfaced. Shared by the enforcement + reveal cases. */
@@ -218,6 +229,54 @@ Deno.test("concealment enforcement: a config-hidden secret never reaches output"
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("createContext: builds a context from structured opts (hermetic)", async () => {
+  const ctx = await createContext({
+    provider: "ollama",
+    model: "test-model",
+    allow: ["/tmp/x"],
+    ui: noopUI,
+    approver: noApprove,
+  });
+  assertEquals(ctx.provider.model, "test-model");
+  assertEquals(ctx.providerName(), "ollama");
+  assertEquals(ctx.readPaths.includes(resolve("/tmp/x")), true);
+});
+
+Deno.test("createContext: repo + hide opts thread into the context", async () => {
+  const repo = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await new Deno.Command("git", { args: ["-C", repo, "init", "-q"] })
+      .output();
+    const ctx = await createContext({
+      repo: true,
+      cwd: repo,
+      hide: ["*.secret"],
+      ui: noopUI,
+      approver: noApprove,
+    });
+    assertEquals(ctx.repo, repo);
+    assertEquals(ctx.conceal.hideGlobs, ["*.secret"]);
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("createContext: injects handler plugins (no config paths)", async () => {
+  const plugin: HandlerPlugin = {
+    name: "test-handler",
+    description: "d",
+    path: "/x",
+    permissions: [],
+    fn: () => Promise.resolve("continue"),
+  };
+  const ctx = await createContext({
+    handlers: [plugin],
+    ui: noopUI,
+    approver: noApprove,
+  });
+  assertEquals(ctx.activeHandlers.map((h) => h.name), ["test-handler"]);
 });
 
 // Regression: ACP passes the workspace root via opts.cwd (from session/new);
