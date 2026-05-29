@@ -9,6 +9,7 @@ import {
 } from "../tasks/capability.ts";
 import { logToMessages, withAgents } from "./messages.ts";
 import { readInput, writeOutput } from "./ipc.ts";
+import { serializeChunk, type StreamChannel } from "./stream.ts";
 import { buildConcealment } from "../permissions/concealment.ts";
 import type { Entry } from "../log/schema.ts";
 import type { AnyCapability } from "../capability/index.ts";
@@ -39,11 +40,15 @@ const SYSTEM =
 
 const MAX_READS = 6;
 
-// Stream content tokens to stderr as a live display side-channel; the
-// orchestrator forwards them to the user's terminal. stdout stays reserved
-// for the structured entries this phase returns.
+// Live display side-channel: emit typed NDJSON frames on stderr (the
+// orchestrator demuxes them into content / reasoning / activity channels).
+// stdout stays reserved for the structured entries this phase returns.
 const enc = new TextEncoder();
-const onToken = (t: string) => Deno.stderr.writeSync(enc.encode(t));
+const emit = (channel: StreamChannel, text: string) =>
+  Deno.stderr.writeSync(enc.encode(serializeChunk({ channel, text })));
+const onToken = (t: string) => emit("content", t);
+const onReasoning = (t: string) => emit("reasoning", t);
+const marker = (t: string) => emit("marker", t);
 
 const input = await readInput();
 const system = input.capabilities
@@ -102,7 +107,13 @@ writeOutput(out);
 
 async function converse(): Promise<void> {
   for (let i = 0; i <= MAX_READS; i++) {
-    const res = await chat(input.provider, messages, tools, onToken);
+    const res = await chat(
+      input.provider,
+      messages,
+      tools,
+      onToken,
+      onReasoning,
+    );
 
     // Find the first action tool call (priority order: write > skill > command).
     const match = capData
@@ -140,7 +151,7 @@ async function converse(): Promise<void> {
       const path = String(call.args.path ?? "");
       try {
         if (isConcealed(path)) {
-          onToken(`\n· read ${path} (hidden — access denied)\n`);
+          marker(`\n· read ${path} (hidden — access denied)\n`);
           const msg =
             `read denied: ${path} is hidden (gitignored or a configured ` +
             `secret). Reading hidden files is not permitted — they may ` +
@@ -149,7 +160,7 @@ async function converse(): Promise<void> {
           messages.push({ role: "tool", content: msg });
         } else {
           const obs = await handleRead(call.args);
-          onToken(`\n· ${obs.source}\n`);
+          marker(`\n· ${obs.source}\n`);
           out.push(obs);
           messages.push(
             {
@@ -159,7 +170,7 @@ async function converse(): Promise<void> {
           );
         }
       } catch (err) {
-        onToken(`\n· read ${path} (denied)\n`);
+        marker(`\n· read ${path} (denied)\n`);
         const msg = `read failed: ${
           err instanceof Error ? err.message : String(err)
         }`;

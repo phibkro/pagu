@@ -66,7 +66,9 @@ export async function runTask(
       entry: join(ctx.phaseDir, "respond.ts"),
       flags: respondFlags(ctx.providerHost, ctx.readPaths),
       input: input(),
-      onStderr: ctx.ui.stream ? (c) => ctx.ui.stream!(c) : undefined,
+      onStream: ctx.ui.stream
+        ? (c) => ctx.ui.stream!(c.text, c.channel)
+        : undefined,
       signal,
     });
 

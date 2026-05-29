@@ -36,12 +36,15 @@ export type Approver = (
 ) => Promise<boolean>;
 
 /** Output sink: `status` for transient progress, `show` for results. An
- * optional `stream` consumes model tokens live; if present, the core lets
- * the stream render the assistant's text instead of re-printing it. */
+ * optional `stream` consumes live display chunks; if present, the core lets
+ * the stream render the assistant's text instead of re-printing it. The
+ * `channel` distinguishes the answer (`content`) from `reasoning` and activity
+ * `marker`s, so a frontend can render them differently (ACP thought chunks,
+ * TUI dimming). Defaults to `content`; an implementer may ignore it. */
 export interface UI {
   status(msg: string): void;
   show(msg: string): void;
-  stream?(chunk: string): void;
+  stream?(chunk: string, channel?: "content" | "reasoning" | "marker"): void;
   /** Entries just appended to the log — lets a frontend surface actions
    * (the ACP frontend maps them to tool calls; CLI/TUI omit it). */
   entries?(produced: Entry[]): void;
