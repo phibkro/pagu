@@ -10,6 +10,20 @@ release milestone, newest first.
 
 ### Added
 
+- **Golden-scenario containment demo + fixture** (`examples/golden-scenario/`) —
+  the adversarial demo fixture (sub-project A of the test/demo environment): a
+  throwaway "infra" repo materialized under `$HOME` whose `deploy.log` carries a
+  prompt injection, a gitignored `.env` canary, an out-of-repo sentinel, and an
+  out-of-envelope backup tarball (`setup.ts`). A `mock_provider.ts` drives pagu
+  deterministically with canned-malicious `write` proposals;
+  `containment.test.ts` proves the structural guarantees in CI as **three
+  focused runs** — exfil (no leak + no egress, contained unattended), escape
+  (out-of-envelope write → human gate, bounded), destruction (in-envelope delete
+  → auto-runs but bounded + recoverable). `run.ts` / `deno task demo` is the
+  live narrative version (real model, PASS/FAIL report). Drives the frozen
+  `createContext`/`runTask` API (dogfoods `mod.ts`); skips at sandbox tier
+  `none`. The first scored scenario for the future model-compat eval
+  (sub-project C).
 - **Reasoning tokens + read markers — typed stream channels** — the phase's live
   display side-channel is now typed `StreamChunk` frames (`content`/`reasoning`/
   `marker` NDJSON over stderr; `phases/stream.ts`). A pure `ThinkSplitter`

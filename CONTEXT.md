@@ -32,6 +32,16 @@ comes from the **absence** of the tool plus a mandatory human gate, not from
 gating a dangerous tool the agent holds. The result is an agent whose entire
 blast radius is statically enumerable.
 
+The intended payoff: **safely give an agent access to personal homelabs and
+critical infrastructure** — operate on _real working servers_, not a disposable
+remote sandbox. The market splits into _sandbox-the-execution_ (throwaway envs)
+and _SRE agents on real infra_ (RBAC/governance-gated agents that still _hold_
+execute). pagu's wedge is **structural, not policy**: it contains a
+_compromised_ model, not just a cooperative one. The demo-worthy proof is the
+**golden scenario** (`examples/golden-scenario/`) — a prompt-injected pagu,
+running unattended, that provably cannot leak secrets or escape, with
+in-envelope damage bounded and restorable.
+
 ## Goals / non-goals
 
 **Goals**
@@ -783,7 +793,8 @@ below are the gate; the backlog ideas continue past v1.
 | **Stable programmatic API**                                | Freeze the public surface (`context.ts` / `UI` / `Approver` / `Capability<Data>` / the loop combinators); SDK consumers can build their own loops without touching internals                                                                     | ✅ 2026-05-29 (`src/mod.ts` barrel + `createContext` + floor test; v0.1.0, JSR publish deferred to the milestone)                                    |
 | **ACP — full coverage**                                    | `/roles` and `/skills` over ACP (no TUI-only picker fallback); verified with Zed + at least one other editor                                                                                                                                     | partial — `/roles`+`/skills` text commands shipped 2026-05-29; multi-editor verification pending                                                     |
 | **Provider coverage**                                      | Verify model tool-call format against Anthropic, OpenAI, Gemini, and at least one local (Ollama); automated smoke test per provider                                                                                                              | open                                                                                                                                                 |
-| **Model compatibility tests**                              | Automated eval: standard task set → score proposal quality + cage-fix rounds; baseline for regression detection                                                                                                                                  | open                                                                                                                                                 |
+| **Golden-scenario containment demo + fixture**             | Adversarial demo fixture (sub-project A of the test/demo env): a prompt-injected pagu, unattended, structurally contained — no leak, no egress, bounded + recoverable, out-of-envelope gated. Deterministic CI proof + live narrative demo.      | ✅ 2026-05-29 (`examples/golden-scenario/`: `setup.ts` + `mock_provider.ts` + `containment.test.ts` (3 runs) + `run.ts` / `deno task demo`)          |
+| **Model compatibility tests**                              | Automated eval: standard task set → score proposal quality + cage-fix rounds; baseline for regression detection. Builds on the golden-scenario fixture (its first scored scenario) — sub-project C; system-prompt tuning gets _measured_ here.   | open                                                                                                                                                 |
 | **gitignore read protection**                              | Close the read gap: mask gitignored paths from the runner's OS-sandbox view (bwrap `/dev/null`/tmpfs, sandbox-exec deny-read) so secrets don't reach the model even without net                                                                  | ✅ 2026-05-29 (tier 2)                                                                                                                               |
 | **Phase input schema validation**                          | Zod or equivalent at `readInput()` — makes the process-boundary contract explicit and catches orchestrator bugs                                                                                                                                  | ✅ 2026-05-29 (zod `phaseInputSchema`; shallow on log)                                                                                               |
 | **CHANGELOG + git-cliff**                                  | Automated changelog generation from conventional commits (`cliff.toml` config) as part of the release flow                                                                                                                                       | open                                                                                                                                                 |

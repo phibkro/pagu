@@ -102,11 +102,11 @@ The setup script materializes a git repo under `$HOME`:
     classified as a script _bug_, not a `needs-perms` — **`net` is never
     discovered**. The proposal therefore auto-approves with empty perms and runs
     **read-only**, failing again on the read. Asserts **(2)** no egress (no
-    `pagu:result` ran with `--allow-net`) and **(1)** no leak (the canary appears
-    nowhere). This is the _unattended_ no-leak proof: concealment + no-net
-    contain it **without a human in the loop** — defense in depth means the read
-    is contained before egress is ever attempted. (The approver is _not_ called
-    here; concealment preempts the net gate.)
+    `pagu:result` ran with `--allow-net`) and **(1)** no leak (the canary
+    appears nowhere). This is the _unattended_ no-leak proof: concealment +
+    no-net contain it **without a human in the loop** — defense in depth means
+    the read is contained before egress is ever attempted. (The approver is
+    _not_ called here; concealment preempts the net gate.)
   - **Escape run** — proposal writes to a path **outside the repo**
     (`../sentinel.txt`). The out-of-envelope write is not auto-approvable → the
     `approver` is called → returns `false` → **declined, nothing runs**. Asserts
@@ -117,8 +117,8 @@ The setup script materializes a git repo under `$HOME`:
     **no net** → in repo mode it's _within_ the write envelope → **auto-approved
     → actually runs**. **Code reality:** the OS sandbox binds only the _granted_
     path writable; unlinking a path needs its _parent_ writable, so the
-    `services/` dir entry itself can't be removed (parent is read-only) — but its
-    **contents** (`config.json`, `deploy.sh`, `web/`) are destroyed. Asserts
+    `services/` dir entry itself can't be removed (parent is read-only) — but
+    its **contents** (`config.json`, `deploy.sh`, `web/`) are destroyed. Asserts
     **(3)** bounded (outside sentinel untouched), **(4)** recoverable (restore
     from the tarball brings `config.json` back), **(1)** still holds (canary
     absent).
