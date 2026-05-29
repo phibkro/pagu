@@ -766,6 +766,27 @@ above.)
     value type added to `validateValue`; 4 tests cover accept/reject. Unlocks
     `git log --format=<oneline|short|full>` and similar parameterized rules in
     `tasks/defaults.ts`.
+14. **Shell-sublanguage recognizer — a `run_command` grammar generalized to
+    multi-command scripts.** The agent writes a _shell script_ normally; a
+    recognizer checks the **whole script** against the safe argv sublanguage and
+    returns in-bounds / out-of-bounds — generalizing the `run_command` spine
+    (`recognize` over one argv) to a **sequence** of allowlisted commands. Scope
+    boundary (decided): this is for **one-offs** — a chain of vetted commands;
+    **true programmatic behavior (loops, conditionals, state) still uses a
+    `write` Deno script**, which is the right tool for logic. Two
+    non-negotiables: (a) **closed-world soundness** — bash's escape hatches
+    (`$(…)`, `eval`, `sh -c`, backticks, `xargs`, var-indirection, `PATH`/alias
+    games, here-docs) make a leaky grammar the _false-confidence_ trap; accept a
+    **small total sublanguage** (allowlisted commands + typed args, maybe
+    pipes/redirs between allowlisted commands, no substitution/eval/indirection)
+    and **reject by default**. (b) **It's an auto-approve gate, NOT the security
+    boundary** — the recognizer decides auto-approve vs human gate, but the
+    script still runs in the sandboxed runner under scoped perms + the
+    OS-sandbox/VM wall, so a parser bug only over-asks the human (fail-safe),
+    never breaches (invariants #1/#2). Depends on the OS-sandbox/VM tier to
+    contain `--allow-run=sh` (Deno doesn't bound subprocesses). A new capability
+    rung — needs its own brainstorm; sits naturally on the
+    `run_command`/command-policy spine and the grammar/compositional lens.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as
