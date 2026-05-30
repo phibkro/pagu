@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { resolve } from "@std/path";
 import { buildContext, createContext, parseArgs } from "./setup.ts";
 import { DEFAULTS } from "./config.ts";
@@ -273,6 +273,40 @@ Deno.test("createContext: injects handler plugins (no config paths)", async () =
     approver: noApprove,
   });
   assertEquals(ctx.activeHandlers.map((h) => h.name), ["test-handler"]);
+});
+
+Deno.test("ctx runtime mutators stay LIVE through the getters (the makeRunState extraction's contract)", async () => {
+  // The refactor moved run-state into makeRunState and delegates via getters
+  // (NOT a spread — a spread would snapshot, and a /provider or /roles switch
+  // would silently not take). This asserts the delegation is live end to end.
+  const ctx = await createContext({
+    provider: "ollama",
+    model: "m1",
+    baseURL: "http://127.0.0.1:1", // never contacted at build
+    ui: noopUI,
+    approver: noApprove,
+  });
+  assertEquals(ctx.provider.model, "m1");
+
+  // setProvider re-derives; the getter must SEE it (delegation, not snapshot).
+  ctx.setProvider({ model: "m2" });
+  assertEquals(ctx.provider.model, "m2");
+  assertEquals(ctx.providerName(), "ollama");
+
+  // advisorConfig getter tracks setAdvisor toggles, copying the LIVE provider.
+  assertEquals(ctx.advisorConfig, undefined);
+  ctx.setAdvisor({ enabled: true });
+  assertEquals(ctx.advisorConfig?.model, "m2");
+  ctx.setAdvisor({ enabled: false });
+  assertEquals(ctx.advisorConfig, undefined);
+
+  // setRoles re-folds (empty is valid); roleNames + the re-derived
+  // envelope/capabilities getters all reflect the new fold.
+  const r = await ctx.setRoles([]);
+  assertEquals(r.ok, true);
+  assertEquals(ctx.roleNames(), []);
+  assert(ctx.capabilities.length > 0, "capabilities re-derived");
+  assert((ctx.envelope.allow ?? []).length > 0, "envelope re-derived");
 });
 
 Deno.test("ctx.fetchModels: net-scoped subprocess fetches + caches; orchestrator net-less", async () => {
