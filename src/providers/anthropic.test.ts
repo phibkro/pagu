@@ -37,7 +37,7 @@ Deno.test("anthropic: system split out, tool→user coalesced, tool_use parsed",
   let key: string | null = null;
   let version: string | null = null;
   let body: {
-    system?: string;
+    system?: Array<{ type: string; text: string; cache_control?: unknown }>;
     max_tokens?: number;
     messages?: unknown;
     tools?: Array<Record<string, unknown>>;
@@ -84,7 +84,11 @@ Deno.test("anthropic: system split out, tool→user coalesced, tool_use parsed",
     assertEquals(path, "/v1/messages");
     assertEquals(key, "sk-ant-x");
     assertEquals(version, "2023-06-01");
-    assertEquals(body.system, "SYS");
+    // System is sent as a structured text block with a cache breakpoint, so the
+    // stable tools+system prefix is cached (read at ~0.1x on later turns).
+    assertEquals(body.system, [
+      { type: "text", text: "SYS", cache_control: { type: "ephemeral" } },
+    ]);
     assertEquals(typeof body.max_tokens, "number");
     // user + tool(→user) coalesced into a single user turn
     assertEquals(body.messages, [

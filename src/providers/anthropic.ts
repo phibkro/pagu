@@ -78,10 +78,27 @@ export async function chatAnthropic(
   }
 
   const stream = !!onToken;
+  // System as a structured text block with a cache breakpoint. Tools precede
+  // system in the prompt prefix, so this single breakpoint caches the entire
+  // stable `tools + system` prefix (the AGENTS.md instructions + tool defs that
+  // pagu re-sends verbatim every turn) — later turns read it at ~0.1x input
+  // cost. A no-op (no error) when the prefix is below the model's min cacheable
+  // size. Messages aren't cached here (a documented follow-up). GA, no beta header.
+  const systemText = systemParts.join("\n\n");
   const body = {
     model: cfg.model,
     max_tokens: cfg.maxTokens ?? MAX_TOKENS,
-    ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
+    ...(systemText
+      ? {
+        system: [
+          {
+            type: "text",
+            text: systemText,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+      }
+      : {}),
     messages: turns,
     ...(stream ? { stream: true } : {}),
     ...(tools.length > 0

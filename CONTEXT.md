@@ -486,7 +486,25 @@ portable tier-1 floor around it (no regression).
   Groq, LM Studio, vLLM…), with a native **Anthropic** Messages client
   alongside, selected by a per-preset `format`. BYO key via named env vars;
   config never holds secrets. (Anthropic subscription OAuth is barred — API key
-  only.)
+  only.) Both wire formats **stream** (OpenAI + Anthropic SSE); `max_tokens` is
+  configurable (`--max-tokens`/config, Anthropic requires it, default 4096). The
+  hand-rolled clients are audited against the canonical docs
+  (`platform.claude.com`), not the SDK (invariant #5 — minimal TCB).
+  - **Prompt caching (Anthropic, always-on):** the native client sends `system`
+    as a structured text block with a single `cache_control: {type:"ephemeral"}`
+    breakpoint. Tools precede system in the prompt prefix, so this one
+    breakpoint caches the whole stable `tools + system` prefix (the AGENTS.md
+    instructions + tool defs re-sent verbatim each turn) → later turns read it
+    at ~0.1× input cost. GA (no beta header); a no-op below the model's min
+    cacheable size. _Always-on by design_ — pagu's main mode is multi-turn agent
+    loops where the fixed prefix dominates; the only downside is a tiny one-shot
+    write overhead. _Deferred:_ a second breakpoint to cache the growing
+    **message** prefix (needs care with turn-coalescing + the 4-breakpoint
+    budget); threading the `usage` object out of `chat()` (cache hit/miss + cost
+    — feeds the #16 token budget); surfacing `stop_reason=="max_tokens"`
+    truncation + in-stream `error` (529) events. _Real cache-hit + stream
+    verification awaits Anthropic credits (the configured account is empty); the
+    request shape is pinned by tests against the canonical event/caching docs._
 - **Harness:** our own minimal loop + phase FSM, written from scratch — inspired
   by Pi (loop shape, tool-call parsing), not forked. Smaller TCB is the point,
   and from-scratch bakes in the no-exec/phase model from line one. `pi-ai` kept
