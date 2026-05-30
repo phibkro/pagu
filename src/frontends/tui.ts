@@ -307,11 +307,18 @@ export async function tuiMain(): Promise<void> {
   const nav = { listing: [] as SessionInfo[] }; // last /sessions, for /open
   while (true) {
     const t = estimateTokens(ctx.log);
+    // Real cumulative token usage (when the provider reported any) — billed
+    // ↑input ↓output, plus cache reads (proves Anthropic prompt caching works).
+    const u = ctx.usageTotal();
+    const usageSeg = (u.inputTokens || u.outputTokens)
+      ? ` · ↑${fmtTokens(u.inputTokens)} ↓${fmtTokens(u.outputTokens)}` +
+        (u.cacheReadTokens ? ` (cached ${fmtTokens(u.cacheReadTokens)})` : "")
+      : "";
     console.log(
       dim(
         `\n  ~${
           fmtTokens(t)
-        } ctx · ${ctx.log.length} entries · ${ctx.provider.model}`,
+        } ctx · ${ctx.log.length} entries · ${ctx.provider.model}${usageSeg}`,
       ),
     );
     const raw = await readCommandLine(cyan("pagu> "));

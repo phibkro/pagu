@@ -12,16 +12,17 @@ Deno.test("spawnPhase: demuxes stderr frames to onStream; non-frames are diagnos
        Deno.stderr.writeSync(e.encode('{"channel":"reasoning","text":"hmm"}\\n'));
        Deno.stderr.writeSync(e.encode('not a frame\\n'));
        Deno.stderr.writeSync(e.encode('{"channel":"content","text":"hi"}\\n'));
-       console.log(JSON.stringify({ entries: [] }));`,
+       console.log(JSON.stringify({ entries: [], usage: { inputTokens: 7, outputTokens: 3 } }));`,
     );
     const chunks: StreamChunk[] = [];
-    const entries = await spawnPhase({
+    const { entries, usage } = await spawnPhase({
       entry,
       flags: [],
       input: {} as never,
       onStream: (c) => chunks.push(c),
     });
     assertEquals(entries, []);
+    assertEquals(usage, { inputTokens: 7, outputTokens: 3 }); // round-trips stdout
     assertEquals(chunks, [
       { channel: "reasoning", text: "hmm" },
       { channel: "content", text: "hi" }, // the "not a frame" line is skipped

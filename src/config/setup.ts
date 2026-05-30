@@ -452,6 +452,28 @@ export async function buildContext(
     entries: log, // === loaded.entries; the store keeps this array identity
   });
 
+  // Cumulative token usage for this run — summed from each turn's reported
+  // usage (recordUsage). In-memory (not persisted); drives the TUI HUD and is
+  // the basis for a future cost ceiling (#16).
+  const sessionUsage = { inputTokens: 0, outputTokens: 0 } as {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
+  };
+  const recordUsage = (u: typeof sessionUsage): void => {
+    sessionUsage.inputTokens += u.inputTokens;
+    sessionUsage.outputTokens += u.outputTokens;
+    if (u.cacheReadTokens) {
+      sessionUsage.cacheReadTokens = (sessionUsage.cacheReadTokens ?? 0) +
+        u.cacheReadTokens;
+    }
+    if (u.cacheCreationTokens) {
+      sessionUsage.cacheCreationTokens =
+        (sessionUsage.cacheCreationTokens ?? 0) + u.cacheCreationTokens;
+    }
+  };
+
   // The run-state fields delegate to `rs` via getters (not a spread — a spread
   // would snapshot the current values and lose the liveness a /roles or
   // /provider switch depends on). The rest is session/static state.
@@ -466,6 +488,8 @@ export async function buildContext(
     providerName: rs.providerName,
     models: rs.models,
     fetchModels: rs.fetchModels,
+    recordUsage,
+    usageTotal: () => ({ ...sessionUsage }),
     projectBase,
     roleNames: rs.roleNames,
     profileName: rs.profileName,

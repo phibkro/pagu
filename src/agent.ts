@@ -79,8 +79,8 @@ function phaseInput(ctx: AgentContext) {
  * through so Ctrl-C / session/cancel kills the subprocess.
  */
 function injectRespond(ctx: AgentContext, signal?: AbortSignal): void {
-  ctx.respond = () =>
-    spawnPhase({
+  ctx.respond = async () => {
+    const { entries, usage } = await spawnPhase({
       entry: join(ctx.phaseDir, "respond.ts"),
       flags: respondFlags(ctx.providerHost, ctx.readPaths),
       input: phaseInput(ctx),
@@ -89,6 +89,13 @@ function injectRespond(ctx: AgentContext, signal?: AbortSignal): void {
         : undefined,
       signal,
     });
+    // Accumulate the turn's token usage into the session total (drives the HUD;
+    // the foundation for a cost ceiling, #16). Side-effect, so the Responder
+    // contract stays Entry[] — the cage fix-loop caller is unaffected (and its
+    // fix-round tokens are counted too).
+    if (usage) ctx.recordUsage(usage);
+    return entries;
+  };
 }
 
 function showReply(ctx: AgentContext, entries: Entry[]): void {

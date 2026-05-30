@@ -8,5 +8,6 @@ export {
   type TokenSink,
   type ToolCall,
   type ToolDef,
+  type Usage,
 } from "./chat.ts";
 export { chatAnthropic } from "./anthropic.ts";

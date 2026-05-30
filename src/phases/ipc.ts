@@ -1,7 +1,7 @@
 // effects: stdio (stdin/stdout); pure: validatePhaseInput
 import { z } from "zod";
 import type { Entry } from "../log/schema.ts";
-import type { ProviderConfig } from "../providers/chat.ts";
+import type { ProviderConfig, Usage } from "../providers/chat.ts";
 import type { CommandRule } from "../tasks/grammar.ts";
 import type { ConcealmentSpec } from "../permissions/concealment.ts";
 
@@ -75,7 +75,9 @@ export async function readInput(): Promise<PhaseInput> {
   return validatePhaseInput(JSON.parse(text));
 }
 
-/** Emit the entries this phase produced (parent appends them to the log). */
-export function writeOutput(entries: Entry[]): void {
-  console.log(JSON.stringify({ entries }));
+/** Emit the entries this phase produced (parent appends them to the log) plus
+ * the turn's token usage when the provider reported it (the parent accumulates
+ * a session total + drives the HUD; usage carries no capability). */
+export function writeOutput(entries: Entry[], usage?: Usage): void {
+  console.log(JSON.stringify({ entries, usage }));
 }

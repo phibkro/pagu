@@ -29,9 +29,23 @@ export interface ToolCall {
   args: Record<string, unknown>;
 }
 
+/** Token accounting for one model call. Optional fields only present when the
+ * provider reports them — cache* prove prompt caching is working (Anthropic),
+ * cacheRead also covers OpenAI's automatic `cached_tokens`. */
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Prompt-cache tokens read this call (Anthropic cache_read / OpenAI cached). */
+  cacheReadTokens?: number;
+  /** Tokens written to the cache this call (Anthropic only). */
+  cacheCreationTokens?: number;
+}
+
 export interface ChatResponse {
   content: string;
   toolCalls: ToolCall[];
+  /** Token usage for this call, when the provider reports it. */
+  usage?: Usage;
 }
 
 export interface ProviderConfig {
@@ -47,6 +61,12 @@ export interface ProviderConfig {
   maxTokens?: number;
 }
 
+interface OpenAIUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+}
+
 interface OpenAIChatResponse {
   choices?: Array<{
     message?: {
@@ -55,6 +75,19 @@ interface OpenAIChatResponse {
       tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
     };
   }>;
+  usage?: OpenAIUsage;
+}
+
+/** Map an OpenAI `usage` object to our Usage (cache fields only when present). */
+function mapOpenAIUsage(u: OpenAIUsage | undefined): Usage | undefined {
+  if (!u) return undefined;
+  const usage: Usage = {
+    inputTokens: u.prompt_tokens ?? 0,
+    outputTokens: u.completion_tokens ?? 0,
+  };
+  const cached = u.prompt_tokens_details?.cached_tokens;
+  if (cached !== undefined) usage.cacheReadTokens = cached;
+  return usage;
 }
 
 /** Called with each content token as it streams in (display side-channel). */
@@ -144,6 +177,9 @@ function openAIRequest(
     model: cfg.model,
     messages: wireMessages,
     stream,
+    // Ask for a usage chunk at the end of the stream (ignored by providers that
+    // don't support it; usage stays optional in our handling).
+    ...(stream ? { stream_options: { include_usage: true } } : {}),
     tools: tools.length > 0
       ? tools.map((t) => ({
         type: "function",
@@ -207,7 +243,11 @@ function parseBuffered(data: OpenAIChatResponse): ChatResponse {
       args: tc.function?.arguments ?? "",
     })),
   );
-  return { content: seg.content + f.content, toolCalls };
+  return {
+    content: seg.content + f.content,
+    toolCalls,
+    usage: mapOpenAIUsage(data.usage),
+  };
 }
 
 interface StreamChoice {
@@ -230,6 +270,7 @@ async function parseStream(
   onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   let content = "";
+  let usage: Usage | undefined;
   const calls = new Map<number, { name: string; args: string }>();
   // Split <think> reasoning out of the content stream (live, ephemeral): it
   // streams via onReasoning and never enters `content` (the persisted answer).
@@ -252,12 +293,14 @@ async function parseStream(
     if (!line.startsWith("data:")) continue;
     const payload = line.slice(5).trim();
     if (payload === "" || payload === "[DONE]") continue;
-    let choice: StreamChoice;
+    let obj: { choices?: StreamChoice[]; usage?: OpenAIUsage };
     try {
-      choice = (JSON.parse(payload).choices?.[0] ?? {}) as StreamChoice;
+      obj = JSON.parse(payload);
     } catch {
       continue; // tolerate keep-alive / malformed lines
     }
+    if (obj.usage) usage = mapOpenAIUsage(obj.usage); // final chunk
+    const choice = obj.choices?.[0] ?? {};
     const delta = choice.delta;
     if (!delta) continue;
     if (typeof delta.content === "string" && delta.content) {
@@ -272,5 +315,5 @@ async function parseStream(
     }
   }
   route(think.flush()); // surface any buffered partial-tag text
-  return { content, toolCalls: toToolCalls([...calls.values()]) };
+  return { content, toolCalls: toToolCalls([...calls.values()]), usage };
 }

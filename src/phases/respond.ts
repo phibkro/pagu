@@ -1,5 +1,5 @@
 // effects: phase entrypoint (reads allowlist, talks to model, emits chat/script)
-import { chat, type ChatMessage } from "../providers/chat.ts";
+import { chat, type ChatMessage, type Usage } from "../providers/chat.ts";
 import { handleRead, readToolDef } from "../read.ts";
 import { writeCapability } from "../write/capability.ts";
 import { skillCapability } from "../skills/capability.ts";
@@ -64,6 +64,24 @@ const system = input.capabilities
   : SYSTEM;
 const messages = logToMessages(input.log, withAgents(system, input.agents));
 const out: Entry[] = [];
+// Token usage summed across this turn's chat() calls (a read loop may make
+// several). Reported to the parent via writeOutput; undefined if no provider
+// reported usage.
+let turnUsage: Usage | undefined;
+function addUsage(u: Usage | undefined): void {
+  if (!u) return;
+  turnUsage ??= { inputTokens: 0, outputTokens: 0 };
+  turnUsage.inputTokens += u.inputTokens;
+  turnUsage.outputTokens += u.outputTokens;
+  if (u.cacheReadTokens) {
+    turnUsage.cacheReadTokens = (turnUsage.cacheReadTokens ?? 0) +
+      u.cacheReadTokens;
+  }
+  if (u.cacheCreationTokens) {
+    turnUsage.cacheCreationTokens = (turnUsage.cacheCreationTokens ?? 0) +
+      u.cacheCreationTokens;
+  }
+}
 
 const concealment = buildConcealment(
   input.conceal ?? {
@@ -111,7 +129,7 @@ try {
   }
   throw e; // genuine bug — let it surface with its stack
 }
-writeOutput(out);
+writeOutput(out, turnUsage);
 
 async function converse(): Promise<void> {
   for (let i = 0; i <= MAX_READS; i++) {
@@ -122,6 +140,7 @@ async function converse(): Promise<void> {
       onToken,
       onReasoning,
     );
+    addUsage(res.usage);
 
     // Find the first action tool call (priority order: write > skill > command).
     const match = capData

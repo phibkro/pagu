@@ -2,7 +2,15 @@
 import { TextLineStream } from "@std/streams";
 import type { Entry } from "../log/schema.ts";
 import type { PhaseInput } from "./ipc.ts";
+import type { Usage } from "../providers/chat.ts";
 import { parseChunk, type StreamChunk } from "./stream.ts";
+
+/** What a respond phase returns: its auditable entries + the turn's token
+ * usage (when the provider reported it). */
+export interface PhaseResult {
+  entries: Entry[];
+  usage?: Usage;
+}
 
 /**
  * Run a phase as a SEPARATE `deno run` process with exactly the given
@@ -26,7 +34,7 @@ export async function spawnPhase(opts: {
   input: PhaseInput;
   onStream?: (chunk: StreamChunk) => void;
   signal?: AbortSignal;
-}): Promise<Entry[]> {
+}): Promise<PhaseResult> {
   if (opts.signal?.aborted) {
     throw new DOMException("respond phase cancelled", "AbortError");
   }
@@ -84,8 +92,8 @@ export async function spawnPhase(opts: {
     if (code !== 0) {
       throw new Error(`phase ${opts.entry} exited ${code}: ${stderrText}`);
     }
-    const parsed = JSON.parse(stdoutText) as { entries: Entry[] };
-    return parsed.entries;
+    const parsed = JSON.parse(stdoutText) as PhaseResult;
+    return { entries: parsed.entries, usage: parsed.usage };
   } finally {
     opts.signal?.removeEventListener("abort", onAbort);
   }

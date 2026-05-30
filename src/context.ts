@@ -5,7 +5,7 @@
 import type { ConcealmentSpec, Envelope } from "./permissions/index.ts";
 import type { SandboxKind } from "./runner/index.ts";
 import type { Entry } from "./log/index.ts";
-import type { ProviderConfig } from "./providers/index.ts";
+import type { ProviderConfig, Usage } from "./providers/index.ts";
 import type { SessionMeta } from "./config/index.ts";
 import type { HandlerPlugin } from "./capability/index.ts";
 import type { EventStream } from "./events.ts";
@@ -92,6 +92,12 @@ export interface AgentContext {
   /** Re-fetch the provider's models in a net-scoped subprocess and refresh the
    * cache (the orchestrator itself stays net-less). */
   fetchModels: () => Promise<string[]>;
+  /** Add a turn's reported token usage to the running session total (called by
+   * the turn loop after each respond phase). */
+  recordUsage: (u: Usage) => void;
+  /** The cumulative token usage this session — billed input/output + cache
+   * read/creation. Drives the TUI HUD; the basis for a future cost ceiling. */
+  usageTotal: () => Usage;
   /** Project dir (git root, else cwd) where roles are discovered. */
   projectBase: string;
   /** Names of the currently applied roles, in compose order. */

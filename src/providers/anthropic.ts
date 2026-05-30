@@ -8,6 +8,7 @@ import {
   type TokenSink,
   type ToolCall,
   type ToolDef,
+  type Usage,
 } from "./chat.ts";
 
 /**
@@ -40,6 +41,13 @@ export async function fetchModelsAnthropic(
   return (json.data ?? []).map((m) => m.id);
 }
 
+interface AnthropicUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
 interface AnthropicResponse {
   content?: Array<
     | { type: "text"; text: string }
@@ -51,6 +59,23 @@ interface AnthropicResponse {
     }
     | { type: string }
   >;
+  usage?: AnthropicUsage;
+}
+
+/** Map an Anthropic `usage` object to our Usage (cache fields when present). */
+function mapAnthropicUsage(u: AnthropicUsage | undefined): Usage | undefined {
+  if (!u) return undefined;
+  const usage: Usage = {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+  };
+  if (u.cache_read_input_tokens !== undefined) {
+    usage.cacheReadTokens = u.cache_read_input_tokens;
+  }
+  if (u.cache_creation_input_tokens !== undefined) {
+    usage.cacheCreationTokens = u.cache_creation_input_tokens;
+  }
+  return usage;
 }
 
 export async function chatAnthropic(
@@ -141,7 +166,7 @@ function parseBuffered(data: AnthropicResponse): ChatResponse {
       toolCalls.push({ name: b.name, args: b.input ?? {} });
     }
   }
-  return { content, toolCalls };
+  return { content, toolCalls, usage: mapAnthropicUsage(data.usage) };
 }
 
 interface StreamEvent {
@@ -154,6 +179,9 @@ interface StreamEvent {
     partial_json?: string;
     thinking?: string;
   };
+  message?: { usage?: AnthropicUsage };
+  usage?: AnthropicUsage;
+  error?: { type?: string; message?: string };
 }
 
 /**
@@ -171,6 +199,9 @@ async function streamAnthropic(
   onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   let content = "";
+  // Usage accrues across the stream: message_start carries input + cache
+  // tokens; message_delta carries the (cumulative) final output_tokens.
+  const usage: Usage = { inputTokens: 0, outputTokens: 0 };
   // tool_use blocks by content-block index: name + accumulated input JSON.
   const tools = new Map<number, { name: string; args: string }>();
   const lines = body
@@ -186,6 +217,29 @@ async function streamAnthropic(
       ev = JSON.parse(payload) as StreamEvent;
     } catch {
       continue; // tolerate keep-alive / malformed lines
+    }
+    if (ev.type === "error") {
+      // An in-stream error (e.g. overloaded_error / 529 mid-stream) — surface it
+      // as a clean throw, same shape as a non-OK HTTP response.
+      throw new Error(
+        `anthropic stream: ${ev.error?.message ?? ev.error?.type ?? "error"}`,
+      );
+    }
+    if (ev.type === "message_start") {
+      const u = mapAnthropicUsage(ev.message?.usage);
+      if (u) {
+        usage.inputTokens = u.inputTokens;
+        if (u.cacheReadTokens !== undefined) {
+          usage.cacheReadTokens = u.cacheReadTokens;
+        }
+        if (u.cacheCreationTokens !== undefined) {
+          usage.cacheCreationTokens = u.cacheCreationTokens;
+        }
+      }
+    } else if (
+      ev.type === "message_delta" && ev.usage?.output_tokens !== undefined
+    ) {
+      usage.outputTokens = ev.usage.output_tokens; // cumulative final count
     }
     if (ev.type === "content_block_start") {
       const cb = ev.content_block;
@@ -216,5 +270,5 @@ async function streamAnthropic(
     }
     return { name: t.name, args };
   });
-  return { content, toolCalls };
+  return { content, toolCalls, usage };
 }

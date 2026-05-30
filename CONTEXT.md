@@ -500,11 +500,25 @@ portable tier-1 floor around it (no regression).
     loops where the fixed prefix dominates; the only downside is a tiny one-shot
     write overhead. _Deferred:_ a second breakpoint to cache the growing
     **message** prefix (needs care with turn-coalescing + the 4-breakpoint
-    budget); threading the `usage` object out of `chat()` (cache hit/miss + cost
-    — feeds the #16 token budget); surfacing `stop_reason=="max_tokens"`
-    truncation + in-stream `error` (529) events. _Real cache-hit + stream
-    verification awaits Anthropic credits (the configured account is empty); the
-    request shape is pinned by tests against the canonical event/caching docs._
+    budget). _Real cache-hit + stream verification awaits Anthropic credits (the
+    configured account is empty); the request shape is pinned by tests against
+    the canonical event/caching docs._
+  - **Token usage / cost (SHIPPED):** `ChatResponse.usage`
+    (`{input,output,cacheRead?,cacheCreation?}`) extracted from all four paths
+    (OpenAI buffered/stream via `stream_options.include_usage`; Anthropic
+    buffered + stream via `message_start` input/cache + `message_delta` output).
+    Threaded phase→orchestrator: the respond phase sums a turn's `chat()` calls
+    into `writeOutput(entries, usage)`; `spawnPhase` returns `{entries, usage}`;
+    `injectRespond` calls `ctx.recordUsage` (side-effect — the Responder stays
+    `Entry[]`, so the cage fix-loop caller is unchanged + its rounds are
+    counted); `buildContext` holds the cumulative `sessionUsage` +
+    `ctx.usageTotal()`. The TUI HUD shows `↑in ↓out (cached R)`. **The hook the
+    #16 token/cost ceiling needed** (usage is now out of `chat()`). Also handles
+    in-stream `error` (529) events as a clean throw. Verified end-to-end against
+    real Ollama tokens (`↑1.5k ↓48` in the HUD — credit-free; Anthropic cache
+    fields populate identically once credited). _Deferred:_ surfacing
+    `stop_reason=="max_tokens"` truncation; a per-call cost (price × tokens)
+    readout; the #16 ceiling check itself.
 - **Harness:** our own minimal loop + phase FSM, written from scratch — inspired
   by Pi (loop shape, tool-call parsing), not forked. Smaller TCB is the point,
   and from-scratch bakes in the no-exec/phase model from line one. `pi-ai` kept

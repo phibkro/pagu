@@ -128,6 +128,63 @@ Deno.test("parseStream: <think> routes to onReasoning; content excludes it", asy
   }
 });
 
+Deno.test("openai: usage parsed (prompt/completion + cached tokens)", async () => {
+  const server = Deno.serve(
+    { port: 0, onListen() {} },
+    () =>
+      Response.json({
+        choices: [{ message: { role: "assistant", content: "ok" } }],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 20,
+          prompt_tokens_details: { cached_tokens: 80 },
+        },
+      }),
+  );
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const r = await chat(
+      { baseURL: `http://localhost:${port}/v1`, model: "m" },
+      [{ role: "user", content: "hi" }],
+    );
+    assertEquals(r.usage, {
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 80,
+    });
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("openai streaming: usage arrives in the final chunk (include_usage)", async () => {
+  let body: { stream_options?: { include_usage?: boolean } } = {};
+  const frames = [
+    `data: {"choices":[{"delta":{"content":"Hi"}}]}\n`,
+    `data: {"choices":[],"usage":{"prompt_tokens":50,"completion_tokens":5}}\n`,
+    `data: [DONE]\n`,
+  ];
+  const server = Deno.serve({ port: 0, onListen() {} }, async (req) => {
+    body = await req.json();
+    return new Response(frames.join(""), {
+      headers: { "content-type": "text/event-stream" },
+    });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const r = await chat(
+      { baseURL: `http://localhost:${port}/v1`, model: "m" },
+      [{ role: "user", content: "hi" }],
+      [],
+      () => {}, // onToken → streaming
+    );
+    assertEquals(body.stream_options, { include_usage: true }); // opted in
+    assertEquals(r.usage, { inputTokens: 50, outputTokens: 5 });
+  } finally {
+    await server.shutdown();
+  }
+});
+
 Deno.test("a non-OK response throws a one-line error from the JSON body", async () => {
   const server = Deno.serve(
     { port: 0, onListen() {} },
