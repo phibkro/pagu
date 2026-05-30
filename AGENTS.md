@@ -12,6 +12,9 @@ Operating manual for an agent (or human) picking up this codebase cold.
 - `docs/CONCEPTS.md` — the **mental-models** reference (our nouns/verbs + why).
 - `docs/INVARIANTS.md` — the **load-bearing-claim catalog** + enforcement tier;
   the canonical home of the numbered invariants (`#1`–`#5`).
+- `docs/decisions/` — the **ADR log**: dated, statused records of
+  hard-to-reverse decisions (read before re-opening a settled trade-off;
+  ADR-0001 = how we work with agents here).
 - `docs/specs/` — deep design docs for individual features (drill-down).
 - **this file** — _how we work here_. (Cross-tool AGENTS.md standard; pagu reads
   it itself, so keep it concise.)
@@ -323,6 +326,14 @@ Configuration deep module (`buildContext` is the public interface):
   security-only gate misses it — benign>0 is the catch); it **loud-skips**
   (exits 0 with a banner) when no model is reachable, so it never silently
   passes.
+- **Definition of done** (verified, not asserted — agents over-claim "done"):
+  full `deno task ci` green (not just the tests you touched); docs the change
+  touched updated (and `check:docs` green — it now binds `Shipped`/path claims
+  to real files, Edge 4); deferred items written down, not dropped; **for
+  security/capability-path work, one real run** of the headline journey against
+  a live model (above) — and reach for an **independent-context review** (a
+  fresh reviewer agent / `/code-review ultra`) before calling such a change
+  done, since self-review shares the author's blind spots.
 - **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
   trailer
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.

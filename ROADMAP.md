@@ -59,28 +59,28 @@ definition** and the paradigm-level **North Star**.
 - **CLI ergonomics** — flags parsed by `@cliffy/command`: a generated
   `pagu --help`, and `pagu completions <bash|zsh|fish>` for shell completion.
 - **Interactive pickers** — `/roles` (multi-select) and `/open` (single-select)
-  open an arrow-key list (`src/frontends/select.ts`); the selection model is pure and
-  unit-tested, key decoding is borrowed from `@cliffy/keypress`. Both keep a
-  text fallback when stdin is not a TTY.
+  open an arrow-key list (`src/frontends/select.ts`); the selection model is
+  pure and unit-tested, key decoding is borrowed from `@cliffy/keypress`. Both
+  keep a text fallback when stdin is not a TTY.
 - **Config interop** — reads `CLAUDE.md` as a per-scope fallback when
   `AGENTS.md` is absent (prose only, never `.claude/` settings).
 - **Roles** — composable config+instruction bundles: a markdown file whose YAML
   frontmatter folds as a `ConfigLayer` monoid and whose body appends as prose.
   `--role <name>` (repeatable) and the TUI `/roles` picker. See _Roles — decided
   behavior_ below.
-- **Structured review aid** (`src/write/review.ts`) — pure module with four static
-  analyses at the human approval gate: risk tier badge (read-only / local-write
-  / EXTERNAL-NET), permission diff against envelope, LCS-based iteration diff
-  when cage revised the script, and `--allow-run` target check. Replaces the
-  flat script+perms dump.
+- **Structured review aid** (`src/write/review.ts`) — pure module with four
+  static analyses at the human approval gate: risk tier badge (read-only /
+  local-write / EXTERNAL-NET), permission diff against envelope, LCS-based
+  iteration diff when cage revised the script, and `--allow-run` target check.
+  Replaces the flat script+perms dump.
 - **Deno denial format pin** — two integration tests in `classify.test.ts` that
   run real Deno subprocesses and assert `classifyRun` returns `needs-perms` with
   the exact path. Fails at CI if Deno changes its denial message wording.
-- **Advisory reviewer** (`src/write/advisor.ts`) — optional pre-approval add-on. Sends
-  `{task, script, perms}` (not the full log) to a configurable model, returns
-  structured flag strings labeled `[advisory]`. Fails open on any error. Enabled
-  via `--advisor` flag, `advisor: true` in config, or TUI `/advisor` command
-  (toggle/configure with preset + model; tab-completes). Separate
+- **Advisory reviewer** (`src/write/advisor.ts`) — optional pre-approval add-on.
+  Sends `{task, script, perms}` (not the full log) to a configurable model,
+  returns structured flag strings labeled `[advisory]`. Fails open on any error.
+  Enabled via `--advisor` flag, `advisor: true` in config, or TUI `/advisor`
+  command (toggle/configure with preset + model; tab-completes). Separate
   `advisorProvider`/`advisorModel` config fields allow a different model from
   the proposer.
 - **Illegal state elimination** — three redundant derived fields removed:
@@ -88,22 +88,22 @@ definition** and the paradigm-level **North Star**.
   scoped `Permission { flag: "all" }` (now a discriminated union; `all` is never
   scoped). `advisorEnabled` also removed — `advisorConfig` presence is the
   signal.
-- **Skills system** (`src/skills/skill.ts`, `src/skills/tool.ts`) — a skill is
-  a directory `.pagu/skills/<name>/` containing `SKILL.md` (frontmatter +
+- **Skills system** (`src/skills/skill.ts`, `src/skills/tool.ts`) — a skill is a
+  directory `.pagu/skills/<name>/` containing `SKILL.md` (frontmatter +
   instructions, agentskills.io spec) and a `scripts/` subdirectory with
   pre-authored `.ts` files. Denotation: `(prose, ConfigLayer, files, scripts)` —
   extends roles by the same composition law. `invoke_skill` tool: agent names a
   skill script by enum-constrained name; the orchestrator resolves the verbatim
   body from `ctx.activeSkillScripts` (agent never copies content); cage
   validates and auto-approves within the declared permission ceiling.
-- **Command policy / `run_task`** (`src/tasks/policy.ts`, `src/tasks/discovery.ts`,
-  `src/tasks/tool.ts`) — `run_task` tool: agent passes an exact command
-  string (enum-constrained to the allowed-tasks policy). Deny by default: only
-  tasks listed in `allowed-tasks` config can run via `run_task`. Discovery scans
-  `deno.json`, `package.json`, `Justfile` for available tasks at startup.
-  **Type-inference model for permissions:** first cage run with minimal perms
-  discovers what the command actually needs → stored in
-  `.pagu/inferred-perms.json` (gitignored lockfile); second run cages against
+- **Command policy / `run_task`** (`src/tasks/policy.ts`,
+  `src/tasks/discovery.ts`, `src/tasks/tool.ts`) — `run_task` tool: agent passes
+  an exact command string (enum-constrained to the allowed-tasks policy). Deny
+  by default: only tasks listed in `allowed-tasks` config can run via
+  `run_task`. Discovery scans `deno.json`, `package.json`, `Justfile` for
+  available tasks at startup. **Type-inference model for permissions:** first
+  cage run with minimal perms discovers what the command actually needs → stored
+  in `.pagu/inferred-perms.json` (gitignored lockfile); second run cages against
   the stored ceiling. Explicit annotation = declared permissions; inferred type
   = cage-discovered permissions; strict mode = outside-repo (explicit required);
   type cache = `inferred-perms.json`.
@@ -671,6 +671,14 @@ above.)
       have since shipped — see the slice-A notes above; the only #17 item still
       deferred is the fuller per-axis assignment for access/policy, option (a),
       if it's ever needed beyond personality.)_
+18. `[harness]` `[quality]` **Autonomous-run postmortem (agentic-workflow
+    practice).** When scheduled agents (#16) run unattended in anger, keep a
+    blameless record of runs that surprise us (a firing that misread a payload,
+    looped, or proposed something off) and feed the lesson back — the
+    team-practice "postmortem" adapted for autonomous agents. Deferred until #16
+    actually runs unattended; the cage already does a bounded version (bug →
+    bounded feedback to the model). Rationale + the broader practice set:
+    `docs/decisions/0001-agentic-workflow-practices.md`.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as

@@ -15,13 +15,16 @@ Deno.test("repoPathRefs: extracts real repo paths, skips placeholders + runtime 
     "a bare module `src/agent` (no ext, no slash) is skipped",
     "`examples/eval/ci_live.ts` counts",
   ].join("\n");
-  assertEquals(repoPathRefs(md).sort(), [
-    "docs/specs/2026-05-30-x.md",
-    "examples/eval/ci_live.ts",
-    "scripts/check-docs.ts",
-    "src/config/run-state.ts",
-    "src/permissions/",
-  ].sort());
+  assertEquals(
+    repoPathRefs(md).sort(),
+    [
+      "docs/specs/2026-05-30-x.md",
+      "examples/eval/ci_live.ts",
+      "scripts/check-docs.ts",
+      "src/config/run-state.ts",
+      "src/permissions/",
+    ].sort(),
+  );
 });
 
 Deno.test("parseTestNames: string form + object form + ignores non-tests", () => {

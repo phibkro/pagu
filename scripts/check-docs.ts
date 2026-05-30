@@ -163,6 +163,19 @@ async function readDocs(): Promise<Map<string, string>> {
       // a doc named in DOCS may not exist yet; skip it.
     }
   }
+  // Also scan the ADR log (append-only, grows over time). Keyed by relpath to
+  // avoid a basename collision with the root README.md; ADRs are ref/path
+  // SOURCES (their refs + repo-paths get validated), never ref targets.
+  try {
+    for (const e of Deno.readDirSync(REPO + "docs/decisions")) {
+      if (e.isFile && e.name.endsWith(".md")) {
+        const rel = `docs/decisions/${e.name}`;
+        docs.set(rel, await Deno.readTextFile(REPO + rel));
+      }
+    }
+  } catch {
+    // no decisions dir — skip
+  }
   return docs;
 }
 
