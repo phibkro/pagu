@@ -258,7 +258,7 @@ round-trip:
 
 One file, readable by a human, parseable by the harness, clean git diffs. A
 session also carries a small YAML **frontmatter** header (display `name`,
-`created`); the entries below stay the source of truth (`src/conversations.ts`).
+`created`); the entries below stay the source of truth (`src/config/sessions.ts`).
 
 ### Open: the markdown _container_ assumes a single co-located reader
 
@@ -442,7 +442,7 @@ portable tier-1 floor around it (no regression).
     this.
 - **Runner perms cap an approved-but-buggy script**; **harness phase perms cap a
   buggy/compromised harness**.
-- **Advisory reviewer** (`src/advisor.ts`) is a pre-screening _control action_
+- **Advisory reviewer** (`src/write/advisor.ts`) is a pre-screening _control action_
   that enriches human information at review — not a second approver and not in
   the critical path. It fails open; the human gate remains the sole security
   boundary. Structured `[advisory]` flags are presented alongside the review aid

@@ -130,6 +130,19 @@ export function lawSatisfied(tag: string, testNames: string[]): boolean {
   return hay.some((t) => words.every((w) => t.includes(w)));
 }
 
+/** Backtick'd repo-path references a doc claims exist — `src/…`, `docs/…`,
+ *  `scripts/…`, `examples/…` ending in a file extension or a trailing slash.
+ *  The char class excludes `<>` so placeholder templates (`<scope>/…`,
+ *  `src/skills/<name>/`) and runtime/gitignored paths (`.pagu/…`) don't match.
+ *  This is the "done" edge: a doc that says a file implements something must
+ *  point at a file that exists — status claims bound to evidence, not prose. */
+export function repoPathRefs(md: string): string[] {
+  const out = new Set<string>();
+  const re = /`((?:src|docs|scripts|examples)\/[\w.\/-]*?(?:\.\w+|\/))`/g;
+  for (const m of md.matchAll(re)) out.add(m[1]);
+  return [...out];
+}
+
 /** Test names declared in a source file: `Deno.test("X"`, `Deno.test('X'`,
  *  `Deno.test({ name: "X" }`, and the multiline call form. */
 export function parseTestNames(src: string): string[] {
@@ -235,6 +248,19 @@ async function main(): Promise<void> {
             `[law] ${INVARIANTS_FILE}: [law: ${tag}] — no test matches`,
           );
         }
+      }
+    }
+  }
+
+  // Edge 4 — repo-path references resolve (the "done" edge: a doc pointing at a
+  // file/dir as evidence must point at one that exists; catches stale paths
+  // from renames/deletes that prose-rung "Shipped (src/x)" claims would hide).
+  for (const [name, md] of docs) {
+    for (const p of repoPathRefs(md)) {
+      try {
+        Deno.statSync(REPO + p.replace(/\/$/, ""));
+      } catch {
+        failures.push(`[path] ${name}: \`${p}\` — no such file/dir`);
       }
     }
   }

@@ -1,5 +1,28 @@
 import { assertEquals } from "@std/assert";
-import { headings, parseTestNames, refResolves } from "./check-docs.ts";
+import {
+  headings,
+  parseTestNames,
+  refResolves,
+  repoPathRefs,
+} from "./check-docs.ts";
+
+Deno.test("repoPathRefs: extracts real repo paths, skips placeholders + runtime paths", () => {
+  const md = [
+    "see `src/config/run-state.ts` and the `src/permissions/` dir",
+    "spec at `docs/specs/2026-05-30-x.md`, runner `scripts/check-docs.ts`",
+    "template `<scope>/profiles/<name>.md` and `src/skills/<name>/` are skipped",
+    "runtime `.pagu/inferred-perms.json` is skipped (not src/docs/scripts/examples)",
+    "a bare module `src/agent` (no ext, no slash) is skipped",
+    "`examples/eval/ci_live.ts` counts",
+  ].join("\n");
+  assertEquals(repoPathRefs(md).sort(), [
+    "docs/specs/2026-05-30-x.md",
+    "examples/eval/ci_live.ts",
+    "scripts/check-docs.ts",
+    "src/config/run-state.ts",
+    "src/permissions/",
+  ].sort());
+});
 
 Deno.test("parseTestNames: string form + object form + ignores non-tests", () => {
   const src = [
