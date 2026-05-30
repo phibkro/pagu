@@ -3,13 +3,7 @@ import { Command } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { fromFileUrl, resolve } from "@std/path";
 import type { Entry } from "../log/schema.ts";
-import {
-  type ConfigLayer,
-  DEFAULTS,
-  mergeLayer,
-  type PaguConfig,
-} from "./config.ts";
-import { loadProfile } from "./profiles.ts";
+import { type ConfigLayer, DEFAULTS, type PaguConfig } from "./config.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
@@ -384,35 +378,26 @@ export async function buildContext(
     );
   }
 
-  // A `--profile` (#17, slice A) expands ABOVE the run-state fold — the existing
-  // law, no new merge: prepend its referenced roles/skills (so explicit ones
-  // override), fold its inline layer onto the base preset, prepend its prose.
-  // Precedence: defaults ⋄ config.json ⋄ profile-inline ⋄ profile-roles ⋄
-  // explicit roles ⋄ skills ⋄ flags. Fails loud on a missing profile name.
-  let rsBase: ConfigLayer = opts.base;
-  let rsRoles = opts.roles;
-  let rsSkills = opts.skills;
-  let rsPersonalities = opts.personalities;
-  let agentsText = agents;
-  if (opts.profile) {
-    const profile = await loadProfile(opts.profile, projectBase);
-    rsBase = mergeLayer(opts.base, profile.layer); // inline onto the config base
-    rsRoles = [...profile.roles, ...opts.roles]; // explicit roles fold after
-    rsSkills = [...profile.skills, ...opts.skills];
-    rsPersonalities = [...profile.personalities, ...opts.personalities];
-    if (profile.prose) agentsText = `${profile.prose}\n\n${agents}`;
-  }
-
   // The live, role-dependent run-state — provider, envelope, concealment,
   // prose, capabilities, command entries + the runtime mutators — extracted
-  // into a constructible value (src/config/run-state.ts). Its initial fold of
-  // --role/--skill names happens inside (fail-loud on a bad name).
+  // into a constructible value (src/config/run-state.ts). It owns profile
+  // resolution (#17): a launched `--profile` prepends its referenced bundles to
+  // the explicit ones and folds its inline overrides AFTER all refs
+  // (inline-over-refs), beaten only by CLI flags. Precedence:
+  // defaults ⋄ config.json ⋄ profile-refs ⋄ explicit-refs ⋄ profile-inline ⋄
+  // flags. The initial fold (incl. the profile) is fail-loud on a bad name.
   const rs = await makeRunState({
-    opts: { base: rsBase, cli: opts.cli, roles: rsRoles, skills: rsSkills },
+    opts: {
+      base: opts.base,
+      cli: opts.cli,
+      roles: opts.roles,
+      skills: opts.skills,
+    },
     projectBase,
     repo,
-    agents: agentsText,
-    personalities: rsPersonalities,
+    agents,
+    personalities: opts.personalities,
+    profile: opts.profile,
     phaseDir,
     injectedHandlers,
   });
@@ -476,6 +461,8 @@ export async function buildContext(
     fetchModels: rs.fetchModels,
     projectBase,
     roleNames: rs.roleNames,
+    profileName: rs.profileName,
+    setProfile: rs.setProfile,
     personalityNames: rs.personalityNames,
     setPersonality: rs.setPersonality,
     availableRoles: () => listRoles(projectBase),

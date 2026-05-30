@@ -18,6 +18,7 @@ import { listSessions, type SessionInfo } from "../config/sessions.ts";
 import { listRoles } from "../config/roles.ts";
 import { listSkills } from "../skills/skill.ts";
 import { listPersonalities } from "../config/personalities.ts";
+import { listProfiles } from "../config/profiles.ts";
 import { selectFromList } from "./select.ts";
 import type { Entry } from "../log/schema.ts";
 
@@ -78,6 +79,8 @@ const COMMANDS: Record<string, string> = {
   "/skills": "pick skills, or apply a group (e.g. /skills git testing)",
   "/personality":
     "swap the personality (disposition only — keeps access/tools; e.g. /personality terse)",
+  "/profile":
+    "switch the active profile — a full assignment (roles+skills+overrides; e.g. /profile reviewer)",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
   "/open": "pick a conversation to open (or /open <n>)",
@@ -457,6 +460,49 @@ async function handleCommand(
       // Swaps disposition only — access/tools/provider stay put (#17).
       const r = await ctx.setPersonality(names);
       console.log(dim(`  ${r.ok ? "→ personality:" : "✗"} ${r.message}`));
+      return true;
+    }
+    case "/profile": {
+      // A profile is a full assignment — one active at a time (single-select).
+      // Switching REPLACES roles/skills/personalities + re-folds inline + prose.
+      let name = line.split(/\s+/).slice(1)[0];
+      if (!name) {
+        const available = await listProfiles(ctx.projectBase);
+        if (available.length === 0) {
+          console.log(
+            dim("  no profiles — add one at ./.pagu/profiles/<name>.md"),
+          );
+          console.log(dim("  or ~/.config/pagu/profiles/<name>.md (global)"));
+          return true;
+        }
+        const active = ctx.profileName();
+        const picked = await selectFromList(available, {
+          label: (p) => `${p.name}  (${p.scope})`,
+          selected: (p) => p.name === active,
+          header: dim("  profile — enter to switch:"),
+        });
+        if (picked === null) {
+          for (const p of available) {
+            const mark = p.name === active ? "*" : " ";
+            console.log(dim(`  ${mark} ${p.name.padEnd(16)} (${p.scope})`));
+          }
+          console.log(dim("  switch: /profile <name>"));
+          return true;
+        }
+        name = picked[0]?.name;
+        if (!name) return true; // empty pick — no change
+      }
+      const r = await ctx.setProfile(name);
+      console.log(dim(`  ${r.ok ? "→ profile:" : "✗"} ${r.message}`));
+      if (r.ok) {
+        console.log(
+          dim(`    provider ${ctx.providerName()} · ${ctx.provider.model}`),
+        );
+        console.log(
+          dim(`    roles    ${ctx.roleNames().join(", ") || "(none)"}`),
+        );
+        console.log(dim(`    reads    ${ctx.readPaths.join(", ")}`));
+      }
       return true;
     }
     case "/sessions": {

@@ -131,3 +131,79 @@ Careful role prose.`,
     await Deno.remove(base, { recursive: true });
   }
 });
+
+Deno.test("resolution: a profile's inline scalar overrides a referenced role's (inline-over-refs)", async () => {
+  const base = await Deno.makeTempDir({ prefix: "pagu-prof-prec-" });
+  try {
+    // The profile references `coder` (which sets model) AND sets model inline.
+    // The inline is the profile author's specialization of the bundle it
+    // composes — it must win, else the inline override is silently dead.
+    await write(
+      base,
+      "profiles/work.md",
+      `---\nroles: [coder]\nmodel: prof-model\n---\n`,
+    );
+    await write(base, "roles/coder.md", `---\nmodel: role-model\n---\nCoder.`);
+
+    const ctx = await createContext({
+      profile: "work",
+      baseURL: "http://127.0.0.1:1",
+      cwd: base,
+      ui: { status() {}, show() {} },
+      approver: () => Promise.resolve("reject"),
+    });
+
+    assertEquals(ctx.provider.model, "prof-model"); // inline beats the referenced role
+    assertEquals(ctx.roleNames(), ["coder"]); // the role was still loaded (prose/etc.)
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+});
+
+Deno.test("setProfile: switching at runtime replaces refs + re-derives; fail-loud leaves state", async () => {
+  const base = await Deno.makeTempDir({ prefix: "pagu-prof-swap-" });
+  try {
+    await write(
+      base,
+      "profiles/a.md",
+      `---\nroles: [ra]\nmodel: model-a\n---\nProfile A prose.`,
+    );
+    await write(
+      base,
+      "profiles/b.md",
+      `---\nroles: [rb]\nmodel: model-b\n---\nProfile B prose.`,
+    );
+    await write(base, "roles/ra.md", `---\n---\nRole A prose.`);
+    await write(base, "roles/rb.md", `---\n---\nRole B prose.`);
+
+    const ctx = await createContext({
+      profile: "a",
+      baseURL: "http://127.0.0.1:1",
+      cwd: base,
+      ui: { status() {}, show() {} },
+      approver: () => Promise.resolve("reject"),
+    });
+    assertEquals(ctx.profileName(), "a");
+    assertEquals(ctx.roleNames(), ["ra"]);
+    assertEquals(ctx.provider.model, "model-a");
+    assertEquals(ctx.agents.includes("Profile A prose."), true);
+    assertEquals(ctx.agents.includes("Role A prose."), true);
+
+    const r = await ctx.setProfile("b");
+    assertEquals(r.ok, true);
+    assertEquals(ctx.profileName(), "b");
+    assertEquals(ctx.roleNames(), ["rb"]); // REPLACED, not merged
+    assertEquals(ctx.provider.model, "model-b");
+    assertEquals(ctx.agents.includes("Profile B prose."), true);
+    assertEquals(ctx.agents.includes("Profile A prose."), false); // old profile gone
+    assertEquals(ctx.agents.includes("Role A prose."), false); // old role gone
+
+    // Fail loud on a bad name, without changing the active profile.
+    const bad = await ctx.setProfile("nope");
+    assertEquals(bad.ok, false);
+    assertEquals(ctx.profileName(), "b");
+    assertEquals(ctx.roleNames(), ["rb"]);
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+});

@@ -102,6 +102,13 @@ export interface AgentContext {
   /** Set the active role group at runtime: re-folds config and re-derives
    * permissions/prose. Fails loud (state unchanged) on an unknown name. */
   setRoles: (names: string[]) => Promise<{ ok: boolean; message: string }>;
+  /** The active profile name, if a profile was launched / switched to (#17). */
+  profileName: () => string | undefined;
+  /** Switch the active profile at runtime (the TUI's /profile): re-resolves the
+   * whole assignment — its referenced roles/skills/personalities REPLACE the
+   * active set, its inline overrides + prose re-fold. Fails loud (state
+   * unchanged) on an unknown name. */
+  setProfile: (name: string) => Promise<{ ok: boolean; message: string }>;
   /** Names of the applied personality (context-axis) bundles. */
   personalityNames: () => string[];
   /** Swap the personality axis at runtime (#17): re-derives ONLY the prose

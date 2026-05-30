@@ -1071,30 +1071,45 @@ above.)
     `<scope>/profiles/<name>.md` (mirrors roles; project shadows global) whose
     frontmatter is a `ConfigLayer` + reference fields `roles`/`skills` +
     provider/model + inline access/policy overrides, with an optional prose
-    body. `--profile X` resolves in `config/setup.ts` (the config layer, above
-    the core — the existing fold, no new law): it prepends the profile's
-    roles/skills and folds its layer+prose into the stack, **composing with**
-    (not replacing) explicit `--role`/flags. **Shipped — precedence (as
-    implemented):** the profile's inline layer is `mergeLayer`'d onto the config
-    **base** (a preset), its referenced roles/skills + explicit roles/skills
-    then fold above, then flags:
-    `defaults ⋄ config.json ⋄ profile-inline ⋄ profile-roles ⋄ explicit CLI
-    roles/skills ⋄ CLI flags`
-    — a named preset; explicit CLI wins (most-specific). Grants union, deny wins
-    (lattice unchanged). _NB this simplifies the originally-grilled "inline
-    overrides its own referenced roles": here the profile's referenced roles
-    override its inline layer (it's a base preset). They differ only in a rare
-    self-conflict (inline + a referenced role set the same scalar); grants union
-    regardless. Chosen for one `mergeLayer` and zero `makeRunState` change._
-    `--profile`
-    - `--list-profiles` fall out like roles; a TUI `/profile save` is a
-      fast-follow. **Slice B (shipped) — personality as an independently
-      swappable axis** (the chosen "overlay" form): `personality` is its own
-      prose-only bundle kind — `<scope>/personalities/<name>.md`, body =
-      disposition, **frontmatter ignored** so the axis carries no
-      access/capability (`src/config/personalities.ts`). `makeRunState` splits
-      the prose into `baseProse` (role/skill, set by `applyRoles`) + a swappable
-      personality overlay; `setPersonality(names)` re-derives ONLY the prose —
+    body. `--profile X` resolves in `config/run-state.ts` (the config-layer
+    fold, no new law): it prepends the profile's roles/skills and folds its
+    layer+prose into the stack, **composing with** (not replacing) explicit
+    `--role`/flags. **Shipped — precedence resolved (inline-over-refs):**
+    profile resolution moved INTO `makeRunState` (where the other axis mutators
+    live); the profile's inline layer folds **after all referenced bundles**
+    (its own + any explicit `--role`/`--skill`), beaten only by CLI flags:
+    `defaults ⋄ config.json ⋄ profile-refs ⋄ explicit-refs ⋄ profile-inline ⋄
+    CLI flags`
+    — the profile's inline override is its _specialization_ of the bundles it
+    composes, so it must win (else a profile author's inline `model: x` is
+    silently dead whenever a referenced role also sets `model`). This **affects
+    only scalars** (provider/model/etc.); permission **grants union** regardless
+    of order, deny wins (lattice unchanged). _This supersedes the earlier
+    base-preset shipping (where referenced roles overrode the inline) — the
+    grilled model was right; the base-preset was an implementation shortcut now
+    removed._ The one accepted edge: an explicit CLI `--role` that sets a scalar
+    the profile also sets inline loses to the profile inline (only **flags**
+    override profile-inline — the normal override path). Pinned by an
+    inline-over-refs `createContext` test (mutation-verified).
+    - `--list-profiles` falls out like roles. **Runtime `/profile` swap
+      (shipped):** `setProfile(name)` in `makeRunState` re-resolves the whole
+      assignment — the profile's referenced roles/skills/personalities
+      **REPLACE** the active set (REPL "switch to this profile", not merge), and
+      its inline overrides + prose re-fold; fail-loud (state unchanged) on a bad
+      name. Surfaces as `ctx.profileName`/`ctx.setProfile` + TUI `/profile`
+      (single- select picker / `/profile <name>`). Config-only (no model seam),
+      so the integration test exercises the real fold; the headline swap (launch
+      `--profile a` → `/profile b` re-derives provider AND access) live-verified
+      headlessly. _Deferred:_ `/profile save` (write the current assignment back
+      to a profile file); the fuller per-axis assignment for access/policy
+      (option (a)) if ever needed beyond personality.
+    - **Slice B (shipped) — personality as an independently swappable axis**
+      (the chosen "overlay" form): `personality` is its own prose-only bundle
+      kind — `<scope>/personalities/<name>.md`, body = disposition,
+      **frontmatter ignored** so the axis carries no access/capability
+      (`src/config/personalities.ts`). `makeRunState` splits the prose into
+      `baseProse` (role/skill, set by `applyRoles`) + a swappable personality
+      overlay; `setPersonality(names)` re-derives ONLY the prose —
       envelope/provider/policy/skills untouched ("swap disposition, keep
       access+tools"), pinned by a `createContext` law test. Surfaces:
       `--personality` (repeatable) + `--list-personalities` + TUI

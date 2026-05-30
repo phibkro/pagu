@@ -26,6 +26,7 @@ import { enumerateConcealed } from "../permissions/concealment-fs.ts";
 import { loadRoles, type Role } from "./roles.ts";
 import { loadSkills, type Skill, type SkillScript } from "../skills/skill.ts";
 import { loadPersonalities, type Personality } from "./personalities.ts";
+import { loadProfile } from "./profiles.ts";
 import { loadHandlers } from "../capability/handlers.ts";
 import type { HandlerPlugin } from "../capability/index.ts";
 import {
@@ -62,6 +63,12 @@ export interface RunState {
   ): MutResult;
   roleNames(): string[];
   setRoles(names: string[]): Promise<MutResult>;
+  /** The active profile name (#17), if launched/switched to. */
+  profileName(): string | undefined;
+  /** Switch the active profile at runtime — its referenced bundles REPLACE the
+   * active roles/skills/personalities, its inline overrides + prose re-fold.
+   * Fails loud (state unchanged) on an unknown name. */
+  setProfile(name: string): Promise<MutResult>;
   /** The personality (context) axis — swappable INDEPENDENTLY of access/policy
    * (#17 slice B): re-derives only the prose overlay, never the envelope. */
   personalityNames(): string[];
@@ -100,6 +107,10 @@ export async function makeRunState(params: {
   /** Initial personality (context-axis) bundle names — folded as a prose
    * overlay, swappable later via setPersonality. */
   personalities?: string[];
+  /** Initial `--profile <name>` (#17): its referenced roles/skills/personalities
+   * PREPEND the explicit ones; its inline overrides + prose seed the boxes.
+   * Swappable later via setProfile. Fail loud on a bad name. */
+  profile?: string;
   phaseDir: string;
   injectedHandlers?: HandlerPlugin[];
 }): Promise<RunState> {
@@ -149,6 +160,13 @@ export async function makeRunState(params: {
       .join("\n\n");
   let capabilities: string;
   let activeRoles: string[];
+  // The active profile (#17): its inline overrides fold AFTER all referenced
+  // bundles (inline-over-refs — the profile's specialization of what it
+  // composes wins, beaten only by CLI flags), and its prose leads the overlay.
+  // `{}` is the monoid identity, so no-profile is a clean no-op.
+  let activeProfile: string | undefined = params.profile;
+  let profileInline: ConfigLayer = {};
+  let profileProse = "";
 
   // Re-derive the role-dependent state from a set of roles. Effective config
   // = defaults ⋄ config.json (opts.base) ⋄ roles (in order) ⋄ CLI flags; flags
@@ -164,6 +182,7 @@ export async function makeRunState(params: {
       opts.base,
       ...roleList.map((r) => r.layer),
       ...skillList.map((s) => s.layer),
+      profileInline, // inline-over-refs: profile's own scalars win; flags still after
       opts.cli,
     ]);
     cfg.provider = effective.provider ?? DEFAULTS.provider;
@@ -267,6 +286,7 @@ export async function makeRunState(params: {
     denyFlags = (envelope.deny ?? []).map((p) => formatFlag(p, "deny"));
 
     baseProse = [
+      profileProse, // profile-level instruction leads (composeAgents drops "")
       agents,
       ...roleList.map((r) => r.prose),
       ...skillList.map((s) => s.prose),
@@ -325,16 +345,29 @@ export async function makeRunState(params: {
     }
   };
 
+  // A launched `--profile` (#17): seed the inline/prose boxes and PREPEND its
+  // referenced bundles to the explicit ones (so an explicit `--role` folds after
+  // the profile's; the profile inline then folds after all refs). Fail loud on a
+  // bad name before any derivation.
+  let initRoles = opts.roles;
+  let initSkills = opts.skills;
+  let initPersonalities = params.personalities ?? [];
+  if (params.profile) {
+    const p = await loadProfile(params.profile, projectBase);
+    profileInline = p.layer;
+    profileProse = p.prose;
+    initRoles = [...p.roles, ...opts.roles];
+    initSkills = [...p.skills, ...opts.skills];
+    initPersonalities = [...p.personalities, ...initPersonalities];
+  }
+
   // Initial fold: --role and --skill names (both fail loud on a bad name).
   await applyRoles(
-    await loadRoles(opts.roles, projectBase),
-    await loadSkills(opts.skills, projectBase),
+    await loadRoles(initRoles, projectBase),
+    await loadSkills(initSkills, projectBase),
   );
   // Initial personality overlay (fail loud on a bad name); re-derive the prose.
-  livePersonalities = await loadPersonalities(
-    params.personalities ?? [],
-    projectBase,
-  );
+  livePersonalities = await loadPersonalities(initPersonalities, projectBase);
   agentsText = composeAgents();
 
   // Before-approve handlers: injected plugins (programmatic) fully replace
@@ -469,6 +502,29 @@ export async function makeRunState(params: {
     };
   };
 
+  // Switch the active profile at runtime (the TUI's /profile, #17). REPLACE
+  // semantics: the profile's referenced bundles become the whole active set
+  // (REPL "switch to this profile", not "merge onto the current one"), and its
+  // inline overrides + prose re-fold. Load everything BEFORE mutating any box,
+  // so a bad name fails loud with state unchanged.
+  const setProfile = async (name: string): Promise<MutResult> => {
+    let p, roles: Role[], skills: Skill[], personalities: Personality[];
+    try {
+      p = await loadProfile(name, projectBase);
+      roles = await loadRoles(p.roles, projectBase);
+      skills = await loadSkills(p.skills, projectBase);
+      personalities = await loadPersonalities(p.personalities, projectBase);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+    activeProfile = name;
+    profileInline = p.layer;
+    profileProse = p.prose;
+    livePersonalities = personalities; // applyRoles' composeAgents picks these up
+    await applyRoles(roles, skills);
+    return { ok: true, message: name };
+  };
+
   // Toggle/configure the advisory reviewer at runtime (the TUI's /advisor).
   // advisorConfig being present is the single "enabled" signal — no separate
   // boolean. enabled:false explicitly disables; bare call toggles.
@@ -532,6 +588,8 @@ export async function makeRunState(params: {
     setAdvisor,
     roleNames: () => activeRoles,
     setRoles,
+    profileName: () => activeProfile,
+    setProfile,
     personalityNames: () => livePersonalities.map((p) => p.name),
     setPersonality,
     get activeSkillScripts() {

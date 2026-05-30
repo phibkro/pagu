@@ -166,9 +166,11 @@ Flags (run `pagu --help` for the full list; for shell completions,
   (`/personality` in the TUI). `--list-personalities` prints the available ones.
 - `--profile <name>` — launch a named **profile**: a markdown bundle
   `./.pagu/profiles/<name>.md` (project) or `~/.config/pagu/profiles/<name>.md`
-  (global) whose frontmatter names `roles`/`skills` + a provider/access/policy
-  layer (optional prose body). It's the full assignment you launch; it folds as
-  a preset **below** explicit `--role`/flags (which still win).
+  (global) whose frontmatter names `roles`/`skills`/`personalities` + a
+  provider/access/policy layer (optional prose body). It's the full assignment
+  you launch: its referenced bundles fold in, and its inline overrides win over
+  those bundles (beaten only by explicit CLI flags). Switch it mid-session with
+  `/profile <name>` in the TUI (re-derives the whole assignment).
   `--list-profiles` prints the available ones.
 - `--model <name>` — model id (default `qwen3.5:9b`).
 - `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or
@@ -196,11 +198,11 @@ Flags (run `pagu --help` for the full list; for shell completions,
 - `--list-sessions` — print saved conversations and exit.
 - `--log <file>` — use an explicit log file, bypassing the session store.
 
-TUI slash commands: `/roles`, `/skills`, `/personality`, `/provider`, `/model`,
-`/advisor`, `/grants`, `/revoke`, `/sessions`, `/new`, `/open`, `/fork`,
-`/rename`, `/history`, `/log`, `/clear`, `/exit`. All tab-complete. `/grants`
-lists active standing approvals (auto-approve grants); `/revoke <id>` ends one
-early.
+TUI slash commands: `/roles`, `/skills`, `/personality`, `/profile`,
+`/provider`, `/model`, `/advisor`, `/grants`, `/revoke`, `/sessions`, `/new`,
+`/open`, `/fork`, `/rename`, `/history`, `/log`, `/clear`, `/exit`. All
+tab-complete. `/grants` lists active standing approvals (auto-approve grants);
+`/revoke <id>` ends one early.
 
 ## Skills
 
