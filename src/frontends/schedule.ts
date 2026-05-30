@@ -15,9 +15,11 @@ import { type Approver, type Budget, scheduledRun, type UI } from "../agent.ts";
 
 /** Pull the budget flags out of the raw argv so the rest flows to the standard
  * `parseArgs` (which would reject unknowns). `--max-turns <n>` caps iterations;
- * `--deadline <seconds>` is a wall-clock ceiling for the firing. Pure + fail-loud
- * on a malformed value — an unattended cron firing should not silently run
- * unbounded. The testable core of the budget surface. */
+ * `--deadline <seconds>` is a wall-clock ceiling for the firing;
+ * `--max-total-tokens <n>` caps cumulative billed tokens (distinct from the
+ * provider's per-turn output cap, `--max-tokens`). Pure + fail-loud on a
+ * malformed value — an unattended cron firing should not silently run unbounded.
+ * The testable core of the budget surface. */
 export function parseBudgetFlags(
   rawArgs: string[],
 ): { budget: Budget; rest: string[] } {
@@ -55,6 +57,19 @@ export function parseBudgetFlags(
       budget.deadlineMs = Math.round(s * 1000);
       continue;
     }
+    const tok = take("--max-total-tokens");
+    if (tok !== null) {
+      const n = Number(tok);
+      if (!Number.isInteger(n) || n < 1) {
+        throw new Error(
+          `--max-total-tokens must be a positive integer, got ${
+            JSON.stringify(tok)
+          }`,
+        );
+      }
+      budget.maxTotalTokens = n;
+      continue;
+    }
     rest.push(a);
   }
   return { budget, rest };
@@ -67,11 +82,13 @@ export async function scheduleMain(rawArgs: string[]): Promise<never> {
   if (!opts.task) {
     console.error(
       'usage: pagu schedule "<instruction>" [--repo] [--role r]\n' +
-        "                     [--max-turns <n>] [--deadline <seconds>] [flags]\n" +
+        "                     [--max-turns <n>] [--deadline <seconds>]\n" +
+        "                     [--max-total-tokens <n>] [flags]\n" +
         "       the trigger payload (if any) is read from stdin — pipe it in:\n" +
         '         curl -s "$ALERT_URL" | pagu schedule "investigate" --repo\n' +
         "       a TTY (no pipe) means no payload — a pure time-trigger.\n" +
-        "       --max-turns / --deadline bound an unattended firing.",
+        "       --max-turns / --deadline / --max-total-tokens bound an\n" +
+        "       unattended firing.",
     );
     Deno.exit(2);
   }

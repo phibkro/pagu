@@ -522,9 +522,11 @@ portable tier-1 floor around it (no regression).
     #16 token/cost ceiling needed** (usage is now out of `chat()`). Also handles
     in-stream `error` (529) events as a clean throw. Verified end-to-end against
     real Ollama tokens (`↑1.5k ↓48` in the HUD — credit-free; Anthropic cache
-    fields populate identically once credited). _Deferred:_ surfacing
-    `stop_reason=="max_tokens"` truncation; a per-call cost (price × tokens)
-    readout; the #16 ceiling check itself.
+    fields populate identically once credited). **The #16 token ceiling now
+    consumes this** (`Budget.maxTotalTokens` — see ROADMAP #16 slice 2).
+    _Deferred:_ surfacing `stop_reason=="max_tokens"` truncation; a per-call
+    cost (price × tokens) readout, which needs a per-model price table pagu does
+    not carry (the token count is the provider-agnostic ceiling).
 - **Harness:** our own minimal loop + phase FSM, written from scratch — inspired
   by Pi (loop shape, tool-call parsing), not forked. Smaller TCB is the point,
   and from-scratch bakes in the no-exec/phase model from line one. `pi-ai` kept

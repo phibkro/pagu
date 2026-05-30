@@ -560,28 +560,38 @@ above.)
     half — a real model ignores an in-payload injection — permanently guarded)
     also shipped. **Slice 2 — budget ceiling (shipped):** a separate
     `Budget {
-    maxTurns?, deadlineMs? }` value (NOT an `Envelope` field — the
-    envelope bounds _what_ the agent may touch; a budget bounds _how much_, an
-    orthogonal run-bound), threaded into `runTask`/`scheduledRun` → the loop.
-    `maxTurns` generalizes the hardcoded `MAX_TURNS=6`; `deadlineMs` is the new
-    wall-clock cap (the pure `loop` keeps the turn bound; the deadline check
-    lives in the effectful turn via the pure `pastDeadline`). `pagu schedule`
-    exposes `--max-turns`/`--deadline <seconds>` (fail-loud parse) so cron
-    bounds an unattended firing; `Budget` is `mod.ts`-floored. _Deferred:_
-    token/cost budget (needs usage threaded out of `chat()`), and the continuity
-    mechanism (a firing reads prior firings via the existing `read` tool for
-    now). This composes with risk (b) below — the payload, as an observation,
-    already carries the untrusted label across the session hop. **Two
-    interaction risks to carry before building:** (a) a batch of pending
-    approvals reviewed at 9am is _itself_ the approval-fatigue condition (Threat
-    model) — #15's async framing improves presentation but batching can _worsen_
-    per-item attention; design the queue to resist rubber-stamping, not just to
-    hold items. (b) "continuity via the event store" means a run reads prior
-    runs' **observations** — accumulated-untrusted context — so the trust label
-    (Threat model → the context axis is a trust gradient) must survive the
-    _cross-session_ hop, or a file poisoned today silently informs every nightly
-    proposal thereafter (slow-motion injection). The invariant already covers it
-    in principle; the cross-session read is exactly where it's easy to forget.
+    maxTurns?, deadlineMs?, maxTotalTokens? }` value (NOT an
+    `Envelope` field — the envelope bounds _what_ the agent may touch; a budget
+    bounds _how much_, an orthogonal run-bound), threaded into
+    `runTask`/`scheduledRun` → the loop. `maxTurns` generalizes the hardcoded
+    `MAX_TURNS=6`; `deadlineMs` is the wall-clock cap; `maxTotalTokens`
+    (**shipped 2026-05-30**) is the cumulative billed-token cap — input +
+    output + cache, summed across the firing's `chat()` calls via the
+    `recordUsage`/`usageTotal` tally the token-usage hook landed. All three
+    follow the same pattern: the pure `loop` keeps the turn-count bound; the
+    deadline and token checks live in the effectful turn via the pure
+    `pastDeadline` / `overBudget` (the loop imports neither a clock nor the
+    usage tally). The token cap is distinct from the provider's per-turn output
+    cap (`ProviderConfig.maxTokens` / `--max-tokens`): that bounds one reply's
+    length, this bounds the whole firing's spend. `pagu schedule` exposes
+    `--max-turns`/`--deadline <seconds>`/`--max-total-tokens <n>` (fail-loud
+    parse) so cron bounds an unattended firing; `Budget` is `mod.ts`-floored.
+    _Deferred:_ a **cost** budget (price × tokens) — needs a per-model price
+    table pagu does not carry, so token count is the provider-agnostic ceiling
+    for now — and the continuity mechanism (a firing reads prior firings via the
+    existing `read` tool for now). This composes with risk (b) below — the
+    payload, as an observation, already carries the untrusted label across the
+    session hop. **Two interaction risks to carry before building:** (a) a batch
+    of pending approvals reviewed at 9am is _itself_ the approval-fatigue
+    condition (Threat model) — #15's async framing improves presentation but
+    batching can _worsen_ per-item attention; design the queue to resist
+    rubber-stamping, not just to hold items. (b) "continuity via the event
+    store" means a run reads prior runs' **observations** —
+    accumulated-untrusted context — so the trust label (Threat model → the
+    context axis is a trust gradient) must survive the _cross-session_ hop, or a
+    file poisoned today silently informs every nightly proposal thereafter
+    (slow-motion injection). The invariant already covers it in principle; the
+    cross-session read is exactly where it's easy to forget.
 17. `[config]` `[frontend]` **The agent-management model — three axes, bundles,
     profiles, sessions.** The model is owned by `docs/CONCEPTS.md` (→ Axes and
     bundles); the _roadmap_ for realizing it lives here. Managing an agent

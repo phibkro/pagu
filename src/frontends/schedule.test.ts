@@ -28,6 +28,21 @@ Deno.test("parseBudgetFlags: accepts --flag=value form", () => {
   assertEquals(r.rest, ["t"]);
 });
 
+Deno.test("parseBudgetFlags: extracts --max-total-tokens and strips it", () => {
+  const r = parseBudgetFlags([
+    "task",
+    "--max-total-tokens",
+    "50000",
+    "--repo",
+  ]);
+  assertEquals(r.budget.maxTotalTokens, 50_000);
+  assertEquals(r.rest, ["task", "--repo"]);
+  // --flag=value form too
+  const r2 = parseBudgetFlags(["--max-total-tokens=2000", "t"]);
+  assertEquals(r2.budget.maxTotalTokens, 2000);
+  assertEquals(r2.rest, ["t"]);
+});
+
 Deno.test("parseBudgetFlags: rejects malformed values (fail loud, not silent unbounded)", () => {
   assertThrows(
     () => parseBudgetFlags(["--max-turns", "0"]),
@@ -48,5 +63,15 @@ Deno.test("parseBudgetFlags: rejects malformed values (fail loud, not silent unb
     () => parseBudgetFlags(["--deadline", "-5"]),
     Error,
     "--deadline",
+  );
+  assertThrows(
+    () => parseBudgetFlags(["--max-total-tokens", "0"]),
+    Error,
+    "--max-total-tokens",
+  );
+  assertThrows(
+    () => parseBudgetFlags(["--max-total-tokens", "1.5"]),
+    Error,
+    "--max-total-tokens",
   );
 });

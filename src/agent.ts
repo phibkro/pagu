@@ -6,6 +6,7 @@ import { actionCapabilities, isActionEntry } from "./capability/registry.ts";
 import { performRun } from "./capability/index.ts";
 import { isExpired, makeGrant, pendingProposal } from "./approval.ts";
 import type { Entry } from "./log/index.ts";
+import type { Usage } from "./providers/index.ts";
 import { type Flow, loop, type Step } from "./loop.ts";
 import { buildAllowedTasks } from "./tasks/capability.ts";
 
@@ -17,21 +18,45 @@ const MAX_TURNS = 6;
 /**
  * A firing's resource ceiling (#16, slice 2). Orthogonal to the permission
  * envelope: the envelope bounds *what* the agent may touch (blast radius), a
- * budget bounds *how much* it may do. Both fields optional — absent means the
- * defaults (`MAX_TURNS`, no deadline). `maxTurns` caps the turn loop;
- * `deadlineMs` is a wall-clock duration for the whole firing. Token/cost is a
- * later slice (it needs usage threaded out of the provider).
+ * budget bounds *how much* it may do. All fields optional — absent means the
+ * defaults (`MAX_TURNS`, no deadline, no token cap). `maxTurns` caps the turn
+ * loop; `deadlineMs` is a wall-clock duration for the whole firing;
+ * `maxTotalTokens` caps cumulative billed tokens (input + output, summed across
+ * the firing's `chat()` calls). Distinct from the provider's per-turn output cap
+ * (`ProviderConfig.maxTokens` / `--max-tokens`): that bounds one reply's length,
+ * this bounds the whole firing's spend. Cost (price × tokens) needs a per-model
+ * price table, which pagu does not carry — token count is the provider-agnostic
+ * ceiling; a price-based one can layer on once a table exists.
  */
 export interface Budget {
   maxTurns?: number;
   /** Wall-clock ceiling for the firing, in ms from its start. */
   deadlineMs?: number;
+  /** Cumulative billed-token ceiling (input + output) across the whole firing.
+   * Counts cache reads/creation as billed input — they cost tokens. */
+  maxTotalTokens?: number;
 }
 
 /** Pure: has the wall-clock deadline (absolute ms) passed? No deadline → never.
  * Lives here, not in the pure `loop`, because the loop imports no clock. */
 export function pastDeadline(nowMs: number, deadlineMs?: number): boolean {
   return deadlineMs !== undefined && nowMs >= deadlineMs;
+}
+
+/** Pure: total billed tokens in a usage tally (input + output + cache read +
+ * cache creation — all of which the provider bills). The cumulative session
+ * `usageTotal()` feeds this for the budget check. */
+export function billedTokens(u: Usage): number {
+  return u.inputTokens + u.outputTokens +
+    (u.cacheReadTokens ?? 0) + (u.cacheCreationTokens ?? 0);
+}
+
+/** Pure: has the firing spent its token budget? No cap → never. Checked between
+ * turns (like `pastDeadline`), so a turn whose usage crosses the cap is the last
+ * — the ceiling bounds *further* model work, it doesn't abort a call mid-flight
+ * (a turn is the atomic unit, matching the deadline check's granularity). */
+export function overBudget(used: Usage, maxTotalTokens?: number): boolean {
+  return maxTotalTokens !== undefined && billedTokens(used) >= maxTotalTokens;
 }
 
 /**
@@ -109,18 +134,21 @@ function showReply(ctx: AgentContext, entries: Entry[]): void {
 }
 
 /** One conversational turn: spawn respond, append what it produced, dispatch
- * any action entry via the capability registry. `deadline` (absolute ms) is the
- * budget's wall-clock ceiling — checked here (not in the pure `loop`, which has
- * no clock) before any model work, so a passed deadline stops the firing. */
+ * any action entry via the capability registry. `deadline` (absolute ms) and
+ * `maxTotalTokens` are the budget's ceilings — checked here (not in the pure
+ * `loop`, which has neither a clock nor the usage tally) before any model work,
+ * so a passed deadline or a spent token budget stops the firing. */
 function makeTurn(
   ctx: AgentContext,
   signal?: AbortSignal,
   deadline?: number,
+  maxTotalTokens?: number,
 ): Step<AgentContext> {
   let turnIndex = 0;
   return async (): Promise<Flow> => {
     if (signal?.aborted) return "done"; // inter-turn cancellation check
     if (pastDeadline(Date.now(), deadline)) return "done"; // budget: wall-clock
+    if (overBudget(ctx.usageTotal(), maxTotalTokens)) return "done"; // budget: tokens
     ctx.ui.status(turnIndex++ === 0 ? "thinking…" : "continuing…");
     const produced = await ctx.respond();
     ctx.log.push(...produced);
@@ -138,7 +166,8 @@ function makeTurn(
 
 /** Run the bounded turn loop under a budget (shared by runTask/scheduledRun):
  * `maxTurns` caps iterations (the pure loop); `deadlineMs` becomes an absolute
- * wall-clock deadline from now (checked in the turn). Wrap with `guarded`. */
+ * wall-clock deadline from now and `maxTotalTokens` a cumulative token cap (both
+ * checked in the turn). Wrap with `guarded`. */
 async function runLoop(
   ctx: AgentContext,
   signal?: AbortSignal,
@@ -148,7 +177,9 @@ async function runLoop(
     ? Date.now() + budget.deadlineMs
     : undefined;
   const maxTurns = budget?.maxTurns ?? MAX_TURNS;
-  await loop(makeTurn(ctx, signal, deadline), maxTurns)(ctx);
+  await loop(makeTurn(ctx, signal, deadline, budget?.maxTotalTokens), maxTurns)(
+    ctx,
+  );
 }
 
 /** Run `body`, turning a cancellation into a clean message and any other error

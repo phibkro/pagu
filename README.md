@@ -109,9 +109,17 @@ pagu schedule "nightly: review the repo for stale TODOs and propose cleanups" --
 # a payload-carrying trigger — the alert/webhook body arrives on stdin:
 curl -s "$ALERT_URL" | pagu schedule "investigate this alert and propose a fix" --repo
 
-# bound an unattended firing: at most 4 turns, give up after 5 minutes
-pagu schedule "nightly review" --repo --max-turns 4 --deadline 300 </dev/null
+# bound an unattended firing: at most 4 turns, 5 minutes, or 50k tokens
+pagu schedule "nightly review" --repo \
+  --max-turns 4 --deadline 300 --max-total-tokens 50000 </dev/null
 ```
+
+`--max-turns` / `--deadline <seconds>` / `--max-total-tokens <n>` are the
+firing's **budget** — orthogonal to the permission envelope (which bounds _what_
+it may touch). `--max-total-tokens` caps cumulative billed tokens for the whole
+firing; it is distinct from `--max-tokens`, which caps one reply's output
+length. All three fail loud on a malformed value, so an unattended cron firing
+never silently runs unbounded.
 
 The standing **instruction** (the quoted argument) is authored — it may
 instruct. The **payload** (stdin) is treated as **untrusted data**: it enters as
