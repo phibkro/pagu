@@ -121,6 +121,49 @@ async function guarded(
 }
 
 /**
+ * pure: the trigger-provenance seed (#16). A scheduled firing decomposes along
+ * the trust gradient — the schedule's standing **instruction** is authored (the
+ * human wrote it at schedule-creation; may instruct), the trigger **payload**
+ * (alert/webhook body, attacker-influenceable) is an **untrusted observation**
+ * (may inform, never instruct; fenced in projection; keeps that label across the
+ * cross-session hop). Making the payload an observation entry — not part of the
+ * authored message — is what makes "promote a payload to an instruction"
+ * unrepresentable (the enforcement ladder: type, not prose). An empty payload
+ * (a pure time-trigger) seeds the instruction alone. Instruction first, so the
+ * leading wire message is a valid `user` turn.
+ */
+export function seedTrigger(instruction: string, payload?: string): Entry[] {
+  const entries: Entry[] = [
+    { kind: "message", role: "user", text: instruction },
+  ];
+  if (payload && payload.trim().length > 0) {
+    entries.push({ kind: "observation", source: "trigger", content: payload });
+  }
+  return entries;
+}
+
+/**
+ * Run a scheduled firing (#16) — the trigger-provenance counterpart to
+ * `runTask`. Seeds the log via {@link seedTrigger} (authored instruction +
+ * untrusted payload observation), then runs the same turn loop. The scheduler
+ * stays external (cron/systemd invokes this); pagu only guarantees the payload
+ * can't instruct. Continuity across firings comes from the durable log (a fresh
+ * firing can `read` prior runs' events), not from this call.
+ */
+export async function scheduledRun(
+  ctx: AgentContext,
+  trigger: { instruction: string; payload?: string },
+  signal?: AbortSignal,
+): Promise<void> {
+  injectRespond(ctx, signal);
+  ctx.log.push(...seedTrigger(trigger.instruction, trigger.payload));
+  ctx.persist();
+  await guarded(ctx, async () => {
+    await loop(makeTurn(ctx, signal), MAX_TURNS)(ctx);
+  });
+}
+
+/**
  * Run one task as a conversation. Each turn spawns the respond phase, which
  * either replies in chat (done) or emits an action entry dispatched via the
  * capability registry.

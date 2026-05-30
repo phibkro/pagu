@@ -172,7 +172,12 @@ Orchestrator:
 - `src/agent.ts` — **the I/O-agnostic core**: `runTask(ctx, task)` +
   `AgentContext`/`Approver`/`UI`. The one seam between core and frontends.
   `runTask` is `loop(turn, MAX_TURNS)(ctx)` — it builds the effectful `turn`
-  step and runs it through the `loop` combinator below.
+  step and runs it through the `loop` combinator below. Siblings seed the log
+  differently then run the same loop: `resumeTask`/`submitDecision` (resume a
+  deferred proposal, #15) and `scheduledRun({instruction, payload})` (a trigger
+  firing, #16 — `seedTrigger` puts the instruction in an authored message and
+  the payload in an untrusted `trigger` observation, so a payload can't
+  instruct).
 - `src/loop.ts` — **pure control core**: the composable loop substrate. `Flow`
   (`continue | done` coproduct), `Step<C>` (`C → Promise<Flow>`, a turn), and
   `loop : Step → Step` (the bounded fixpoint, closed over the type so a loop is

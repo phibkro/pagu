@@ -1011,14 +1011,21 @@ above.)
     `instruction →
     authored` + `payload → fenced observation`, making
     "promote a payload to an instruction" _unrepresentable_ rather than a
-    discipline (the enforcement ladder: type, not prose). This composes with
-    risk (b) below — the payload, as an observation, already carries the
-    untrusted label across the session hop. **Two interaction risks to carry
-    before building:** (a) a batch of pending approvals reviewed at 9am is
-    _itself_ the approval-fatigue condition (Threat model) — #15's async framing
-    improves presentation but batching can _worsen_ per-item attention; design
-    the queue to resist rubber-stamping, not just to hold items. (b) "continuity
-    via the event store" means a run reads prior runs' **observations** —
+    discipline (the enforcement ladder: type, not prose). **Shipped (slice 1):**
+    `seedTrigger` (pure: instruction→authored message, payload→untrusted
+    `trigger` observation; empty payload = a pure time-trigger) + `scheduledRun`
+    (the effectful seed+loop shell, sibling to `runTask`) in `agent.ts`,
+    `mod.ts`-exported + floored. The pure `seedTrigger` is `trust()`-law-tested.
+    _Deferred:_ the budget ceiling (slice 2), a CLI entry for cron, and the
+    continuity mechanism (a firing reads prior firings via the existing `read`
+    tool for now — no dedicated code yet). This composes with risk (b) below —
+    the payload, as an observation, already carries the untrusted label across
+    the session hop. **Two interaction risks to carry before building:** (a) a
+    batch of pending approvals reviewed at 9am is _itself_ the approval-fatigue
+    condition (Threat model) — #15's async framing improves presentation but
+    batching can _worsen_ per-item attention; design the queue to resist
+    rubber-stamping, not just to hold items. (b) "continuity via the event
+    store" means a run reads prior runs' **observations** —
     accumulated-untrusted context — so the trust label (Threat model → the
     context axis is a trust gradient) must survive the _cross-session_ hop, or a
     file poisoned today silently informs every nightly proposal thereafter

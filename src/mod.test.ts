@@ -9,6 +9,7 @@ import { fromFileUrl } from "@std/path";
 const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   // Core loop & ports
   { name: "runTask", kind: "function" },
+  { name: "scheduledRun", kind: "function" }, // the #16 trigger-provenance seam
   { name: "AgentContext", kind: "interface" },
   { name: "UI", kind: "interface" },
   { name: "Approver", kind: "typeAlias" },
