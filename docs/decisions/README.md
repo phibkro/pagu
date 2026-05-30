@@ -35,3 +35,5 @@ silently drift either.
   knowledge or verify claims.
 - [ADR-0002](0002-roadmap-is-the-single-source.md) — `ROADMAP.md` stays the
   single source of truth; no external issue tracker.
+- [ADR-0003](0003-per-project-config.md) — per-project `.pagu/config.json`, with
+  repo-mode structurally gating its permission grants (designed; TDD pending).

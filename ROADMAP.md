@@ -79,6 +79,13 @@ The historical "what shipped" log moved to **[`CHANGELOG.md`](./CHANGELOG.md)**
 - `[security]` **Windows OS isolation** (AppContainer / Job Objects).
 - `[config]` `[frontend]` **Permission modes** — named envelope bundles
   generalizing repo mode.
+- `[config]` `[security]` **Per-project `.pagu/config.json`** — auto-loaded repo
+  base config folded between global config and the opt-in bundles. **Designed,
+  TDD-ready** (`docs/decisions/0003-per-project-config.md`): non-security keys
+  always apply; `allow`/`write`/`allowedTasks` only under consented repo-mode;
+  `handlers` never; enforced by a structural `sanitizeProjectLayer` at load
+  (law: grants ⇒ repoMode). On ship, update the CONCEPTS fold order + an
+  INVARIANTS law.
 - `[security]` **A credential-injecting egress proxy** so net-granted scripts
   never see raw secrets.
 - `[frontend]` **ACP — remaining integration work.** v1 runs in editors but is
