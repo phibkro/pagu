@@ -18,6 +18,7 @@
     "jsr:@std/semver@^1.0.8": "1.0.8",
     "jsr:@std/streams@1": "1.1.1",
     "jsr:@std/text@^1.0.17": "1.0.19",
+    "jsr:@std/yaml@1": "1.1.1",
     "jsr:@std/yaml@^1.0.5": "1.1.1",
     "npm:@agentclientprotocol/sdk@*": "0.22.1_zod@4.4.3",
     "npm:@agentclientprotocol/sdk@0.22": "0.22.1_zod@4.4.3",
@@ -80,7 +81,7 @@
     "@std/front-matter@1.0.9": {
       "integrity": "ee6201d06674cbef137dda2252f62477450b48249e7d8d9ab57a30f85ff6f051",
       "dependencies": [
-        "jsr:@std/yaml"
+        "jsr:@std/yaml@^1.0.5"
       ]
     },
     "@std/internal@1.0.14": {
@@ -137,6 +138,7 @@
       "jsr:@std/front-matter@1",
       "jsr:@std/path@1",
       "jsr:@std/streams@1",
+      "jsr:@std/yaml@1",
       "npm:@agentclientprotocol/sdk@0.22",
       "npm:fast-check@3",
       "npm:zod@4"

@@ -1100,9 +1100,21 @@ above.)
       (single- select picker / `/profile <name>`). Config-only (no model seam),
       so the integration test exercises the real fold; the headline swap (launch
       `--profile a` → `/profile b` re-derives provider AND access) live-verified
-      headlessly. _Deferred:_ `/profile save` (write the current assignment back
-      to a profile file); the fuller per-axis assignment for access/policy
-      (option (a)) if ever needed beyond personality.
+      headlessly. **`/profile save <name>` (shipped):** `saveProfile(name)`
+      snapshots the **portable disposition** — active refs + the live runtime
+      substrate (provider/model/baseURL) + the launched profile's _declared_
+      inline + the advisor toggle; ad-hoc launch grants (`--allow`/`--write`, in
+      the CLI layer not the profile inline) and ambient base config are
+      intentionally **not** captured, so a saved profile stays portable and
+      never silently re-grants access from an old session. Pure
+      `serializeProfile` (inverse of the frontmatter parse; round-trips with
+      `loadProfile`, property-tested) + a project-scope fs write; the run then
+      carries the saved name. Live round-trip verified (save → file holds refs
+      not baked grants → relaunch `--profile` reproduces it). Adds a direct
+      `@std/yaml` import (already transitive via front-matter — ~free, correct
+      YAML escaping beats hand-rolling). _Deferred:_ the fuller per-axis
+      assignment for access/policy (option (a)) if ever needed beyond
+      personality.
     - **Slice B (shipped) — personality as an independently swappable axis**
       (the chosen "overlay" form): `personality` is its own prose-only bundle
       kind — `<scope>/personalities/<name>.md`, body = disposition,
@@ -1115,9 +1127,10 @@ above.)
       `--personality` (repeatable) + `--list-personalities` + TUI
       `/personality`, `ctx.setPersonality`, and a profile may reference
       `personalities:`. cli.ts now one-lines a misspelled bundle flag (was a
-      stack). _Deferred:_ a runtime `/profile` swap (needs a `setProfile`
-      re-resolution op) + `/profile save`; the fuller per-axis assignment for
-      access/policy (option (a)) if it's ever needed beyond personality.
+      stack). _(The runtime `/profile` swap + `/profile save` once deferred here
+      have since shipped — see the slice-A notes above; the only #17 item still
+      deferred is the fuller per-axis assignment for access/policy, option (a),
+      if it's ever needed beyond personality.)_
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as

@@ -1,5 +1,6 @@
 // effects: fs (profile discovery + load); interpretation is pure (config.toLayer)
 import { join } from "@std/path";
+import { stringify as stringifyYaml } from "@std/yaml";
 import { frontmatter } from "./frontmatter.ts";
 import { configDirFromEnv, type ConfigLayer, toLayer } from "./config.ts";
 
@@ -74,6 +75,34 @@ export async function loadProfile(
   throw new Error(
     `profile "${name}" not found — looked in ./.pagu/profiles and ~/.config/pagu/profiles`,
   );
+}
+
+/**
+ * Serialize a profile assignment back to its markdown form — the inverse of the
+ * frontmatter parse `loadProfile` does, and **pure**. Round-trips: loading the
+ * result yields the same refs/layer/prose. Only non-empty ref lists and defined
+ * layer fields are emitted, so the file stays minimal and human-editable.
+ * `/profile save` (via run-state) feeds it the current portable disposition.
+ */
+export function serializeProfile(p: {
+  roles: string[];
+  skills: string[];
+  personalities: string[];
+  layer: ConfigLayer;
+  prose: string;
+}): string {
+  // Frontmatter = the inline ConfigLayer (defined fields only) + the ref lists
+  // (only when non-empty — mirrors loadProfile's stringList default of []).
+  const data: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(p.layer)) {
+    if (v !== undefined) data[k] = v;
+  }
+  if (p.roles.length) data.roles = p.roles;
+  if (p.skills.length) data.skills = p.skills;
+  if (p.personalities.length) data.personalities = p.personalities;
+  const yaml = stringifyYaml(data).trimEnd();
+  const body = p.prose.trim();
+  return `---\n${yaml}\n---\n${body ? `\n${body}\n` : ""}`;
 }
 
 /** List available profiles (project shadows global by name), sorted by name. */

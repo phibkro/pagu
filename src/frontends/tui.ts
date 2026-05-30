@@ -80,7 +80,7 @@ const COMMANDS: Record<string, string> = {
   "/personality":
     "swap the personality (disposition only — keeps access/tools; e.g. /personality terse)",
   "/profile":
-    "switch the active profile — a full assignment (roles+skills+overrides; e.g. /profile reviewer)",
+    "switch the active profile, or `/profile save <name>` to snapshot the current setup",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
   "/open": "pick a conversation to open (or /open <n>)",
@@ -465,7 +465,31 @@ async function handleCommand(
     case "/profile": {
       // A profile is a full assignment — one active at a time (single-select).
       // Switching REPLACES roles/skills/personalities + re-folds inline + prose.
-      let name = line.split(/\s+/).slice(1)[0];
+      const parts = line.split(/\s+/).slice(1);
+      // `/profile save <name>` snapshots the current portable disposition.
+      if (parts[0] === "save") {
+        const saveName = parts[1];
+        if (!saveName) {
+          console.log(dim("  usage: /profile save <name>"));
+          return true;
+        }
+        const exists = (await listProfiles(ctx.projectBase)).some(
+          (p) => p.name === saveName && p.scope === "project",
+        );
+        if (exists) {
+          const ans = await readLine(
+            bold(`overwrite profile "${saveName}"? [y/N]: `),
+          );
+          if (ans?.trim().toLowerCase() !== "y") {
+            console.log(dim("  cancelled"));
+            return true;
+          }
+        }
+        const saved = await ctx.saveProfile(saveName);
+        console.log(dim(`  ${saved.ok ? "→ saved:" : "✗"} ${saved.message}`));
+        return true;
+      }
+      let name = parts[0];
       if (!name) {
         const available = await listProfiles(ctx.projectBase);
         if (available.length === 0) {

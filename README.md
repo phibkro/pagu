@@ -170,7 +170,9 @@ Flags (run `pagu --help` for the full list; for shell completions,
   provider/access/policy layer (optional prose body). It's the full assignment
   you launch: its referenced bundles fold in, and its inline overrides win over
   those bundles (beaten only by explicit CLI flags). Switch it mid-session with
-  `/profile <name>` in the TUI (re-derives the whole assignment).
+  `/profile <name>` in the TUI (re-derives the whole assignment), or snapshot
+  the current setup as a new profile with `/profile save <name>` (captures the
+  portable disposition — refs + provider/model — not ad-hoc launch grants).
   `--list-profiles` prints the available ones.
 - `--model <name>` — model id (default `qwen3.5:9b`).
 - `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or

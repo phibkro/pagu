@@ -109,6 +109,11 @@ export interface AgentContext {
    * active set, its inline overrides + prose re-fold. Fails loud (state
    * unchanged) on an unknown name. */
   setProfile: (name: string) => Promise<{ ok: boolean; message: string }>;
+  /** Save the current run as a reusable profile file (#17): active refs + the
+   * live provider/model + the launched profile's declared inline; ad-hoc launch
+   * grants and base config are NOT captured (portable disposition). `message` is
+   * the written path on success. */
+  saveProfile: (name: string) => Promise<{ ok: boolean; message: string }>;
   /** Names of the applied personality (context-axis) bundles. */
   personalityNames: () => string[];
   /** Swap the personality axis at runtime (#17): re-derives ONLY the prose

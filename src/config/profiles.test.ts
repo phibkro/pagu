@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
-import { listProfiles, loadProfile } from "./profiles.ts";
+import { listProfiles, loadProfile, serializeProfile } from "./profiles.ts";
 
 async function writeProfile(base: string, name: string, content: string) {
   const dir = join(base, ".pagu", "profiles");
@@ -41,6 +41,66 @@ Deno.test("loadProfile: empty refs default to [] (a pure-override profile)", asy
     const p = await loadProfile("plain", base);
     assertEquals(p.roles, []);
     assertEquals(p.skills, []);
+    assertEquals(p.layer.model, "m");
+    assertEquals(p.prose, "");
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+});
+
+Deno.test("serializeProfile: round-trips through loadProfile (refs + layer + prose)", async () => {
+  const base = await Deno.makeTempDir({ prefix: "pagu-prof-ser-" });
+  try {
+    const md = serializeProfile({
+      roles: ["careful", "rust"],
+      skills: ["lint"],
+      personalities: ["terse"],
+      layer: {
+        provider: "openrouter",
+        model: "x/y",
+        allow: ["src"],
+        write: ["out"],
+        advisor: true,
+      },
+      prose: "Be careful and terse.",
+    });
+    const dir = join(base, ".pagu", "profiles");
+    await Deno.mkdir(dir, { recursive: true });
+    await Deno.writeTextFile(join(dir, "round.md"), md);
+
+    const p = await loadProfile("round", base); // read back through the real parser
+    assertEquals(p.roles, ["careful", "rust"]);
+    assertEquals(p.skills, ["lint"]);
+    assertEquals(p.personalities, ["terse"]);
+    assertEquals(p.layer.provider, "openrouter");
+    assertEquals(p.layer.model, "x/y");
+    assertEquals(p.layer.allow, ["src"]);
+    assertEquals(p.layer.write, ["out"]);
+    assertEquals(p.layer.advisor, true);
+    assertEquals(p.prose, "Be careful and terse.");
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+});
+
+Deno.test("serializeProfile: empty refs + empty prose are omitted, still parses", async () => {
+  const base = await Deno.makeTempDir({ prefix: "pagu-prof-ser-" });
+  try {
+    const md = serializeProfile({
+      roles: [],
+      skills: [],
+      personalities: [],
+      layer: { model: "m" },
+      prose: "",
+    });
+    const dir = join(base, ".pagu", "profiles");
+    await Deno.mkdir(dir, { recursive: true });
+    await Deno.writeTextFile(join(dir, "plain.md"), md);
+
+    const p = await loadProfile("plain", base);
+    assertEquals(p.roles, []);
+    assertEquals(p.skills, []);
+    assertEquals(p.personalities, []);
     assertEquals(p.layer.model, "m");
     assertEquals(p.prose, "");
   } finally {
@@ -203,6 +263,44 @@ Deno.test("setProfile: switching at runtime replaces refs + re-derives; fail-lou
     assertEquals(bad.ok, false);
     assertEquals(ctx.profileName(), "b");
     assertEquals(ctx.roleNames(), ["rb"]);
+  } finally {
+    await Deno.remove(base, { recursive: true });
+  }
+});
+
+Deno.test("saveProfile: portable disposition — refs + live provider/model + declared inline; excludes ad-hoc grants", async () => {
+  const base = await Deno.makeTempDir({ prefix: "pagu-prof-save-" });
+  try {
+    // The launched profile DECLARES allow:[declared]; the launch ALSO passes an
+    // ad-hoc --allow:[adhoc] flag. Save must keep the declared grant and drop the
+    // ad-hoc one (portable disposition).
+    await write(
+      base,
+      "profiles/work.md",
+      `---\nroles: [coder]\nmodel: prof-model\nallow: [declared]\n---\nWork prose.`,
+    );
+    await write(base, "roles/coder.md", `---\n---\nCoder prose.`);
+
+    const ctx = await createContext({
+      profile: "work",
+      allow: ["adhoc"], // ad-hoc launch grant (a flag) — must NOT be saved
+      baseURL: "http://127.0.0.1:1",
+      cwd: base,
+      ui: { status() {}, show() {} },
+      approver: () => Promise.resolve("reject"),
+    });
+    ctx.setProvider({ model: "switched-model" }); // a runtime substrate change
+
+    const r = await ctx.saveProfile("saved");
+    assertEquals(r.ok, true);
+
+    const p = await loadProfile("saved", base);
+    assertEquals(p.roles, ["coder"]); // ref preserved (not flattened)
+    assertEquals(p.layer.model, "switched-model"); // live runtime model captured
+    assertEquals(p.layer.allow, ["declared"]); // profile's DECLARED grant persists
+    assertEquals((p.layer.allow ?? []).includes("adhoc"), false); // ad-hoc flag dropped
+    assertEquals(p.prose, "Work prose."); // profile prose persisted
+    assertEquals(ctx.profileName(), "saved"); // now running under the saved name
   } finally {
     await Deno.remove(base, { recursive: true });
   }

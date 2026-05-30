@@ -463,6 +463,7 @@ export async function buildContext(
     roleNames: rs.roleNames,
     profileName: rs.profileName,
     setProfile: rs.setProfile,
+    saveProfile: rs.saveProfile,
     personalityNames: rs.personalityNames,
     setPersonality: rs.setPersonality,
     availableRoles: () => listRoles(projectBase),

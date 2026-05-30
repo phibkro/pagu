@@ -7,6 +7,7 @@
 // not trapped behind getters — the precondition for serializing a scheduled run
 // (#16) and folding management axes above createContext (#17).
 import { resolve } from "@std/path";
+import { loadProfile, serializeProfile } from "./profiles.ts";
 import {
   composeLayers,
   type ConfigLayer,
@@ -26,7 +27,6 @@ import { enumerateConcealed } from "../permissions/concealment-fs.ts";
 import { loadRoles, type Role } from "./roles.ts";
 import { loadSkills, type Skill, type SkillScript } from "../skills/skill.ts";
 import { loadPersonalities, type Personality } from "./personalities.ts";
-import { loadProfile } from "./profiles.ts";
 import { loadHandlers } from "../capability/handlers.ts";
 import type { HandlerPlugin } from "../capability/index.ts";
 import {
@@ -69,6 +69,10 @@ export interface RunState {
    * active roles/skills/personalities, its inline overrides + prose re-fold.
    * Fails loud (state unchanged) on an unknown name. */
   setProfile(name: string): Promise<MutResult>;
+  /** Save the current portable disposition as a profile file (#17): active
+   * refs + the live provider/model + the launched profile's declared inline.
+   * Ad-hoc launch grants (--allow/--write) and base config are NOT captured. */
+  saveProfile(name: string): Promise<MutResult>;
   /** The personality (context) axis — swappable INDEPENDENTLY of access/policy
    * (#17 slice B): re-derives only the prose overlay, never the envelope. */
   personalityNames(): string[];
@@ -525,6 +529,52 @@ export async function makeRunState(params: {
     return { ok: true, message: name };
   };
 
+  // Save the current run as a reusable profile file (the TUI's /profile save,
+  // #17). **Portable disposition:** the launched profile's declared inline (incl.
+  // its declared grants) + the live runtime substrate (provider/model/baseURL) +
+  // the advisor toggle. Ad-hoc launch grants (--allow/--write live in opts.cli,
+  // not profileInline) and ambient base config are intentionally NOT captured —
+  // a saved profile stays portable and never silently re-grants access from an
+  // old session. Writes project scope (.pagu/profiles/); the run then carries
+  // the saved name.
+  const saveProfile = async (name: string): Promise<MutResult> => {
+    const layer: ConfigLayer = {};
+    for (const [k, v] of Object.entries(profileInline)) {
+      if (v !== undefined) (layer as Record<string, unknown>)[k] = v;
+    }
+    layer.provider = cfg.provider;
+    layer.model = cfg.model;
+    if (cfg.baseURL) layer.baseURL = cfg.baseURL;
+    else delete layer.baseURL;
+    // Advisor: reflect the live toggle. A declared advisor provider/model in the
+    // profile inline is preserved; an ad-hoc runtime toggle saves as a bare flag.
+    if (liveAdvisorConfig) {
+      if (!layer.advisorProvider && !layer.advisorModel) layer.advisor = true;
+    } else {
+      delete layer.advisor;
+      delete layer.advisorProvider;
+      delete layer.advisorModel;
+    }
+    const md = serializeProfile({
+      roles: activeRoles,
+      skills: liveSkills.map((s) => s.name),
+      personalities: livePersonalities.map((p) => p.name),
+      layer,
+      prose: profileProse,
+    });
+    const path = resolve(projectBase, ".pagu", "profiles", `${name}.md`);
+    try {
+      await Deno.mkdir(resolve(projectBase, ".pagu", "profiles"), {
+        recursive: true,
+      });
+      await Deno.writeTextFile(path, md);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+    activeProfile = name; // the run now carries the saved profile's name
+    return { ok: true, message: path };
+  };
+
   // Toggle/configure the advisory reviewer at runtime (the TUI's /advisor).
   // advisorConfig being present is the single "enabled" signal — no separate
   // boolean. enabled:false explicitly disables; bare call toggles.
@@ -590,6 +640,7 @@ export async function makeRunState(params: {
     setRoles,
     profileName: () => activeProfile,
     setProfile,
+    saveProfile,
     personalityNames: () => livePersonalities.map((p) => p.name),
     setPersonality,
     get activeSkillScripts() {
