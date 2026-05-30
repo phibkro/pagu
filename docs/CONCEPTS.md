@@ -67,20 +67,20 @@ lawful.
 
 ## The metaphors we lean on
 
-| concept                    | borrowed from                    | what it is in pagu                                                                                                                                                   |
-| -------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **shell**                  | hermit crab (_Paguroidea_)       | the hard, borrowed, disposable casing the soft/untrusted model acts through — the sandboxed runner                                                                   |
-| **cage**                   | a rehearsal cage / playpen       | a no-network, scratch-only sandbox where a proposed script is _rehearsed_ (self-test + permission discovery) before a human sees it                                  |
-| **envelope**               | an envelope that contains        | the bounded set of permissions a run may use; auto-approve fires only _within_ it                                                                                    |
-| **allowlist / deny**       | a guest list                     | which paths/hosts are admitted (grant) or barred (deny)                                                                                                              |
-| **hide / conceal**         | hiding something from view       | paths the runner's filesystem view omits and the agent's read refuses — fed by sources (gitignore = VCS, config `hide` globs, default secrets), liftable by `reveal` |
-| **conversation / session** | talking; a transcript            | the append-only log _is_ the conversation; a session is one such transcript                                                                                          |
-| **script**                 | a script to be performed         | a written procedure the model authors; never run by the author, only _performed_ by the runner after approval                                                        |
-| **role**                   | a hat you wear / a part you play | a composable bundle of config + instructions; an agent _carries_ several at once (precise model: a bundle across axes — see **Axes and bundles** below)              |
-| **profile**                | a profile = the whole picture    | the resolved agent + config (the result of composing roles onto the base) (precise model: the full assignment over all three axes — see **Axes and bundles** below)  |
-| **phase / turn**           | turn-taking in conversation      | one short-lived, scoped step of the loop                                                                                                                             |
-| **skill**                  | a skill you have mastered        | a bundled capability: reference files + pre-approved procedures the agent can invoke verbatim without a fresh human gate                                             |
-| **task / command policy**  | a task you are permitted to run  | a named project command the agent can invoke by exact name; deny-by-default, opt-in via config; permissions inferred then cached                                     |
+| concept                    | borrowed from                    | what it is in pagu                                                                                                                                                                 |
+| -------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **shell**                  | hermit crab (_Paguroidea_)       | the hard, borrowed, disposable casing the soft/untrusted model acts through — the sandboxed runner                                                                                 |
+| **cage**                   | a rehearsal cage / playpen       | a no-network, scratch-only sandbox where a proposed script is _rehearsed_ (self-test + permission discovery) before a human sees it                                                |
+| **envelope**               | an envelope that contains        | the bounded set of permissions a run may use; auto-approve fires only _within_ it                                                                                                  |
+| **allowlist / deny**       | a guest list                     | which paths/hosts are admitted (grant) or barred (deny)                                                                                                                            |
+| **hide / conceal**         | hiding something from view       | paths the runner's filesystem view omits and the agent's read refuses — fed by sources (gitignore = VCS, config `hide` globs, default secrets), liftable by `reveal`               |
+| **conversation / session** | talking; a transcript            | the append-only log _is_ the conversation; a session is one such transcript                                                                                                        |
+| **script**                 | a script to be performed         | a written procedure the model authors; never run by the author, only _performed_ by the runner after approval                                                                      |
+| **role**                   | a hat you wear / a part you play | a composable bundle of config + instructions; an agent _carries_ several at once (precise model: a bundle across axes — see **Axes and bundles** below)                            |
+| **profile**                | a profile = the whole picture    | the resolved agent + config (the result of composing roles onto the base) (precise model: the full assignment over all axes incl. provider/model — see **Axes and bundles** below) |
+| **phase / turn**           | turn-taking in conversation      | one short-lived, scoped step of the loop                                                                                                                                           |
+| **skill**                  | a skill you have mastered        | a bundled capability: reference files + pre-approved procedures the agent can invoke verbatim without a fresh human gate                                                           |
+| **task / command policy**  | a task you are permitted to run  | a named project command the agent can invoke by exact name; deny-by-default, opt-in via config; permissions inferred then cached                                                   |
 
 ## Axes and bundles — two levels, not one flat list
 
