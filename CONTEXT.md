@@ -13,11 +13,11 @@ tags: [design, threat-model, reference]
 > **This is the source of truth for project design** — rationale, threat model,
 > and the system/security model. Durable design context goes here, not scattered
 > across docs. The **forward plan, idea backlog, and milestones** live in
-> **`ROADMAP.md`** (organized by concern). **`README.md`** is usage;
-> **`AGENTS.md`** is how-we-work; **`docs/CONCEPTS.md`** is the mental-models
-> reference; **`docs/INVARIANTS.md`** is the canonical catalog of load-bearing
-> claims with their enforcement tier — and the **single home of the numbered
-> invariants (`#1`–`#5`)** this file cites throughout.
+> **`ROADMAP.md`** (organized by concern); the **numbered invariants
+> (`#1`–`#5`)** this file cites are defined in **`docs/INVARIANTS.md`**. For the
+> full doc map (CONCEPTS, WORKFLOW, ARCHITECTURE, decisions, specs, …) see the
+> docs-map at the top of **`AGENTS.md`** — the single authoritative index, so
+> this header can't drift from it.
 
 **Map** (sections below): _What & why_ — One-liner · Why it exists ·
 Goals/non-goals. _The model_ — Core principle · System map · Phase FSM · State
@@ -517,19 +517,26 @@ flowchart TD
   configurable (`--max-tokens`/config, Anthropic requires it, default 4096). The
   hand-rolled clients are audited against the canonical docs
   (`platform.claude.com`), not the SDK (invariant #5 — minimal TCB).
-  - **Prompt caching (Anthropic, always-on):** the native client sends `system`
-    as a structured text block with a single `cache_control: {type:"ephemeral"}`
-    breakpoint. Tools precede system in the prompt prefix, so this one
-    breakpoint caches the whole stable `tools + system` prefix (the AGENTS.md
-    instructions + tool defs re-sent verbatim each turn) → later turns read it
-    at ~0.1× input cost. GA (no beta header); a no-op below the model's min
-    cacheable size. _Always-on by design_ — pagu's main mode is multi-turn agent
-    loops where the fixed prefix dominates; the only downside is a tiny one-shot
-    write overhead. _Deferred:_ a second breakpoint to cache the growing
-    **message** prefix (needs care with turn-coalescing + the 4-breakpoint
-    budget). _Real cache-hit + stream verification awaits Anthropic credits (the
-    configured account is empty); the request shape is pinned by tests against
-    the canonical event/caching docs._
+  - **Prompt caching (Anthropic, always-on):** the native client sends **two**
+    `cache_control: {type:"ephemeral"}` breakpoints. **(1)** `system` is a
+    structured text block carrying a breakpoint; tools precede system in the
+    prompt prefix, so this caches the whole stable `tools + system` prefix (the
+    AGENTS.md instructions + tool defs re-sent verbatim each turn). **(2)** the
+    **last message turn** carries a second breakpoint, caching the growing
+    conversation prefix — Anthropic caches up to and including the marked block,
+    so a multi-turn loop reads the conversation-so-far as a prefix hit and
+    writes a fresh breakpoint at its new last turn (incremental caching). Later
+    turns read both prefixes at ~0.1× input cost. Two markers, well within the
+    4-breakpoint budget. Each is GA (no beta header) and a no-op below the
+    model's min cacheable size. The message breakpoint is placed _after_
+    turn-coalescing + the assistant-first `(continue)` fixup, so it lands on the
+    turn actually sent; earlier turns stay plain strings (read as part of the
+    cached prefix, not distinct per-turn entries). _Always-on by design_ —
+    pagu's main mode is multi-turn agent loops where both the fixed prefix and
+    the conversation-so-far dominate; the only downside is a tiny one-shot write
+    overhead. _Real cache-hit + stream verification awaits Anthropic credits
+    (the configured account is empty); the request shape is pinned by tests
+    against the canonical event/caching docs._
   - **Token usage / cost (SHIPPED):** `ChatResponse.usage`
     (`{input,output,cacheRead?,cacheCreation?}`) extracted from all four paths
     (OpenAI buffered/stream via `stream_options.include_usage`; Anthropic

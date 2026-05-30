@@ -166,9 +166,10 @@ when you need to find a module; it's listed in the docs-map above.
   fresh reviewer agent / `/code-review ultra`) before calling such a change
   done, since self-review shares the author's blind spots.
   - _"Security/capability-path"_ = touches a **tool, the envelope, the runner,
-    the cage, or the approval gate**. A change that only parses a provider
-    signal or surfaces read-only info to the UI is _not_ capability-path (a live
-    run is good hygiene, not required).
+    the cage, or the approval gate**. A change that only parses or shapes a
+    provider request/signal, or surfaces read-only info to the UI, is _not_
+    capability-path (a live run is good hygiene, not required — and is fully
+    covered by the HTTP-mock test pattern).
 - **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
   trailer
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.

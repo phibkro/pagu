@@ -88,29 +88,64 @@ export async function chatAnthropic(
   onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   const systemParts: string[] = [];
-  const turns: { role: "user" | "assistant"; content: string }[] = [];
+  const coalesced: { role: "user" | "assistant"; content: string }[] = [];
   for (const m of messages) {
     if (m.role === "system") {
       systemParts.push(m.content);
       continue;
     }
     const role = m.role === "assistant" ? "assistant" : "user"; // tool -> user
-    const last = turns.at(-1);
+    const last = coalesced.at(-1);
     if (last && last.role === role) last.content += `\n\n${m.content}`;
-    else turns.push({ role, content: m.content });
+    else coalesced.push({ role, content: m.content });
   }
   // Anthropic requires the first message to be `user`.
-  if (turns[0]?.role === "assistant") {
-    turns.unshift({ role: "user", content: "(continue)" });
+  if (coalesced[0]?.role === "assistant") {
+    coalesced.unshift({ role: "user", content: "(continue)" });
+  }
+
+  // Second cache breakpoint: cache the growing *message* prefix (the first
+  // breakpoint, on `system` below, caches the stable tools+system prefix).
+  // Anthropic caches the prefix up to and including the block carrying
+  // `cache_control`, so marking the LAST (coalesced) turn caches the whole
+  // conversation-so-far; the next turn reads it as a prefix hit and writes a
+  // fresh breakpoint at its new last turn (incremental caching). One marker, so
+  // we stay well within the 4-breakpoint budget (system uses 1). A no-op below
+  // the model's min cacheable size — same always-on rationale as system.
+  // Marking only the last turn keeps earlier turns plain strings (they can't
+  // write distinct per-turn entries — they're read as part of the cached prefix).
+  // Placed AFTER coalescing + the assistant-first fixup so it lands on the turn
+  // actually sent, and so an injected "(continue)" turn is still cache-eligible.
+  const turns: Array<{
+    role: "user" | "assistant";
+    content:
+      | string
+      | Array<
+        { type: "text"; text: string; cache_control?: { type: "ephemeral" } }
+      >;
+  }> = [...coalesced];
+  const last = turns.at(-1);
+  if (last) {
+    turns[turns.length - 1] = {
+      role: last.role,
+      content: [
+        {
+          type: "text",
+          text: last.content as string,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+    };
   }
 
   const stream = !!onToken;
   // System as a structured text block with a cache breakpoint. Tools precede
-  // system in the prompt prefix, so this single breakpoint caches the entire
-  // stable `tools + system` prefix (the AGENTS.md instructions + tool defs that
-  // pagu re-sends verbatim every turn) — later turns read it at ~0.1x input
-  // cost. A no-op (no error) when the prefix is below the model's min cacheable
-  // size. Messages aren't cached here (a documented follow-up). GA, no beta header.
+  // system in the prompt prefix, so this breakpoint caches the entire stable
+  // `tools + system` prefix (the AGENTS.md instructions + tool defs that pagu
+  // re-sends verbatim every turn) — later turns read it at ~0.1x input cost.
+  // A no-op (no error) when the prefix is below the model's min cacheable size.
+  // The growing message prefix gets its own breakpoint (on the last turn, above).
+  // GA, no beta header.
   const systemText = systemParts.join("\n\n");
   const body = {
     model: cfg.model,

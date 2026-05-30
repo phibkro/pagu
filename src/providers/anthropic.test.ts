@@ -90,9 +90,19 @@ Deno.test("anthropic: system split out, tool→user coalesced, tool_use parsed",
       { type: "text", text: "SYS", cache_control: { type: "ephemeral" } },
     ]);
     assertEquals(typeof body.max_tokens, "number");
-    // user + tool(→user) coalesced into a single user turn
+    // user + tool(→user) coalesced into a single user turn; being the last turn
+    // it also carries the message-prefix cache breakpoint (a one-block array).
     assertEquals(body.messages, [
-      { role: "user", content: "list photos\n\n[fs:./photos]\na.jpg" },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "list photos\n\n[fs:./photos]\na.jpg",
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+      },
     ]);
     // tools mapped to Anthropic's input_schema shape
     assertEquals(body.tools?.[0], {
@@ -102,6 +112,111 @@ Deno.test("anthropic: system split out, tool→user coalesced, tool_use parsed",
     });
     assertEquals(r.content, "let me look");
     assertEquals(r.toolCalls, [{ name: "read", args: { path: "./photos" } }]);
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("anthropic: message-prefix cache breakpoint on the last turn (multi-turn growing prefix)", async () => {
+  // The second cache breakpoint: in addition to the stable tools+system prefix
+  // (the system block), the last message turn carries a cache_control so the
+  // growing conversation prefix is cached and read at ~0.1x on later turns.
+  // Anthropic caches the prefix up to and including the marked block; the next
+  // turn finds it as a prefix hit (incremental caching). We coalesce consecutive
+  // same-role turns first, so the breakpoint lands on the *coalesced* last turn.
+  let body: {
+    system?: Array<{ type: string; text: string; cache_control?: unknown }>;
+    messages?: Array<{
+      role: string;
+      content:
+        | string
+        | Array<{ type: string; text: string; cache_control?: unknown }>;
+    }>;
+  } = {};
+  const server = Deno.serve({ port: 0, onListen() {} }, async (req) => {
+    body = await req.json();
+    return Response.json({ content: [{ type: "text", text: "ok" }] });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    await chat(
+      {
+        baseURL: `http://localhost:${port}`,
+        model: "claude-opus-4-8",
+        apiKey: "k",
+        format: "anthropic",
+      },
+      [
+        { role: "system", content: "SYS" },
+        { role: "user", content: "first question" },
+        { role: "assistant", content: "first answer" },
+        { role: "user", content: "second question" },
+        { role: "tool", content: "[fs:./x]\nfile contents" }, // tool→user, coalesced
+      ],
+    );
+
+    // System still carries its own breakpoint (the stable tools+system prefix).
+    assertEquals(body.system, [
+      { type: "text", text: "SYS", cache_control: { type: "ephemeral" } },
+    ]);
+
+    const msgs = body.messages!;
+    // Earlier turns stay plain strings — no breakpoint, so they can't write a
+    // distinct per-turn entry; they're read as part of the cached prefix.
+    assertEquals(msgs[0], { role: "user", content: "first question" });
+    assertEquals(msgs[1], { role: "assistant", content: "first answer" });
+    // The last (coalesced user) turn carries the breakpoint, as a one-block array.
+    assertEquals(msgs[2], {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "second question\n\n[fs:./x]\nfile contents",
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+    });
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("anthropic: no message breakpoint when there are no turns (system-only)", async () => {
+  // A degenerate request with only a system message must not crash or attach a
+  // breakpoint to a non-existent last turn — the system breakpoint is enough.
+  let body: { messages?: unknown[] } = {};
+  const server = Deno.serve({ port: 0, onListen() {} }, async (req) => {
+    body = await req.json();
+    return Response.json({ content: [{ type: "text", text: "ok" }] });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    // First message is assistant-only after the system split → the "(continue)"
+    // user turn is synthesized; assert the breakpoint lands on it (the last turn)
+    // rather than throwing.
+    await chat(
+      {
+        baseURL: `http://localhost:${port}`,
+        model: "claude-opus-4-8",
+        apiKey: "k",
+        format: "anthropic",
+      },
+      [{ role: "assistant", content: "lone assistant turn" }],
+    );
+    const msgs = body.messages as Array<{ role: string; content: unknown }>;
+    // user("(continue)") + assistant; breakpoint on the last (assistant) turn.
+    assertEquals(msgs.length, 2);
+    assertEquals(msgs[0], { role: "user", content: "(continue)" });
+    assertEquals(msgs[1], {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "lone assistant turn",
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+    });
   } finally {
     await server.shutdown();
   }
