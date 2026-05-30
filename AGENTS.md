@@ -165,6 +165,10 @@ when you need to find a module; it's listed in the docs-map above.
   a live model (above) — and reach for an **independent-context review** (a
   fresh reviewer agent / `/code-review ultra`) before calling such a change
   done, since self-review shares the author's blind spots.
+  - _"Security/capability-path"_ = touches a **tool, the envelope, the runner,
+    the cage, or the approval gate**. A change that only parses a provider
+    signal or surfaces read-only info to the UI is _not_ capability-path (a live
+    run is good hygiene, not required).
 - **Commits:** Conventional Commits (`type(scope): summary`), why-focused body,
   trailer
   `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
@@ -206,3 +210,13 @@ when you need to find a module; it's listed in the docs-map above.
   `deno.json` automatically; only `install` needs the flag.
 - Small models (e.g. qwen3.5:9b) write buggy first scripts; the cage
   compensates. A bigger model (OpenRouter/Anthropic) needs fewer rounds.
+- The respond phase **always requests a streaming wire response** (it needs the
+  stderr side-channel for live display); a frontend's optional `UI.stream` sink
+  only governs _display_, not the wire. So a provider-response feature must work
+  on the **streaming** parse path — a buffered mock won't exercise what runs.
+- **To live-test a provider-response feature** (token usage, truncation,
+  streaming), point `--base-url` at a tiny mock server returning the SSE/JSON
+  frames you want — Ollama/the live recipe exercises the write/run path, not
+  response parsing, and **Ollama does not reliably honor `max_tokens`** (no
+  `finish_reason:"length"`) for some models, so it can't trigger output-cap
+  truncation. `ci:live` is scenario/security-floor oriented, not for this.

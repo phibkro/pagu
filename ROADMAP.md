@@ -23,6 +23,11 @@ each forward item (Open + Idea backlog) carries one or more `` `[tag]` ``
 markers from the vocabulary below. Filter with e.g.
 `grep '\[security\]' ROADMAP.md`.
 
+> **Also:** fine-grained, feature-local deferrals live as inline `_Deferred:_`
+> notes next to the relevant design in `CONTEXT.md` (e.g. the provider follow-on
+> slices in its Provider section), not as items here. For the _full_ set of open
+> work, also `grep -rn '_Deferred:_' CONTEXT.md docs/`.
+
 | Concern                   | Tag          | Scope                                                        |
 | ------------------------- | ------------ | ------------------------------------------------------------ |
 | **Harness & core**        | `[harness]`  | the agent loop/FSM, capability ladder, approval, multi-agent |
