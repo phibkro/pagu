@@ -11,5 +11,10 @@ pagu.log.md
 
 coverage/
 
+# nix dev shell (see flake.nix)
+.direnv/
+result
+result-*
+
 # macOS Finder metadata (created in any directory).
 .DS_Store
