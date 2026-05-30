@@ -126,6 +126,25 @@ different grain:
 | **MCP**     | context (what it can query) + capability (new tools) — two axes at once, so a bundle, not an axis                                                                                                       |
 | **profile** | the full assignment over all axes (the three behavioral + provider/model) — the thing you launch; stored as a bundle file `<scope>/profiles/<name>.md` (refs roles/skills + overrides + optional prose) |
 
+A bundle is a _partial assignment_ over the axes; a **profile** assigns all
+four. Each axis composes by its own law (the compositional spine, below):
+
+```mermaid
+flowchart LR
+    subgraph behavioral["behavioral axes — managing an agent = these three"]
+        P["personality<br/>(context)"]
+        A["access<br/>(permission)"]
+        O["policy<br/>(capability)"]
+    end
+    S["provider / model<br/>(substrate axis)"]
+
+    role["role"] --> P & A & O
+    skill["skill"] --> P & O & A
+    project["project"] --> A & P
+    mcp["MCP"] --> P & O
+    profile["profile"] ==> P & A & O & S
+```
+
 **Names vs. today's code (don't rename yet).** These axis names are the _model_;
 the code has not adopted them and should not until #17 is actually built (the
 model leads, the code follows). The mapping: **access** ≈ the permission half of
