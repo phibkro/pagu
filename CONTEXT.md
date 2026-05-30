@@ -1097,9 +1097,11 @@ above.)
       personality overlay; `setPersonality(names)` re-derives ONLY the prose —
       envelope/provider/policy/skills untouched ("swap disposition, keep
       access+tools"), pinned by a `createContext` law test. Surfaces:
-      `--personality` (repeatable), `ctx.setPersonality`, and a profile may
-      reference `personalities:`. _Deferred:_ a `--list-personalities` + TUI
-      `/personality` (discovery/UX); the fuller per-axis assignment for
+      `--personality` (repeatable) + `--list-personalities` + TUI
+      `/personality`, `ctx.setPersonality`, and a profile may reference
+      `personalities:`. cli.ts now one-lines a misspelled bundle flag (was a
+      stack). _Deferred:_ a runtime `/profile` swap (needs a `setProfile`
+      re-resolution op) + `/profile save`; the fuller per-axis assignment for
       access/policy (option (a)) if it's ever needed beyond personality.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to

@@ -51,6 +51,8 @@ export interface RunOpts {
   listSessions: boolean;
   /** `--list-profiles`: print the available profiles and exit. */
   listProfiles: boolean;
+  /** `--list-personalities`: print the available personalities and exit. */
+  listPersonalities: boolean;
   /** `--no-sandbox`: disable the OS sandbox tier (Deno floor still applies). */
   noSandbox: boolean;
   repo: boolean;
@@ -114,6 +116,7 @@ function makeCommand() {
     .option("--continue", "Resume the most recent conversation.")
     .option("--list-sessions", "Print saved conversations and exit.")
     .option("--list-profiles", "Print available profiles and exit.")
+    .option("--list-personalities", "Print available personalities and exit.")
     .option(
       "--log <file:string>",
       "Use an explicit log file, bypassing the session store.",
@@ -214,6 +217,7 @@ export async function parseArgs(
     cont: options.continue ?? false,
     listSessions: options.listSessions ?? false,
     listProfiles: options.listProfiles ?? false,
+    listPersonalities: options.listPersonalities ?? false,
     noSandbox: !options.sandbox, // cliffy: --no-sandbox → sandbox === false
     repo: options.repo ?? false,
     tui: options.tui ?? false,
@@ -310,6 +314,7 @@ export function createContext(opts: {
     cont: false,
     listSessions: false,
     listProfiles: false,
+    listPersonalities: false,
     noSandbox: false,
     repo: opts.repo ?? false,
     tui: false,

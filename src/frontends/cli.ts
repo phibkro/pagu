@@ -11,6 +11,7 @@ import { type Approver, resumePending, runTask, type UI } from "../agent.ts";
 import { gitRoot } from "../config/repo.ts";
 import { listSessions } from "../config/sessions.ts";
 import { listProfiles } from "../config/profiles.ts";
+import { listPersonalities } from "../config/personalities.ts";
 
 /**
  * pagu CLI — the one-shot frontend onto the I/O-agnostic core
@@ -78,6 +79,15 @@ if (opts.listProfiles) {
   Deno.exit(0);
 }
 
+// --list-personalities: print available personalities and exit.
+if (opts.listPersonalities) {
+  const base = (await gitRoot(Deno.cwd())) ?? Deno.cwd();
+  const personalities = await listPersonalities(base);
+  if (personalities.length === 0) console.log("no personalities found.");
+  for (const p of personalities) console.log(`${p.name}  (${p.scope})`);
+  Deno.exit(0);
+}
+
 // --acp: run as an ACP agent over stdio (editor clients drive pagu). stdin/
 // stdout become the JSON-RPC channel, so this must precede any TTY/task logic.
 if (opts.acp) {
@@ -109,7 +119,16 @@ const approve: Approver = async (_script, _perms) => {
 };
 
 await loadCwdEnv(); // terminal frontend: offer to source cwd .env first
-const ctx = await buildContext(opts, agents, ui, approve);
+// buildContext fails loud on a startup/config error (a misspelled --role /
+// --skill / --profile / --personality, a bad provider): surface one clean line,
+// not a stack trace.
+let ctx;
+try {
+  ctx = await buildContext(opts, agents, ui, approve);
+} catch (e) {
+  console.error(`✗ ${e instanceof Error ? e.message.split("\n")[0] : e}`);
+  Deno.exit(2);
+}
 // A session reopened (e.g. --continue) on a pending proposal resolves it first.
 await resumePending(ctx);
 await runTask(ctx, opts.task);

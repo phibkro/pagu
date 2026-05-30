@@ -162,7 +162,8 @@ Flags (run `pagu --help` for the full list; for shell completions,
 - `--personality <name>` (repeatable) — apply a **personality**: a prose-only
   bundle `./.pagu/personalities/<name>.md` (body = disposition; no access or
   capability) folded as a context overlay. It's the one axis you can swap at
-  runtime independently — changing it leaves access/tools/provider untouched.
+  runtime independently — changing it leaves access/tools/provider untouched
+  (`/personality` in the TUI). `--list-personalities` prints the available ones.
 - `--profile <name>` — launch a named **profile**: a markdown bundle
   `./.pagu/profiles/<name>.md` (project) or `~/.config/pagu/profiles/<name>.md`
   (global) whose frontmatter names `roles`/`skills` + a provider/access/policy
@@ -195,10 +196,11 @@ Flags (run `pagu --help` for the full list; for shell completions,
 - `--list-sessions` — print saved conversations and exit.
 - `--log <file>` — use an explicit log file, bypassing the session store.
 
-TUI slash commands: `/roles`, `/skills`, `/provider`, `/model`, `/advisor`,
-`/grants`, `/revoke`, `/sessions`, `/new`, `/open`, `/fork`, `/rename`,
-`/history`, `/log`, `/clear`, `/exit`. All tab-complete. `/grants` lists active
-standing approvals (auto-approve grants); `/revoke <id>` ends one early.
+TUI slash commands: `/roles`, `/skills`, `/personality`, `/provider`, `/model`,
+`/advisor`, `/grants`, `/revoke`, `/sessions`, `/new`, `/open`, `/fork`,
+`/rename`, `/history`, `/log`, `/clear`, `/exit`. All tab-complete. `/grants`
+lists active standing approvals (auto-approve grants); `/revoke <id>` ends one
+early.
 
 ## Skills
 

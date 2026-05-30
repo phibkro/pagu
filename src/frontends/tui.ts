@@ -17,6 +17,7 @@ import {
 import { listSessions, type SessionInfo } from "../config/sessions.ts";
 import { listRoles } from "../config/roles.ts";
 import { listSkills } from "../skills/skill.ts";
+import { listPersonalities } from "../config/personalities.ts";
 import { selectFromList } from "./select.ts";
 import type { Entry } from "../log/schema.ts";
 
@@ -75,6 +76,8 @@ const COMMANDS: Record<string, string> = {
     "toggle advisory reviewer, or configure (e.g. /advisor openrouter claude-sonnet-4-5)",
   "/roles": "pick roles, or apply a group (e.g. /roles dev rust)",
   "/skills": "pick skills, or apply a group (e.g. /skills git testing)",
+  "/personality":
+    "swap the personality (disposition only — keeps access/tools; e.g. /personality terse)",
   "/sessions": "list saved conversations",
   "/new": "start a new conversation",
   "/open": "pick a conversation to open (or /open <n>)",
@@ -417,6 +420,43 @@ async function handleCommand(
       if (r.ok) {
         console.log(dim(`    reads    ${ctx.readPaths.join(", ")}`));
       }
+      return true;
+    }
+    case "/personality": {
+      let names = line.split(/\s+/).slice(1);
+      if (names.length === 0) {
+        const available = await listPersonalities(ctx.projectBase);
+        if (available.length === 0) {
+          console.log(
+            dim(
+              "  no personalities — add one at ./.pagu/personalities/<name>.md",
+            ),
+          );
+          console.log(
+            dim("  or ~/.config/pagu/personalities/<name>.md (global)"),
+          );
+          return true;
+        }
+        const activeNames = new Set(ctx.personalityNames());
+        const picked = await selectFromList(available, {
+          multi: true,
+          label: (p) => `${p.name}  (${p.scope})`,
+          selected: (p) => activeNames.has(p.name),
+          header: dim("  personality — space to toggle, enter to apply:"),
+        });
+        if (picked === null) {
+          for (const p of available) {
+            const mark = activeNames.has(p.name) ? "*" : " ";
+            console.log(dim(`  ${mark} ${p.name.padEnd(16)} (${p.scope})`));
+          }
+          console.log(dim("  apply: /personality <name> [name…]"));
+          return true;
+        }
+        names = picked.map((p) => p.name);
+      }
+      // Swaps disposition only — access/tools/provider stay put (#17).
+      const r = await ctx.setPersonality(names);
+      console.log(dim(`  ${r.ok ? "→ personality:" : "✗"} ${r.message}`));
       return true;
     }
     case "/sessions": {
