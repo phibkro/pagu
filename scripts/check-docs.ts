@@ -24,6 +24,8 @@ const DOCS = [
   "ROADMAP.md",
   "README.md",
   "AGENTS.md",
+  "docs/WORKFLOW.md",
+  "docs/ARCHITECTURE.md",
   "docs/CONCEPTS.md",
   "docs/INVARIANTS.md",
 ];
