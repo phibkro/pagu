@@ -58,6 +58,8 @@ export interface RunOpts {
   tui: boolean;
   /** `--skill <name>` names, in compose order. */
   skills: string[];
+  /** `--personality <name>` names — the context-axis overlay (#17 slice B). */
+  personalities: string[];
   /** `--profile <name>`: a named composition (#17) — expands to roles/skills +
    * inline overrides + prose, folded below explicit flags (see buildContext). */
   profile?: string;
@@ -129,6 +131,11 @@ function makeCommand() {
     .option(
       "--skill <name:string>",
       "Apply a skill (repeatable; folds after roles).",
+      { collect: true },
+    )
+    .option(
+      "--personality <name:string>",
+      "Apply a personality bundle (#17): a prose-only context overlay (repeatable).",
       { collect: true },
     )
     .option(
@@ -212,6 +219,7 @@ export async function parseArgs(
     tui: options.tui ?? false,
     acp: options.acp ?? false,
     skills: options.skill ?? [],
+    personalities: options.personality ?? [],
     profile: options.profile,
   };
 }
@@ -266,6 +274,8 @@ export function createContext(opts: {
   write?: string[];
   repo?: boolean;
   roles?: string[];
+  /** Personality (context-axis) bundle names — the prose overlay (#17). */
+  personalities?: string[];
   /** Launch a named profile (#17) — folded below the explicit opts here. */
   profile?: string;
   hide?: string[];
@@ -304,6 +314,7 @@ export function createContext(opts: {
     repo: opts.repo ?? false,
     tui: false,
     skills: [],
+    personalities: opts.personalities ?? [],
     profile: opts.profile,
     acp: false,
     cwd: opts.cwd,
@@ -376,12 +387,14 @@ export async function buildContext(
   let rsBase: ConfigLayer = opts.base;
   let rsRoles = opts.roles;
   let rsSkills = opts.skills;
+  let rsPersonalities = opts.personalities;
   let agentsText = agents;
   if (opts.profile) {
     const profile = await loadProfile(opts.profile, projectBase);
     rsBase = mergeLayer(opts.base, profile.layer); // inline onto the config base
     rsRoles = [...profile.roles, ...opts.roles]; // explicit roles fold after
     rsSkills = [...profile.skills, ...opts.skills];
+    rsPersonalities = [...profile.personalities, ...opts.personalities];
     if (profile.prose) agentsText = `${profile.prose}\n\n${agents}`;
   }
 
@@ -394,6 +407,7 @@ export async function buildContext(
     projectBase,
     repo,
     agents: agentsText,
+    personalities: rsPersonalities,
     phaseDir,
     injectedHandlers,
   });
@@ -457,6 +471,8 @@ export async function buildContext(
     fetchModels: rs.fetchModels,
     projectBase,
     roleNames: rs.roleNames,
+    personalityNames: rs.personalityNames,
+    setPersonality: rs.setPersonality,
     availableRoles: () => listRoles(projectBase),
     availableSkills: () => listSkills(projectBase),
     setRoles: rs.setRoles,

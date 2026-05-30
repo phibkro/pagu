@@ -18,6 +18,7 @@ export interface Profile {
   name: string;
   roles: string[]; // referenced role bundles, in compose order
   skills: string[]; // referenced skill bundles
+  personalities: string[]; // referenced personality (context-axis) bundles
   layer: ConfigLayer; // inline overrides (provider / access / policy)
   prose: string; // optional body — a profile-level instruction
 }
@@ -65,7 +66,8 @@ export async function loadProfile(
       name,
       roles: stringList(data.roles),
       skills: stringList(data.skills),
-      layer: toLayer(data), // ignores the roles/skills reference keys
+      personalities: stringList(data.personalities),
+      layer: toLayer(data), // ignores the roles/skills/personalities ref keys
       prose: body.trim(),
     };
   }

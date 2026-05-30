@@ -1088,11 +1088,19 @@ above.)
     regardless. Chosen for one `mergeLayer` and zero `makeRunState` change._
     `--profile`
     - `--list-profiles` fall out like roles; a TUI `/profile save` is a
-      fast-follow. **Slice B (then) — per-axis independent swap:** restructure
-      `makeRunState` (now a value — the unblock) to track the axis-assignments
-      separately with per-axis setters (e.g. `setPersonality` without touching
-      access), enabling "swap disposition, keep access+tools" at runtime. A then
-      B.
+      fast-follow. **Slice B (shipped) — personality as an independently
+      swappable axis** (the chosen "overlay" form): `personality` is its own
+      prose-only bundle kind — `<scope>/personalities/<name>.md`, body =
+      disposition, **frontmatter ignored** so the axis carries no
+      access/capability (`src/config/personalities.ts`). `makeRunState` splits
+      the prose into `baseProse` (role/skill, set by `applyRoles`) + a swappable
+      personality overlay; `setPersonality(names)` re-derives ONLY the prose —
+      envelope/provider/policy/skills untouched ("swap disposition, keep
+      access+tools"), pinned by a `createContext` law test. Surfaces:
+      `--personality` (repeatable), `ctx.setPersonality`, and a profile may
+      reference `personalities:`. _Deferred:_ a `--list-personalities` + TUI
+      `/personality` (discovery/UX); the fuller per-axis assignment for
+      access/policy (option (a)) if it's ever needed beyond personality.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as

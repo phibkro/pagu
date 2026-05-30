@@ -159,6 +159,10 @@ Flags (run `pagu --help` for the full list; for shell completions,
 - `--skill <name>` (repeatable) — apply a skill: a capability bundle from
   `./.pagu/skills/<name>/` or `~/.config/pagu/skills/<name>/`. Skills extend
   roles with reference files and pre-approved scripts (see **Skills** below).
+- `--personality <name>` (repeatable) — apply a **personality**: a prose-only
+  bundle `./.pagu/personalities/<name>.md` (body = disposition; no access or
+  capability) folded as a context overlay. It's the one axis you can swap at
+  runtime independently — changing it leaves access/tools/provider untouched.
 - `--profile <name>` — launch a named **profile**: a markdown bundle
   `./.pagu/profiles/<name>.md` (project) or `~/.config/pagu/profiles/<name>.md`
   (global) whose frontmatter names `roles`/`skills` + a provider/access/policy

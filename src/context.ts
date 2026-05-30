@@ -102,6 +102,13 @@ export interface AgentContext {
   /** Set the active role group at runtime: re-folds config and re-derives
    * permissions/prose. Fails loud (state unchanged) on an unknown name. */
   setRoles: (names: string[]) => Promise<{ ok: boolean; message: string }>;
+  /** Names of the applied personality (context-axis) bundles. */
+  personalityNames: () => string[];
+  /** Swap the personality axis at runtime (#17): re-derives ONLY the prose
+   * overlay — envelope/provider/policy untouched. Fails loud on a bad name. */
+  setPersonality: (
+    names: string[],
+  ) => Promise<{ ok: boolean; message: string }>;
   phaseDir: string;
   agents: string;
   readPaths: string[];

@@ -25,6 +25,7 @@ import {
 import { enumerateConcealed } from "../permissions/concealment-fs.ts";
 import { loadRoles, type Role } from "./roles.ts";
 import { loadSkills, type Skill, type SkillScript } from "../skills/skill.ts";
+import { loadPersonalities, type Personality } from "./personalities.ts";
 import { loadHandlers } from "../capability/handlers.ts";
 import type { HandlerPlugin } from "../capability/index.ts";
 import {
@@ -61,6 +62,10 @@ export interface RunState {
   ): MutResult;
   roleNames(): string[];
   setRoles(names: string[]): Promise<MutResult>;
+  /** The personality (context) axis — swappable INDEPENDENTLY of access/policy
+   * (#17 slice B): re-derives only the prose overlay, never the envelope. */
+  personalityNames(): string[];
+  setPersonality(names: string[]): Promise<MutResult>;
   readonly activeSkillScripts: SkillScript[];
   setSkills(names: string[]): Promise<MutResult>;
   readonly activeHandlers: HandlerPlugin[];
@@ -92,11 +97,20 @@ export async function makeRunState(params: {
   projectBase: string;
   repo: string | undefined;
   agents: string;
+  /** Initial personality (context-axis) bundle names — folded as a prose
+   * overlay, swappable later via setPersonality. */
+  personalities?: string[];
   phaseDir: string;
   injectedHandlers?: HandlerPlugin[];
 }): Promise<RunState> {
-  const { opts, projectBase, repo, agents, phaseDir, injectedHandlers } =
-    params;
+  const {
+    opts,
+    projectBase,
+    repo,
+    agents,
+    phaseDir,
+    injectedHandlers,
+  } = params;
 
   // `cfg` is the live resolved config (also mutated by /provider); the boxes
   // below are what the core reads each turn, refreshed in place by applyRoles.
@@ -124,6 +138,15 @@ export async function makeRunState(params: {
   let envelope: Envelope;
   let denyFlags: string[];
   let agentsText: string;
+  // The prose axis split in two so personality swaps without re-folding access:
+  // `baseProse` = base instructions + role/skill prose (set by applyRoles);
+  // `livePersonalities` = the swappable context-axis overlay.
+  let baseProse: string[] = [];
+  let livePersonalities: Personality[] = [];
+  const composeAgents = (): string =>
+    [...baseProse, ...livePersonalities.map((p) => p.prose)]
+      .filter((s) => s.length > 0)
+      .join("\n\n");
   let capabilities: string;
   let activeRoles: string[];
 
@@ -243,13 +266,12 @@ export async function makeRunState(params: {
     // (the mask) + the respond phase (handleRead refusal).
     denyFlags = (envelope.deny ?? []).map((p) => formatFlag(p, "deny"));
 
-    agentsText = [
+    baseProse = [
       agents,
       ...roleList.map((r) => r.prose),
       ...skillList.map((s) => s.prose),
-    ]
-      .filter((s) => s.length > 0)
-      .join("\n\n");
+    ];
+    agentsText = composeAgents(); // baseProse + the personality overlay
 
     // Tell the agent its real reach, so it neither under- nor over-claims:
     // it reads here, and the scripts it authors run on the machine with real
@@ -308,6 +330,12 @@ export async function makeRunState(params: {
     await loadRoles(opts.roles, projectBase),
     await loadSkills(opts.skills, projectBase),
   );
+  // Initial personality overlay (fail loud on a bad name); re-derive the prose.
+  livePersonalities = await loadPersonalities(
+    params.personalities ?? [],
+    projectBase,
+  );
+  agentsText = composeAgents();
 
   // Before-approve handlers: injected plugins (programmatic) fully replace
   // config-path loading; otherwise load from the resolved config stack.
@@ -422,6 +450,25 @@ export async function makeRunState(params: {
     };
   };
 
+  // Swap the personality (context) axis at runtime — re-derives ONLY the prose
+  // overlay (#17 slice B). Does NOT call applyRoles, so the envelope, provider,
+  // command policy, and skills are untouched: "swap disposition, keep
+  // access+tools." Fails loud (state unchanged) on an unknown name.
+  const setPersonality = async (names: string[]): Promise<MutResult> => {
+    let loaded: Personality[];
+    try {
+      loaded = await loadPersonalities(names, projectBase);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+    livePersonalities = loaded;
+    agentsText = composeAgents();
+    return {
+      ok: true,
+      message: livePersonalities.map((p) => p.name).join(", ") || "(none)",
+    };
+  };
+
   // Toggle/configure the advisory reviewer at runtime (the TUI's /advisor).
   // advisorConfig being present is the single "enabled" signal — no separate
   // boolean. enabled:false explicitly disables; bare call toggles.
@@ -485,6 +532,8 @@ export async function makeRunState(params: {
     setAdvisor,
     roleNames: () => activeRoles,
     setRoles,
+    personalityNames: () => livePersonalities.map((p) => p.name),
+    setPersonality,
     get activeSkillScripts() {
       return liveSkillScripts;
     },
