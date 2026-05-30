@@ -1061,6 +1061,30 @@ above.)
     explicit assignment and passes it in; composition logic in the core would
     break hermeticity. This is what a management _client_ (the remote surface,
     #14) would present, so it and the event-stream work are natural companions.
+    **Refined + sliced (design, this session):** the three behavioral axes get a
+    fourth — **provider/model** as a separate _substrate_ axis (which engine
+    runs it, orthogonal to what the agent is/does). Bundle→axis mapping: a
+    **role** spans personality+access+policy; a **skill** = context+policy (its
+    prose/files + verbatim scripts); a **project** = access+context (cwd/repo is
+    both a permission scope and a context root); **MCP** = policy. **Slice A
+    (first) — `profile` as a named composition:** a markdown bundle
+    `<scope>/profiles/<name>.md` (mirrors roles; project shadows global) whose
+    frontmatter is a `ConfigLayer` + reference fields `roles`/`skills` +
+    provider/model + inline access/policy overrides, with an optional prose
+    body. `--profile X` resolves in `config/setup.ts` (the config layer, above
+    the core — the existing fold, no new law): it prepends the profile's
+    roles/skills and folds its layer+prose into the stack, **composing with**
+    (not replacing) explicit `--role`/flags. Precedence (intended):
+    `defaults ⋄ config.json ⋄ profile (refs then its inline layer) ⋄ explicit
+    CLI roles/skills ⋄ CLI flags`
+    — a profile is a named preset; explicit CLI wins (most-specific). Grants
+    union, deny wins (lattice unchanged). `--profile`
+    - `--list-profiles` fall out like roles; a TUI `/profile save` is a
+      fast-follow. **Slice B (then) — per-axis independent swap:** restructure
+      `makeRunState` (now a value — the unblock) to track the axis-assignments
+      separately with per-axis setters (e.g. `setPersonality` without touching
+      access), enabling "swap disposition, keep access+tools" at runtime. A then
+      B.
 
 Suggested order: the handler-pipeline increments (pluggability, generalize to
 skills/tasks) → back to #1 (`fanOut` / multi-agent). Re-sequence freely as

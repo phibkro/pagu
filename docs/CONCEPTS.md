@@ -105,16 +105,21 @@ law — see the compositional spine):
 | **access**      | permission | the envelope: which paths/hosts are granted or denied. The lattice (below).            |
 | **policy**      | capability | the auto-approve surface: skill ceilings, task policies, command grammars, MCP allows. |
 
+A fourth, **orthogonal substrate axis — provider/model** (which engine runs the
+agent) sits outside these three: it changes _how_ the agent thinks, not _what it
+is or may do_. A **profile** assigns all four (the three behavioral axes + the
+substrate choice).
+
 **Bundles** are partial assignments over those axes, folded by the same laws at
 different grain:
 
-| bundle      | what it bundles                                                                                            |
-| ----------- | ---------------------------------------------------------------------------------------------------------- |
-| **skill**   | a bit of context (instructions) + capability (scripts) + permission (ceiling), packaged for one competence |
-| **role**    | a personality + an access envelope + some policy, packaged for a _job_                                     |
-| **project** | mostly an _access_ contribution (these paths), conventionally anchored to a directory                      |
-| **MCP**     | context (what it can query) + capability (new tools) — two axes at once, so a bundle, not an axis          |
-| **profile** | the fully-resolved assignment over all three axes — the thing you launch                                   |
+| bundle      | what it bundles                                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **skill**   | a bit of context (instructions) + capability (scripts) + permission (ceiling), packaged for one competence                                                                                              |
+| **role**    | a personality + an access envelope + some policy, packaged for a _job_                                                                                                                                  |
+| **project** | _access_ + _context_ — the cwd/repo as both a permission scope and a context root, anchored to a directory                                                                                              |
+| **MCP**     | context (what it can query) + capability (new tools) — two axes at once, so a bundle, not an axis                                                                                                       |
+| **profile** | the full assignment over all axes (the three behavioral + provider/model) — the thing you launch; stored as a bundle file `<scope>/profiles/<name>.md` (refs roles/skills + overrides + optional prose) |
 
 **Names vs. today's code (don't rename yet).** These axis names are the _model_;
 the code has not adopted them and should not until #17 is actually built (the
