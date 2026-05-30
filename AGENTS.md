@@ -1,13 +1,20 @@
 # AGENTS.md — working in pagu
 
 Operating manual for an agent (or human) picking up this codebase cold.
-**Usage** lives in `README.md`. **`CONTEXT.md` is the source of truth for
-design** — rationale, threat model, the system/security model — put durable
-design context there, not scattered across docs. The **forward plan, idea
-backlog, and milestones** live in **`ROADMAP.md`** (organized by concern).
-**`docs/CONCEPTS.md`** is the mental-models reference (our nouns/verbs + why).
-This file is the _how we work here_ layer. (It's also the cross-tool AGENTS.md
-standard — and pagu reads it itself, so keep it concise.)
+
+**Docs map** — read the one you need, not all (each doc opens with a `summary`):
+
+- `README.md` — usage: how to run pagu.
+- `CONTEXT.md` — durable **design**: rationale, threat model, system/security
+  model (the _why_). Put durable design context here, not scattered.
+- `ROADMAP.md` — the **forward plan**: in-progress, planned, idea backlog,
+  milestones (navigable by concern tag — the _what's next_).
+- `docs/CONCEPTS.md` — the **mental-models** reference (our nouns/verbs + why).
+- `docs/INVARIANTS.md` — the **load-bearing-claim catalog** + enforcement tier;
+  the canonical home of the numbered invariants (`#1`–`#5`).
+- `docs/specs/` — deep design docs for individual features (drill-down).
+- **this file** — _how we work here_. (Cross-tool AGENTS.md standard; pagu reads
+  it itself, so keep it concise.)
 
 ## What pagu is (the goal)
 

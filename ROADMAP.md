@@ -1,3 +1,8 @@
+---
+summary: "Forward plan, idea backlog, and milestones — navigable by concern tag."
+tags: [roadmap, planning]
+---
+
 # pagu — roadmap & backlog
 
 > The forward plan, idea backlog, decided-behavior reference, v1 milestone, and

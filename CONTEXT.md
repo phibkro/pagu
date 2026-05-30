@@ -1,3 +1,8 @@
+---
+summary: "Durable design, rationale, and threat model — the *why* behind pagu's architecture."
+tags: [design, threat-model, reference]
+---
+
 # pagu — context & design
 
 > Status: the v1 loop is implemented and in daily use. Command: `pagu`. Named

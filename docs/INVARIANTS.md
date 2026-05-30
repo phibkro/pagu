@@ -1,3 +1,8 @@
+---
+summary: "Catalog of load-bearing claims with enforcement tier (law/structural/prose/judgment); canonical home of invariants #1-#5."
+tags: [reference, invariants, enforcement]
+---
+
 # pagu — invariants
 
 The single list of pagu's load-bearing claims, each tagged by **how strongly it

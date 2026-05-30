@@ -1,3 +1,8 @@
+---
+summary: "The nouns/verbs of pagu and the lived-experience ideas they borrow — the mental-models reference."
+tags: [reference, mental-models]
+---
+
 # pagu — concepts & mental models
 
 The nouns and verbs of pagu, and the lived-experience ideas they borrow from.
