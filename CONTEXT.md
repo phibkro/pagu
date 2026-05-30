@@ -391,6 +391,27 @@ portable tier-1 floor around it (no regression).
 
 ## Threat model (load-bearing parts)
 
+The attack path and where each defense sits. Untrusted input may _steer_ what
+the agent proposes but can never _instruct_ a real effect — there is **no sink
+to reach** (the agent holds no execute capability), so the worst it can do is
+cause a _proposal_, which meets the cage, the envelope, and the human gate. The
+read→propose→run→read amplification is bounded by the per-turn gate.
+
+```mermaid
+flowchart TD
+    untrusted["untrusted input — read files · observations · trigger payloads"]:::taint
+    untrusted -->|"may steer, never instruct"| agent["agent · respond — NO exec capability, can only PROPOSE"]
+    agent -->|"proposes a script"| cage["cage — no net · scratch-only (autonomous exec contained here)"]:::defense
+    cage -->|"novel proposal"| gate{"human gate — the backstop (novelty only)"}:::defense
+    cage -.->|"matched skill / task / grammar — decidable, auto-approve"| runner
+    gate -->|"reject"| drop["discarded"]
+    gate -->|"approve"| runner["runner — scoped Deno perms + OS sandbox (blast radius bounded)"]:::defense
+    runner -->|"real effect"| fx["files / net — granted scope only"]
+    fx -.->|"becomes next turn's reads (amplification, bounded by the gate)"| untrusted
+    classDef taint fill:#fdd,stroke:#c33,color:#000;
+    classDef defense fill:#dfd,stroke:#383,color:#000;
+```
+
 - **Boundary = no-exec-capability + mandatory per-proposal human review.**
 - **Reads are untrusted input** — the prompt-injection / exfiltration surface.
   Adversarial content in read material can steer what the agent _proposes_; the
