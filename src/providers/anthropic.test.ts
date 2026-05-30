@@ -214,6 +214,70 @@ Deno.test("anthropic: usage parsed (input/output + cache read/creation)", async 
   }
 });
 
+Deno.test("anthropic: stop_reason 'max_tokens' sets truncated; absent otherwise", async () => {
+  let cut = true;
+  const server = Deno.serve(
+    { port: 0, onListen() {} },
+    () =>
+      Response.json({
+        content: [{ type: "text", text: "partial" }],
+        stop_reason: cut ? "max_tokens" : "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }),
+  );
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const cfg = {
+      baseURL: `http://localhost:${port}`,
+      model: "claude-opus-4-8",
+      apiKey: "k",
+      format: "anthropic" as const,
+    };
+    const r = await chat(cfg, [{ role: "user", content: "hi" }]);
+    assertEquals(r.truncated, true); // hit the output-token cap
+    cut = false;
+    const r2 = await chat(cfg, [{ role: "user", content: "hi" }]);
+    assertEquals(r2.truncated, undefined); // normal stop → no flag
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("anthropic streaming: stop_reason 'max_tokens' in message_delta sets truncated", async () => {
+  const frames = [
+    `event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":10,"output_tokens":1}}}\n\n`,
+    `event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}\n\n`,
+    `event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":30}}\n\n`,
+    `event: message_stop\ndata: {"type":"message_stop"}\n\n`,
+  ];
+  const server = Deno.serve(
+    { port: 0, onListen() {} },
+    () =>
+      new Response(frames.join(""), {
+        headers: { "content-type": "text/event-stream" },
+      }),
+  );
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const r = await chat(
+      {
+        baseURL: `http://localhost:${port}`,
+        model: "claude-opus-4-8",
+        apiKey: "k",
+        format: "anthropic",
+      },
+      [{ role: "user", content: "hi" }],
+      [],
+      () => {}, // onToken → streaming
+    );
+    assertEquals(r.content, "partial");
+    assertEquals(r.truncated, true);
+  } finally {
+    await server.shutdown();
+  }
+});
+
 Deno.test("anthropic streaming: usage from message_start (input+cache) + message_delta (output)", async () => {
   const frames = [
     `event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":200,"output_tokens":1,"cache_read_input_tokens":150,"cache_creation_input_tokens":50}}}\n\n`,

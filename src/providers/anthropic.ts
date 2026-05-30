@@ -60,6 +60,8 @@ interface AnthropicResponse {
     | { type: string }
   >;
   usage?: AnthropicUsage;
+  // "max_tokens" → cut off by the output cap; "end_turn"/"tool_use"/… → normal.
+  stop_reason?: string | null;
 }
 
 /** Map an Anthropic `usage` object to our Usage (cache fields when present). */
@@ -166,7 +168,12 @@ function parseBuffered(data: AnthropicResponse): ChatResponse {
       toolCalls.push({ name: b.name, args: b.input ?? {} });
     }
   }
-  return { content, toolCalls, usage: mapAnthropicUsage(data.usage) };
+  return {
+    content,
+    toolCalls,
+    usage: mapAnthropicUsage(data.usage),
+    ...(data.stop_reason === "max_tokens" ? { truncated: true } : {}),
+  };
 }
 
 interface StreamEvent {
@@ -178,6 +185,8 @@ interface StreamEvent {
     text?: string;
     partial_json?: string;
     thinking?: string;
+    // On `message_delta`: "max_tokens" = cut off by the output cap.
+    stop_reason?: string | null;
   };
   message?: { usage?: AnthropicUsage };
   usage?: AnthropicUsage;
@@ -199,6 +208,7 @@ async function streamAnthropic(
   onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   let content = "";
+  let truncated = false;
   // Usage accrues across the stream: message_start carries input + cache
   // tokens; message_delta carries the (cumulative) final output_tokens.
   const usage: Usage = { inputTokens: 0, outputTokens: 0 };
@@ -236,10 +246,11 @@ async function streamAnthropic(
           usage.cacheCreationTokens = u.cacheCreationTokens;
         }
       }
-    } else if (
-      ev.type === "message_delta" && ev.usage?.output_tokens !== undefined
-    ) {
-      usage.outputTokens = ev.usage.output_tokens; // cumulative final count
+    } else if (ev.type === "message_delta") {
+      if (ev.usage?.output_tokens !== undefined) {
+        usage.outputTokens = ev.usage.output_tokens; // cumulative final count
+      }
+      if (ev.delta?.stop_reason === "max_tokens") truncated = true;
     }
     if (ev.type === "content_block_start") {
       const cb = ev.content_block;
@@ -270,5 +281,10 @@ async function streamAnthropic(
     }
     return { name: t.name, args };
   });
-  return { content, toolCalls, usage };
+  return {
+    content,
+    toolCalls,
+    usage,
+    ...(truncated ? { truncated: true } : {}),
+  };
 }

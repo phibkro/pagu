@@ -77,7 +77,13 @@ export async function readInput(): Promise<PhaseInput> {
 
 /** Emit the entries this phase produced (parent appends them to the log) plus
  * the turn's token usage when the provider reported it (the parent accumulates
- * a session total + drives the HUD; usage carries no capability). */
-export function writeOutput(entries: Entry[], usage?: Usage): void {
-  console.log(JSON.stringify({ entries, usage }));
+ * a session total + drives the HUD; usage carries no capability) and whether the
+ * turn was cut off by the output-token cap (`truncated` — the parent warns the
+ * user the reply is incomplete). Both carry no capability. */
+export function writeOutput(
+  entries: Entry[],
+  usage?: Usage,
+  truncated?: boolean,
+): void {
+  console.log(JSON.stringify({ entries, usage, truncated }));
 }

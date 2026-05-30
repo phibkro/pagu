@@ -545,9 +545,19 @@ flowchart TD
     real Ollama tokens (`↑1.5k ↓48` in the HUD — credit-free; Anthropic cache
     fields populate identically once credited). **The #16 token ceiling now
     consumes this** (`Budget.maxTotalTokens` — see ROADMAP #16 slice 2).
-    _Deferred:_ surfacing `stop_reason=="max_tokens"` truncation; a per-call
-    cost (price × tokens) readout, which needs a per-model price table pagu does
-    not carry (the token count is the provider-agnostic ceiling).
+  - **Output-cap truncation surfacing (SHIPPED):** `ChatResponse.truncated`
+    flags a turn the model cut off at its output-token cap — OpenAI
+    `finish_reason=="length"`, Anthropic `stop_reason=="max_tokens"` (all four
+    paths: buffered + stream, each provider). Threaded the same way usage is:
+    the respond phase ORs it across the turn's `chat()` calls into
+    `writeOutput(entries, usage, truncated)`; `spawnPhase` returns it on
+    `PhaseResult`; `injectRespond` surfaces it as a side-effect — a one-line
+    `ctx.ui.show` warning ("reply cut off at the output-token limit") that every
+    frontend renders, rather than letting a truncated answer pass as complete.
+    Same shape as usage, so the Responder contract stays `Entry[]`. _Deferred:_
+    a per-call cost (price × tokens) readout, which needs a per-model price
+    table pagu does not carry (the token count is the provider-agnostic
+    ceiling).
 - **Harness:** our own minimal loop + phase FSM, written from scratch — inspired
   by Pi (loop shape, tool-call parsing), not forked. Smaller TCB is the point,
   and from-scratch bakes in the no-exec/phase model from line one. `pi-ai` kept

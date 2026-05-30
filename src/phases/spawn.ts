@@ -6,10 +6,12 @@ import type { Usage } from "../providers/chat.ts";
 import { parseChunk, type StreamChunk } from "./stream.ts";
 
 /** What a respond phase returns: its auditable entries + the turn's token
- * usage (when the provider reported it). */
+ * usage (when the provider reported it) + whether the turn was cut off by the
+ * output-token cap (the reply is incomplete). */
 export interface PhaseResult {
   entries: Entry[];
   usage?: Usage;
+  truncated?: boolean;
 }
 
 /**
@@ -93,7 +95,11 @@ export async function spawnPhase(opts: {
       throw new Error(`phase ${opts.entry} exited ${code}: ${stderrText}`);
     }
     const parsed = JSON.parse(stdoutText) as PhaseResult;
-    return { entries: parsed.entries, usage: parsed.usage };
+    return {
+      entries: parsed.entries,
+      usage: parsed.usage,
+      truncated: parsed.truncated,
+    };
   } finally {
     opts.signal?.removeEventListener("abort", onAbort);
   }

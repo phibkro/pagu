@@ -105,7 +105,7 @@ function phaseInput(ctx: AgentContext) {
  */
 function injectRespond(ctx: AgentContext, signal?: AbortSignal): void {
   ctx.respond = async () => {
-    const { entries, usage } = await spawnPhase({
+    const { entries, usage, truncated } = await spawnPhase({
       entry: join(ctx.phaseDir, "respond.ts"),
       flags: respondFlags(ctx.providerHost, ctx.readPaths),
       input: phaseInput(ctx),
@@ -119,6 +119,17 @@ function injectRespond(ctx: AgentContext, signal?: AbortSignal): void {
     // contract stays Entry[] — the cage fix-loop caller is unaffected (and its
     // fix-round tokens are counted too).
     if (usage) ctx.recordUsage(usage);
+    // The model hit its output-token cap (`max_tokens`): the reply is cut off,
+    // not finished. Warn the user (every frontend's `show` renders it) rather
+    // than letting a truncated answer pass as complete. Same side-effect shape
+    // as usage — the Responder contract stays Entry[]. Raising --max-tokens or
+    // asking the model to continue is the user's call.
+    if (truncated) {
+      ctx.ui.show(
+        "⚠ reply cut off at the output-token limit (incomplete) — " +
+          "raise --max-tokens or ask it to continue",
+      );
+    }
     return entries;
   };
 }

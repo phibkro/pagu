@@ -12,10 +12,10 @@ Deno.test("spawnPhase: demuxes stderr frames to onStream; non-frames are diagnos
        Deno.stderr.writeSync(e.encode('{"channel":"reasoning","text":"hmm"}\\n'));
        Deno.stderr.writeSync(e.encode('not a frame\\n'));
        Deno.stderr.writeSync(e.encode('{"channel":"content","text":"hi"}\\n'));
-       console.log(JSON.stringify({ entries: [], usage: { inputTokens: 7, outputTokens: 3 } }));`,
+       console.log(JSON.stringify({ entries: [], usage: { inputTokens: 7, outputTokens: 3 }, truncated: true }));`,
     );
     const chunks: StreamChunk[] = [];
-    const { entries, usage } = await spawnPhase({
+    const { entries, usage, truncated } = await spawnPhase({
       entry,
       flags: [],
       input: {} as never,
@@ -23,6 +23,7 @@ Deno.test("spawnPhase: demuxes stderr frames to onStream; non-frames are diagnos
     });
     assertEquals(entries, []);
     assertEquals(usage, { inputTokens: 7, outputTokens: 3 }); // round-trips stdout
+    assertEquals(truncated, true); // the output-token-cap flag round-trips too
     assertEquals(chunks, [
       { channel: "reasoning", text: "hmm" },
       { channel: "content", text: "hi" }, // the "not a frame" line is skipped

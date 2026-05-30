@@ -246,6 +246,55 @@ Deno.test("openAI wire: role:tool context (observations/results) is sent as role
   }
 });
 
+Deno.test("openai: finish_reason 'length' sets truncated; absent otherwise", async () => {
+  let cut = true;
+  const server = Deno.serve({ port: 0, onListen() {} }, () => {
+    return Response.json({
+      choices: [{
+        message: { role: "assistant", content: "partial" },
+        finish_reason: cut ? "length" : "stop",
+      }],
+    });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const cfg = { baseURL: `http://localhost:${port}/v1`, model: "m" };
+    const r = await chat(cfg, [{ role: "user", content: "hi" }]);
+    assertEquals(r.truncated, true); // hit the output-token cap
+    cut = false;
+    const r2 = await chat(cfg, [{ role: "user", content: "hi" }]);
+    assertEquals(r2.truncated, undefined); // normal stop → no flag
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("openai streaming: finish_reason 'length' in a delta sets truncated", async () => {
+  const frames = [
+    `data: {"choices":[{"delta":{"content":"Hi"}}]}\n`,
+    `data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n`,
+    `data: [DONE]\n`,
+  ];
+  const server = Deno.serve({ port: 0, onListen() {} }, () => {
+    return new Response(frames.join(""), {
+      headers: { "content-type": "text/event-stream" },
+    });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const r = await chat(
+      { baseURL: `http://localhost:${port}/v1`, model: "m" },
+      [{ role: "user", content: "hi" }],
+      [],
+      () => {}, // onToken → streaming
+    );
+    assertEquals(r.content, "Hi");
+    assertEquals(r.truncated, true);
+  } finally {
+    await server.shutdown();
+  }
+});
+
 Deno.test("no key -> no Authorization header; tolerates no tool calls", async () => {
   let hadAuth = true;
   const server = Deno.serve({ port: 0, onListen() {} }, (req) => {

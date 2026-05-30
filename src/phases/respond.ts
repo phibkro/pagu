@@ -68,6 +68,9 @@ const out: Entry[] = [];
 // several). Reported to the parent via writeOutput; undefined if no provider
 // reported usage.
 let turnUsage: Usage | undefined;
+// True if any chat() call this turn was cut off by the output-token cap — the
+// reply is incomplete; the orchestrator warns the user (writeOutput carries it).
+let turnTruncated = false;
 function addUsage(u: Usage | undefined): void {
   if (!u) return;
   turnUsage ??= { inputTokens: 0, outputTokens: 0 };
@@ -129,7 +132,7 @@ try {
   }
   throw e; // genuine bug — let it surface with its stack
 }
-writeOutput(out, turnUsage);
+writeOutput(out, turnUsage, turnTruncated);
 
 async function converse(): Promise<void> {
   for (let i = 0; i <= MAX_READS; i++) {
@@ -141,6 +144,7 @@ async function converse(): Promise<void> {
       onReasoning,
     );
     addUsage(res.usage);
+    if (res.truncated) turnTruncated = true;
 
     // Find the first action tool call (priority order: write > skill > command).
     const match = capData

@@ -46,6 +46,12 @@ export interface ChatResponse {
   toolCalls: ToolCall[];
   /** Token usage for this call, when the provider reports it. */
   usage?: Usage;
+  /** True when the model was cut off by the output-token cap (`max_tokens`):
+   * OpenAI `finish_reason === "length"`, Anthropic `stop_reason === "max_tokens"`.
+   * Lets the orchestrator warn the user that the reply is incomplete rather than
+   * present a truncated answer as if it were finished. Absent (not `false`) when
+   * the provider reported a normal stop or none at all. */
+  truncated?: boolean;
 }
 
 export interface ProviderConfig {
@@ -74,6 +80,8 @@ interface OpenAIChatResponse {
       // Chat Completions returns tool-call arguments as a JSON *string*.
       tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
     };
+    // "length" → cut off by max output tokens; "stop"/"tool_calls"/… → normal.
+    finish_reason?: string | null;
   }>;
   usage?: OpenAIUsage;
 }
@@ -232,7 +240,8 @@ async function chatOpenAI(
 }
 
 function parseBuffered(data: OpenAIChatResponse): ChatResponse {
-  const msg = data.choices?.[0]?.message ?? {};
+  const choice = data.choices?.[0] ?? {};
+  const msg = choice.message ?? {};
   // Strip <think> from buffered content (reasoning dropped — no live sink).
   const splitter = makeThinkSplitter();
   const seg = splitter.feed(msg.content ?? "");
@@ -247,6 +256,7 @@ function parseBuffered(data: OpenAIChatResponse): ChatResponse {
     content: seg.content + f.content,
     toolCalls,
     usage: mapOpenAIUsage(data.usage),
+    ...(choice.finish_reason === "length" ? { truncated: true } : {}),
   };
 }
 
@@ -257,6 +267,8 @@ interface StreamChoice {
       { index?: number; function?: { name?: string; arguments?: string } }
     >;
   };
+  // Present on the final choice chunk; "length" = cut off by max output tokens.
+  finish_reason?: string | null;
 }
 
 /**
@@ -271,6 +283,7 @@ async function parseStream(
 ): Promise<ChatResponse> {
   let content = "";
   let usage: Usage | undefined;
+  let truncated = false;
   const calls = new Map<number, { name: string; args: string }>();
   // Split <think> reasoning out of the content stream (live, ephemeral): it
   // streams via onReasoning and never enters `content` (the persisted answer).
@@ -301,6 +314,7 @@ async function parseStream(
     }
     if (obj.usage) usage = mapOpenAIUsage(obj.usage); // final chunk
     const choice = obj.choices?.[0] ?? {};
+    if (choice.finish_reason === "length") truncated = true;
     const delta = choice.delta;
     if (!delta) continue;
     if (typeof delta.content === "string" && delta.content) {
@@ -315,5 +329,10 @@ async function parseStream(
     }
   }
   route(think.flush()); // surface any buffered partial-tag text
-  return { content, toolCalls: toToolCalls([...calls.values()]), usage };
+  return {
+    content,
+    toolCalls: toToolCalls([...calls.values()]),
+    usage,
+    ...(truncated ? { truncated: true } : {}),
+  };
 }
