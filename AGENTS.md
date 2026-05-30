@@ -307,6 +307,11 @@ Configuration deep module (`buildContext` is the public interface):
   R=$(mktemp -d -p "$HOME"); (cd "$R" && git init -q && for f in a b c; do echo x>$f.txt; done && git add -A && git -c user.email=t@t -c user.name=t commit -qm i)
   cd "$R" && pagu 'count the .txt files and write the number to count.txt' --repo </dev/null
   ```
+  **Trap:** the installed `pagu` binary reflects committed `main`, **not your
+  working tree** — using it to "verify" an uncommitted change silently tests the
+  old code. To live-verify uncommitted work, run the entrypoint from the repo:
+  `deno run --allow-run --allow-read --allow-write --allow-env <repo>/src/frontends/cli.ts '<task>' --repo </dev/null`
+  (deno discovers `deno.json` from the entrypoint's dir).
 - The **cage self-test** is the product's own feedback loop: a proposal's bugs
   feed back to the model (bounded) before a human sees it.
 - **Test the pure core by law; test the effectful surface against the real
