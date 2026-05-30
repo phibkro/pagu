@@ -125,3 +125,15 @@ human-readable digest. Extracted from `ROADMAP.md` (2026-05-30).
   TCB). Deferred: config-driven pluggability (where the law gets type-enforced)
   and generalizing to the `skills`/`tasks` executors. See
   `docs/specs/2026-05-28-composable-handler-pipeline-design.md`.
+- **Per-project `.pagu/config.json`** (`src/config/project-config.ts`, wired in
+  `src/config/setup.ts`) — an auto-loaded repo base config, folded after global
+  `config.json` and before the opt-in bundles + flags. Because it loads just by
+  opening the repo it is untrusted input (#3): a pure `sanitizeProjectLayer`
+  runs before the fold (an **allowlist**, default-deny): outside consented repo
+  mode only `model`/`maxTokens`/`hide` survive; egress (`provider`/`baseURL`/…),
+  grants (`allow`/`write`/`allowedTasks`), and concealment-weakening
+  (`reveal`/`hideSecrets`/…) are gated; `handlers` (code paths) always stripped.
+  Keystone law: **a project config can't redirect egress, self-grant, weaken
+  concealment, or load code** (`[law: sanitize project layer]`, property-tested:
+  `untrusted ⇒ only UNTRUSTED_SAFE`). See
+  `docs/decisions/0003-per-project-config.md`.

@@ -334,6 +334,114 @@ Deno.test("ctx.fetchModels: net-scoped subprocess fetches + caches; orchestrator
   }
 });
 
+// --- ADR-0003: per-project .pagu/config.json folds in, gated by repo mode ---
+
+/** Write a `.pagu/config.json` in `dir` with the given object. */
+async function writeProjectConfig(
+  dir: string,
+  cfg: Record<string, unknown>,
+): Promise<void> {
+  await Deno.mkdir(resolve(dir, ".pagu"), { recursive: true });
+  await Deno.writeTextFile(
+    resolve(dir, ".pagu", "config.json"),
+    JSON.stringify(cfg),
+  );
+}
+
+Deno.test("project config: a non-security key (model) applies WITHOUT repo mode", async () => {
+  // WHY: the useful common case — a repo pins its model just by opening it. No
+  // repo-mode consent needed, because model is not a permission grant.
+  const dir = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await writeProjectConfig(dir, {
+      provider: "ollama",
+      model: "pinned-model",
+    });
+    const opts = await parseArgs(DEFAULTS, []); // no --repo
+    opts.cwd = dir; // a non-git dir → repo mode off
+    const ctx = await buildContext(opts, "", noopUI, noApprove);
+    assertEquals(ctx.repo, undefined); // repo mode off
+    assertEquals(ctx.provider.model, "pinned-model"); // still applied
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("project config: an `allow` grant is STRIPPED without repo mode (#3)", async () => {
+  // The security constraint, end-to-end: a hostile repo's config cannot widen
+  // the read allowlist just by being opened. Without repo mode the grant never
+  // reaches the envelope.
+  const dir = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await writeProjectConfig(dir, { allow: ["/etc"] });
+    const opts = await parseArgs(DEFAULTS, []);
+    opts.cwd = dir;
+    const ctx = await buildContext(opts, "", noopUI, noApprove);
+    assertEquals(ctx.readPaths.includes(resolve("/etc")), false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("project config: `allow`/`write` grants APPLY once repo mode is consented", async () => {
+  // Under consented repo mode the same grant flows into read + write scope —
+  // you already trust the repo, so per-project policy is honored.
+  const repo = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await new Deno.Command("git", { args: ["-C", repo, "init", "-q"] })
+      .output();
+    await writeProjectConfig(repo, {
+      allow: [resolve(repo, "extra")],
+      write: [resolve(repo, "out")],
+    });
+    const opts = await parseArgs(DEFAULTS, ["--repo"]);
+    opts.cwd = repo;
+    const ctx = await buildContext(opts, "", noopUI, noApprove);
+    assertEquals(ctx.repo, repo);
+    assertEquals(ctx.readPaths.includes(resolve(repo, "extra")), true);
+    const grantsWrite = ctx.envelope.allow.some(
+      (p) => p.flag === "write" && p.scope === resolve(repo, "out"),
+    );
+    assert(grantsWrite, "write grant from project config reached the envelope");
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("project config: `handlers` are NEVER loaded, even under repo mode", async () => {
+  // handlers are orchestrator CODE paths — loading code is not something
+  // repo-mode consents to. The path doesn't even exist; a leak would throw.
+  const repo = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await new Deno.Command("git", { args: ["-C", repo, "init", "-q"] })
+      .output();
+    await writeProjectConfig(repo, {
+      handlers: { "before-approve": [resolve(repo, "evil.ts")] },
+    });
+    const opts = await parseArgs(DEFAULTS, ["--repo"]);
+    opts.cwd = repo;
+    const ctx = await buildContext(opts, "", noopUI, noApprove);
+    assertEquals(ctx.activeHandlers, []); // never loaded
+  } finally {
+    await Deno.remove(repo, { recursive: true });
+  }
+});
+
+Deno.test("project config: a flag still wins over the project config (fold order)", async () => {
+  // defaults ⋄ global ⋄ project ⋄ bundles ⋄ FLAGS — the flag is the most
+  // immediate intent and folds last.
+  const dir = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    await writeProjectConfig(dir, { model: "project-model" });
+    const opts = await parseArgs(DEFAULTS, ["--model", "flag-model"]);
+    opts.cwd = dir;
+    const ctx = await buildContext(opts, "", noopUI, noApprove);
+    assertEquals(ctx.provider.model, "flag-model");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 // Regression: ACP passes the workspace root via opts.cwd (from session/new);
 // buildContext must detect the repo from THAT, not from the process cwd —
 // otherwise Zed (which launches pagu from an arbitrary cwd) gets no read access.

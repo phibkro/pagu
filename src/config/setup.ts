@@ -3,7 +3,13 @@ import { Command } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { fromFileUrl, resolve } from "@std/path";
 import type { Entry } from "../log/schema.ts";
-import { type ConfigLayer, DEFAULTS, type PaguConfig } from "./config.ts";
+import {
+  type ConfigLayer,
+  DEFAULTS,
+  mergeLayer,
+  type PaguConfig,
+} from "./config.ts";
+import { loadProjectConfig, sanitizeProjectLayer } from "./project-config.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
@@ -261,13 +267,15 @@ export async function loadCwdEnv(): Promise<void> {
 
 /**
  * Build an `AgentContext` programmatically from structured config — the public
- * SDK constructor (re-exported by `src/mod.ts`). **Hermetic:** unlike the CLI
- * path it reads no ambient state — no global `config.json`, no ambient
- * AGENTS.md, no cwd `.env` (those are the terminal frontends' job). The embedder
- * controls everything: config via `opts`, instructions via `opts.agents`, env
- * via their own process. Folds `opts` into a `ConfigLayer` over `DEFAULTS` and
- * delegates to `buildContext`, so behavior matches the CLI minus the ambient
- * reads.
+ * SDK constructor (re-exported by `src/mod.ts`). **Hermetic re: _ambient_
+ * state:** unlike the CLI path it reads no global `config.json`, no ambient
+ * AGENTS.md, no cwd `.env` (those are the terminal frontends' job). It DOES load
+ * **project-scoped** config from `cwd`/`projectBase` — `.pagu/config.json`
+ * (ADR-0003), roles, and profiles — the same as `buildContext`; the project
+ * config is `sanitizeProjectLayer`'d, so its grants/egress keys apply only under
+ * the embedder's `repo` opt. The embedder controls the rest: config via `opts`,
+ * instructions via `opts.agents`, env via their own process. Folds `opts` into a
+ * `ConfigLayer` over `DEFAULTS` and delegates to `buildContext`.
  */
 export function createContext(opts: {
   provider?: string;
@@ -385,6 +393,19 @@ export async function buildContext(
     );
   }
 
+  // Per-project base config (ADR-0003): `.pagu/config.json` is auto-loaded just
+  // by opening the repo, so it is UNTRUSTED input (#3). sanitizeProjectLayer
+  // strips its permission grants unless repo mode is consented and ALWAYS strips
+  // `handlers` (orchestrator code paths) — BEFORE the fold, so the layer cannot
+  // carry untrusted grants by construction. Folded after global config.json and
+  // before the opt-in bundles + flags:
+  //   defaults ⋄ global config.json ⋄ project config.json ⋄ profile/roles/skills ⋄ flags.
+  const projectLayer = sanitizeProjectLayer(
+    await loadProjectConfig(projectBase),
+    repoMode,
+  );
+  const baseLayer = mergeLayer(opts.base, projectLayer);
+
   // The live, role-dependent run-state — provider, envelope, concealment,
   // prose, capabilities, command entries + the runtime mutators — extracted
   // into a constructible value (src/config/run-state.ts). It owns profile
@@ -395,7 +416,7 @@ export async function buildContext(
   // flags. The initial fold (incl. the profile) is fail-loud on a bad name.
   const rs = await makeRunState({
     opts: {
-      base: opts.base,
+      base: baseLayer,
       cli: opts.cli,
       roles: opts.roles,
       skills: opts.skills,

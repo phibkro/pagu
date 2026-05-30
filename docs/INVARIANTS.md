@@ -26,27 +26,28 @@ _enforcement tier_ of each claim and nothing else. One home per topic.
 Strongest rung each claim has reached (`[law]` > `[structural]` > `[prose]`);
 "promote?" marks a `[prose]` claim worth lifting to a check. Details below.
 
-| Claim                                                          | Tier                                        |
-| -------------------------------------------------------------- | ------------------------------------------- |
-| **Security**                                                   |                                             |
-| #1 No agent exec path                                          | `[structural]`                              |
-| #2 Boundary = environment + permissions, not perms alone       | `[structural]`                              |
-| #3 Human gate is the capability ladder's backstop              | `[structural]` + `[prose]`                  |
-| #4 Command policy is deny-by-default                           | `[law: recognize]` + `[structural]`         |
-| #5 Sandbox tiers degrade without regression                    | `[prose]` — promote?                        |
-| **Compositional (the three axes)**                             |                                             |
-| Permission: composition only holds-or-tightens, never widens   | `[law: deny wins]`                          |
-| Context: untrusted context may inform, never instruct          | `[law: untrusted spans fenced]` + `[prose]` |
-| Policy: authority is attested per-invocation, never propagated | `[structural]` + `[law: recognize]`         |
-| **State / log**                                                |                                             |
-| The log round-trips losslessly                                 | `[law: log round-trips]`                    |
-| Event schema is public API — no incompatible change on v1      | `[structural]` + `[law]`                    |
-| The conversation log is single-writer authoritative            | `[prose]`                                   |
-| Always replayable; every approved run is within its envelope   | `[law]` (replay) + `[prose]` (envelope)     |
-| Duration does not widen the envelope                           | `[structural]`                              |
-| **Handlers / orchestration**                                   |                                             |
-| Handlers tighten, never widen                                  | `[structural]`                              |
-| The loop combinators satisfy their algebraic laws              | `[law: fanOut]`                             |
+| Claim                                                                                                     | Tier                                        |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| **Security**                                                                                              |                                             |
+| #1 No agent exec path                                                                                     | `[structural]`                              |
+| #2 Boundary = environment + permissions, not perms alone                                                  | `[structural]`                              |
+| #3 Human gate is the capability ladder's backstop                                                         | `[structural]` + `[prose]`                  |
+| #4 Command policy is deny-by-default                                                                      | `[law: recognize]` + `[structural]`         |
+| #5 Sandbox tiers degrade without regression                                                               | `[prose]` — promote?                        |
+| **Compositional (the three axes)**                                                                        |                                             |
+| Permission: composition only holds-or-tightens, never widens                                              | `[law: deny wins]`                          |
+| Context: untrusted context may inform, never instruct                                                     | `[law: untrusted spans fenced]` + `[prose]` |
+| Policy: authority is attested per-invocation, never propagated                                            | `[structural]` + `[law: recognize]`         |
+| Untrusted project `.pagu/config.json` can't redirect egress, self-grant, weaken concealment, or load code | `[law: sanitize project layer]`             |
+| **State / log**                                                                                           |                                             |
+| The log round-trips losslessly                                                                            | `[law: log round-trips]`                    |
+| Event schema is public API — no incompatible change on v1                                                 | `[structural]` + `[law]`                    |
+| The conversation log is single-writer authoritative                                                       | `[prose]`                                   |
+| Always replayable; every approved run is within its envelope                                              | `[law]` (replay) + `[prose]` (envelope)     |
+| Duration does not widen the envelope                                                                      | `[structural]`                              |
+| **Handlers / orchestration**                                                                              |                                             |
+| Handlers tighten, never widen                                                                             | `[structural]`                              |
+| The loop combinators satisfy their algebraic laws                                                         | `[law: fanOut]`                             |
 
 ## The tiers
 
@@ -172,6 +173,29 @@ allow-monotone, transitive; `src/permissions/` tests, started 2026-05-28). The
 strongest-defended claim in the system. The type-level half
 (`PermissionSet`/`Envelope` readonly, `ReadonlyExec`) is additionally
 `[structural]` via `deno check`.
+
+### A project config can't redirect egress, self-grant, weaken concealment, or load code (ADR-0003)
+
+A project `.pagu/config.json` is auto-loaded just by opening the repo, so it is
+untrusted input (#3). `sanitizeProjectLayer(layer, repoMode)` runs at load,
+_before_ the fold, as an **allowlist** (default-deny): outside consented repo
+mode it keeps **only** `UNTRUSTED_SAFE` = {`model`, `maxTokens`, `hide`} (which
+can't redirect egress, widen access, or weaken concealment); egress
+(`provider`/`baseURL`/`apiKeyEnv`/`format`), grants (`allow`/`write`/
+`allowedTasks`), advisor egress, and concealment-_weakening_ (`reveal`/
+`hideSecrets`/`hideGitignored`) apply only under consented repo mode; `handlers`
+(orchestrator code paths) are **always** stripped. So the layer entering the
+fold cannot redirect egress / widen the envelope / weaken concealment / inject
+code outside consented repo mode, _by construction_.
+
+`[law: sanitize project layer]` — property-tested
+(`src/config/project-config.test.ts`: `untrusted ⇒ only UNTRUSTED_SAFE` over
+arbitrary layers, and `handlers` stripped in both modes). The strongest rung —
+egress/grant/concealment keys are unreachable in the folded layer unless
+repo-mode was consented, which is the same "I trust this repo" signal that
+already gates auto-approve. (Why a law and not just `[structural]`: the
+stripping is a pure function the fold depends on, so a witness that it never
+leaks a grant is cheap and exact.)
 
 ### Context axis — untrusted context may inform, never instruct
 

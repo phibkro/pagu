@@ -198,15 +198,20 @@ is a **lawful merge**.
 - **Config merge law** (the frontmatter half):
   - **scalars** (provider, model, …) → last layer wins (layer-order precedence).
   - **the canonical fold order** (what "last" means concretely, low→high):
-    `defaults ⋄ config.json ⋄ profile-refs ⋄ explicit-refs ⋄ profile-inline ⋄
-    CLI flags`.
-    Bundles a `--profile` _references_ (roles/skills) fold first, then bundles
-    named explicitly on the CLI, then the **profile's own inline overrides** (a
-    profile's inline scalar is its _specialization_ of the bundles it composes,
-    so it wins over them — **inline-over-refs**), and CLI flags win over
-    everything (the most immediate intent). This ordering matters only for
-    scalars; grants union regardless of order (below). A runtime `/profile` swap
-    re-folds the same order with the new profile's refs+inline.
+    `defaults ⋄ global config.json ⋄ project .pagu/config.json ⋄ profile-refs ⋄
+    explicit-refs ⋄ profile-inline ⋄ CLI flags`.
+    The project `.pagu/config.json` (ADR-0003) is auto-loaded just by opening
+    the repo — an _untrusted_ base layer, so it is passed through
+    `sanitizeProjectLayer` _before_ the fold (its permission grants apply only
+    under consented repo mode; its `handlers` never; see `INVARIANTS.md` → A
+    project config can't self-grant or load code). Bundles a `--profile`
+    _references_ (roles/skills) fold first, then bundles named explicitly on the
+    CLI, then the **profile's own inline overrides** (a profile's inline scalar
+    is its _specialization_ of the bundles it composes, so it wins over them —
+    **inline-over-refs**), and CLI flags win over everything (the most immediate
+    intent). This ordering matters only for scalars; grants union regardless of
+    order (below). A runtime `/profile` swap re-folds the same order with the
+    new profile's refs+inline.
   - **grants** (`allow` reads, `write` dirs) → **union** (commutative; identity
     = ∅) — composing roles _stacks_ scope rather than clobbering it.
   - **permissions as a whole** → a **security lattice, not layer-order

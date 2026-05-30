@@ -50,9 +50,12 @@ The historical "what shipped" log moved to **[`CHANGELOG.md`](./CHANGELOG.md)**
 
 ## Roles — decided behavior (shipped; intended, surfaced — not bugs)
 
-- **Fold order:** defaults → global `config.json` → selected roles (in `--role`
-  order) → CLI flags (flags win last; roles are reusable middle layers). Prose:
-  base AGENTS/CLAUDE (global then project), then each role's body, concatenated.
+- **Fold order:** defaults → global `config.json` → project `.pagu/config.json`
+  (ADR-0003; sanitized allowlist — outside repo mode only `model`/`maxTokens`/
+  `hide`, egress/grants/concealment-weakening gated, `handlers` never) →
+  selected roles (in `--role` order) → CLI flags (flags win last; roles are
+  reusable middle layers). Prose: base AGENTS/CLAUDE (global then project), then
+  each role's body, concatenated.
 - **Merge law** (`mergeLayer`, a monoid): scalars last-write-wins; grants
   (`allow`/`write`) set-union (order-independent); deny-wins lattice when
   explicit denies arrive. See `docs/CONCEPTS.md`.
@@ -79,13 +82,6 @@ The historical "what shipped" log moved to **[`CHANGELOG.md`](./CHANGELOG.md)**
 - `[security]` **Windows OS isolation** (AppContainer / Job Objects).
 - `[config]` `[frontend]` **Permission modes** — named envelope bundles
   generalizing repo mode.
-- `[config]` `[security]` **Per-project `.pagu/config.json`** — auto-loaded repo
-  base config folded between global config and the opt-in bundles. **Designed,
-  TDD-ready** (`docs/decisions/0003-per-project-config.md`): non-security keys
-  always apply; `allow`/`write`/`allowedTasks` only under consented repo-mode;
-  `handlers` never; enforced by a structural `sanitizeProjectLayer` at load
-  (law: grants ⇒ repoMode). On ship, update the CONCEPTS fold order + an
-  INVARIANTS law.
 - `[security]` **A credential-injecting egress proxy** so net-granted scripts
   never see raw secrets.
 - `[frontend]` **ACP — remaining integration work.** v1 runs in editors but is
