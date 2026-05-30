@@ -10,20 +10,22 @@
 
 ## Concerns (how to navigate)
 
-The roadmap spans these concern areas. Items below are currently grouped by
-**status** (Shipped · Decided-behavior · Open · Idea backlog · Milestones); the
-concern tags here are the navigation layer until a per-concern re-sort lands
-(planned — Stage 2). Most items carry a `#N` tag matching the idea-backlog
-numbering.
+Items are grouped by **status** (Shipped · Decided-behavior · Open · Idea
+backlog · Milestones) and read as coherent `#N` design narratives. Because most
+items are **cross-cutting** (e.g. #15 spans harness + frontend + security), we
+navigate by **concern via inline tags** rather than a rigid per-concern re-sort:
+each forward item (Open + Idea backlog) carries one or more `` `[tag]` ``
+markers from the vocabulary below. Filter with e.g.
+`grep '\[security\]' ROADMAP.md`.
 
-| Concern                   | Scope                                                        | Representative items                                                                                                                   |
-| ------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Harness & core**        | the agent loop/FSM, capability ladder, approval, multi-agent | loop substrate + `fanOut`/multi-agent (#1), standing approvals (#15), scheduled agents (#16), budgets/ceilings, the event stream (#14) |
-| **Security & sandboxing** | the runtime boundary beneath the Deno floor                  | macOS `sandbox-exec` verify, Landlock per-path read, Windows isolation, credential-injecting egress proxy, the VM tier (B)             |
-| **Frontend interfaces**   | how humans/editors drive pagu                                | CLI/TUI polish, ACP remaining work, `pagu serve` (HTTP write-back) follow-ons, permission modes, GUI/computer-use                      |
-| **Config & management**   | what the agent _is_ and _may do_, as composable bundles      | the management axes (#17: roles/skills/profiles/personalities), sessions, the command-architecture generalization                      |
-| **Vendor & ecosystem**    | model providers + interop with the Claude ecosystem          | provider features (streaming/caching/usage — mostly shipped), MCP, Claude Code config/skills import, model-feature follow-ons          |
-| **Quality, eval & DX**    | confidence + developer experience                            | the scored eval harness (sub-project C), CI lanes (`ci`/`ci:live`), CHANGELOG/git-cliff                                                |
+| Concern                   | Tag          | Scope                                                        |
+| ------------------------- | ------------ | ------------------------------------------------------------ |
+| **Harness & core**        | `[harness]`  | the agent loop/FSM, capability ladder, approval, multi-agent |
+| **Security & sandboxing** | `[security]` | the runtime boundary beneath the Deno floor                  |
+| **Frontend interfaces**   | `[frontend]` | how humans/editors drive pagu (CLI/TUI/ACP/serve)            |
+| **Config & management**   | `[config]`   | what the agent _is_ and _may do_, as composable bundles      |
+| **Vendor & ecosystem**    | `[vendor]`   | model providers + interop with the Claude ecosystem          |
+| **Quality, eval & DX**    | `[quality]`  | confidence + developer experience                            |
 
 **Milestones & vision** (not a concern — a closing section): the **v1 milestone
 definition** and the paradigm-level **North Star**.
@@ -165,31 +167,34 @@ definition** and the paradigm-level **North Star**.
 
 ## Open
 
-- **Verify the macOS `sandbox-exec` profile on a Mac** — implemented but not yet
-  exercised on real hardware (developed/tested on Linux).
-- **Arbitrary per-path read confinement + Landlock (Linux).** Tier 2 now masks
-  _gitignored_ paths (the secret-read gap, closed), but reads of granted repo
-  content stay broad at the OS layer; a Landlock backend would allow narrowing
-  reads to an arbitrary per-path allowlist beyond the gitignore set.
-- **Windows OS isolation** (AppContainer / Job Objects).
-- **Permission modes** — named envelope bundles generalizing repo mode.
-- **A credential-injecting egress proxy** so net-granted scripts never see raw
-  secrets.
-- **ACP — remaining integration work.** v1 runs in editors but is partial.
-  **Shipped** 2026-05-28: history replay on `session/load` (`historyUpdates` +
-  `loadSession`); config slash commands (`/model`/`/provider`/`/advisor`
-  advertised via `available_commands_update` + routed; `src/commands.ts`);
-  **tool-call surfacing** (`script`/`skill-invoke`/`command-invoke` →
-  `tool_call`, `result` → `tool_call_update`, live + replay, via one
-  `entryUpdate` mapper + the `UI.entries` hook; `src/frontends/acp.ts`).
-  Remaining:
+- `[security]` **Verify the macOS `sandbox-exec` profile on a Mac** —
+  implemented but not yet exercised on real hardware (developed/tested on
+  Linux).
+- `[security]` **Arbitrary per-path read confinement + Landlock (Linux).** Tier
+  2 now masks _gitignored_ paths (the secret-read gap, closed), but reads of
+  granted repo content stay broad at the OS layer; a Landlock backend would
+  allow narrowing reads to an arbitrary per-path allowlist beyond the gitignore
+  set.
+- `[security]` **Windows OS isolation** (AppContainer / Job Objects).
+- `[config]` `[frontend]` **Permission modes** — named envelope bundles
+  generalizing repo mode.
+- `[security]` **A credential-injecting egress proxy** so net-granted scripts
+  never see raw secrets.
+- `[frontend]` **ACP — remaining integration work.** v1 runs in editors but is
+  partial. **Shipped** 2026-05-28: history replay on `session/load`
+  (`historyUpdates` + `loadSession`); config slash commands
+  (`/model`/`/provider`/`/advisor` advertised via `available_commands_update` +
+  routed; `src/commands.ts`); **tool-call surfacing**
+  (`script`/`skill-invoke`/`command-invoke` → `tool_call`, `result` →
+  `tool_call_update`, live + replay, via one `entryUpdate` mapper + the
+  `UI.entries` hook; `src/frontends/acp.ts`). Remaining:
   - **`/roles` & `/skills` over ACP** — their no-args path is a TUI-only
     `selectFromList` picker; need a with-args-shared + ACP-text-listing split
     (the TUI keeps its picker). Likely folded into the command-architecture
     generalization (backlog).
-  - **Cooperative cancellation** (`session/cancel`) — currently a no-op; needs a
-    cancellable `runTask` (ties to the loop substrate — a cancel signal the loop
-    checks between turns).
+  - `[frontend]` `[harness]` **Cooperative cancellation** (`session/cancel`) —
+    currently a no-op; needs a cancellable `runTask` (ties to the loop substrate
+    — a cancel signal the loop checks between turns).
   - **Thinking** → `agent_thought_chunk` — **shipped 2026-05-29** for
     `<think>`-tag reasoning (local models): a typed live stream channel
     (`content`/`reasoning`/`marker` frames over the phase stderr side-channel)
@@ -201,7 +206,7 @@ definition** and the paradigm-level **North Star**.
     open: diff/terminal tool-call content.
   - Live-verify the slash-command **invocation format** Zed sends (literal
     `/name …` text is assumed; adjust routing if it sends bare names).
-- GUI / computer-use.
+- `[frontend]` GUI / computer-use.
 
 ## Idea backlog (speculative / paradigm-level)
 
@@ -221,23 +226,23 @@ in is fair game — remove what doesn't earn its keep. (Shipped already: config
 interop, roles, skills, command policy, ACP frontend — see the Shipped sections
 above.)
 
-1. **Composable agent loops — iterative review / multi-agent.** Substrate (v1)
-   **shipped** 2026-05-28 (`src/loop.ts`): the turn is a `Step<C>`, `runTask` is
-   `loop(turn)`. `fanOut` **shipped 2026-05-29** (`src/loop.ts`: eager-parallel
-   fold of the `Flow` monoid; race-freedom is a call-site responsibility via
-   read-only carriers like `ReadonlyExec`, _not_ a global immutable-carrier
-   rewrite; 6 laws property-tested with `pipeline` as the oracle). Remaining:
-   multi-agent _later_, the point where "independent actors" finally become
-   appropriate — and a first real `fanOut` consumer. **Author→critic→revise:
-   deferred** — it turned out to be an _inner_ loop (sibling to the cage
-   fix-round loop), not turn-level `andThen`, and its use case (sharpening
-   proposals on the advisor-on human-gate path) is too narrow to justify now.
-   `andThen` stays a deferred combinator until a genuine turn-level composition
-   needs it. Also queued: unifying the inner cage fix-round loop under a shared
-   inner-loop combinator (would gain a second instance if author→critic is ever
-   revived).
-2. **Composable handler pipeline — the proposal–handler model made explicit.**
-   Core (v1) **shipped** 2026-05-28 (`src/write/pipeline.ts`):
+1. `[harness]` **Composable agent loops — iterative review / multi-agent.**
+   Substrate (v1) **shipped** 2026-05-28 (`src/loop.ts`): the turn is a
+   `Step<C>`, `runTask` is `loop(turn)`. `fanOut` **shipped 2026-05-29**
+   (`src/loop.ts`: eager-parallel fold of the `Flow` monoid; race-freedom is a
+   call-site responsibility via read-only carriers like `ReadonlyExec`, _not_ a
+   global immutable-carrier rewrite; 6 laws property-tested with `pipeline` as
+   the oracle). Remaining: multi-agent _later_, the point where "independent
+   actors" finally become appropriate — and a first real `fanOut` consumer.
+   **Author→critic→revise: deferred** — it turned out to be an _inner_ loop
+   (sibling to the cage fix-round loop), not turn-level `andThen`, and its use
+   case (sharpening proposals on the advisor-on human-gate path) is too narrow
+   to justify now. `andThen` stays a deferred combinator until a genuine
+   turn-level composition needs it. Also queued: unifying the inner cage
+   fix-round loop under a shared inner-loop combinator (would gain a second
+   instance if author→critic is ever revived).
+2. `[harness]` **Composable handler pipeline — the proposal–handler model made
+   explicit.** Core (v1) **shipped** 2026-05-28 (`src/write/pipeline.ts`):
    `write/execute.ts` is `pipeline([cage, approve, run])` over `Step<Proposal>`;
    each stage a named, insertable handler; a **gate** halts. Implements
    `andThen`/`pipeline` in `src/loop.ts`. Remaining increments: **config-driven
@@ -250,7 +255,8 @@ above.)
    turn boundary ≈ the effect site, so boundary-level handlers likely suffice.
    Pluggability is also the home for plugins / extensibility (new providers
    behind `chat()`, new frontends behind `UI`/`Approver`).
-3. **Read-only-command auto-approve gate → command grammar. Shipped 2026-05-28**
+3. `[harness]` `[config]` **Read-only-command auto-approve gate → command
+   grammar. Shipped 2026-05-28**
    (`docs/specs/2026-05-28-command-grammar-design.md`; `tasks/grammar.ts` +
    `tasks/defaults.ts` + the `run_command` tool). Auto-approves curated
    read-only commands (`rg`/`git log`/`git diff`, `allow-read` + `allow-run`,
@@ -276,28 +282,29 @@ above.)
    guarantee, against deny-by-default + invariant #4. The human opts into
    trusting an inferred rule (like accepting an inferred type), keeping the gate
    the backstop (#3 ladder).
-4. **Command-architecture generalization (rule of three).** CLI (flags), TUI
-   (slash + arrow-key pickers), and ACP (slash + `availableCommands`) are three
-   presentations of the same operations. `src/commands.ts` (the `SlashCommand`
-   list + `runCommand`) is the value-level seed (declare-locally / aggregate-
-   centrally, see `docs/CONCEPTS.md`); the generalization is a **command core +
-   per-frontend presentation adapters**, folding in `/roles`/`/skills` (the
-   picker-vs-listing split) and the TUI-native vs generalized distinction.
-   Design as its own slice when a third real need pushes on it. Also the home
-   for **effect-performing commands** (vs today's pure config-mutation) — e.g.
-   `/model` querying the provider's list-models endpoint for settable names.
-   Safe re: #1 (human-initiated read to the already-trusted provider host), but
-   it's a category shift (the first command with a network effect, run in the
-   orchestrator) — model it as an effect/handler, don't bolt it on.
+4. `[frontend]` `[config]` **Command-architecture generalization (rule of
+   three).** CLI (flags), TUI (slash + arrow-key pickers), and ACP (slash +
+   `availableCommands`) are three presentations of the same operations.
+   `src/commands.ts` (the `SlashCommand` list + `runCommand`) is the value-level
+   seed (declare-locally / aggregate- centrally, see `docs/CONCEPTS.md`); the
+   generalization is a **command core + per-frontend presentation adapters**,
+   folding in `/roles`/`/skills` (the picker-vs-listing split) and the
+   TUI-native vs generalized distinction. Design as its own slice when a third
+   real need pushes on it. Also the home for **effect-performing commands** (vs
+   today's pure config-mutation) — e.g. `/model` querying the provider's
+   list-models endpoint for settable names. Safe re: #1 (human-initiated read to
+   the already-trusted provider host), but it's a category shift (the first
+   command with a network effect, run in the orchestrator) — model it as an
+   effect/handler, don't bolt it on.
 
-5. **Scoped-isolation sandbox tiers (the GrapheneOS model).** One principle —
-   _hide the mechanism from the actor; scope by construction_ — at two layers.
-   **Prompt layer: shipped 2026-05-28** (`src/phases/respond.ts`): the model is
-   told its _affordances_ ("you have a `write` tool that runs on the machine
-   with real effect"), not the cage ("you cannot run it yourself / a separate
-   sandboxed process / scratch dir") — the negative framing made small models
-   _under-claim_ ("I can't access the filesystem"). The model talks to a port
-   (its tools); it is unaware of the adapter (sandbox), exactly like a
+5. `[security]` **Scoped-isolation sandbox tiers (the GrapheneOS model).** One
+   principle — _hide the mechanism from the actor; scope by construction_ — at
+   two layers. **Prompt layer: shipped 2026-05-28** (`src/phases/respond.ts`):
+   the model is told its _affordances_ ("you have a `write` tool that runs on
+   the machine with real effect"), not the cage ("you cannot run it yourself / a
+   separate sandboxed process / scratch dir") — the negative framing made small
+   models _under-claim_ ("I can't access the filesystem"). The model talks to a
+   port (its tools); it is unaware of the adapter (sandbox), exactly like a
    GrapheneOS app that believes it has normal storage while the OS silently
    scopes what it sees. **Enforcement layer (backlog):** make the boundary a
    property of the _environment_, not a checklist of `--allow-*` flags — thread
@@ -319,12 +326,12 @@ above.)
    - **WASM (speculative).** Capability-scoped by construction — the strongest
      "only threaded-through resources exist" model, and a possible portable
      fallback; open question is running the Deno-TS runner under wasm.
-6. **A `Capability` port (discover / list / execute).** `skills`, `tasks`, and
-   `commands` share the **same shape**: _discover_ (infer available actions from
-   the env), _list_ (present them to the agent as a tool), _validate within a
-   ceiling_ (verbatim / policy / grammar), _execute_ → a `*-invoke` entry.
-   Vocabulary sharpened this session: **discover ≠ list ≠ execute** (three
-   phases, three locations).
+6. `[harness]` `[config]` **A `Capability` port (discover / list / execute).**
+   `skills`, `tasks`, and `commands` share the **same shape**: _discover_ (infer
+   available actions from the env), _list_ (present them to the agent as a
+   tool), _validate within a ceiling_ (verbatim / policy / grammar), _execute_ →
+   a `*-invoke` entry. Vocabulary sharpened this session: **discover ≠ list ≠
+   execute** (three phases, three locations).
    - **Execute half — shipped 2026-05-28** (`src/capability/index.ts`: shared
      `cageOnce`/`cageWithinCeiling`/`performRun`/`autoApprove`/`run`;
      `write/pipeline.ts`, `skills/execute.ts`, `tasks/execute.ts` all route
@@ -341,18 +348,18 @@ above.)
      `Proposal` carrier: 8 → 5 fields. Open item: named phase input seam
      (`respond.ts` still needs a one-line pairing per new capability until
      fields go generic).
-7. **Model-based / stateful property testing of the session+loop state
-   machine.** The property analog of e2e (`fc.commands`): generate random
+7. `[quality]` **Model-based / stateful property testing of the session+loop
+   state machine.** The property analog of e2e (`fc.commands`): generate random
    operation sequences (`new → prompt → fork → load → rename → prompt …`) and
    assert invariants after each step — e.g. **permissions never widen across a
    session**, **the log is always replayable**, **every approved run is within
    the envelope**. Worth it because the session surface is stateful and the
    interaction space is combinatorially large. (See `AGENTS.md` feedback loops +
    the tdd skill's test-level guidance.)
-8. **Test-type audit.** Revisit the existing suite and match each test to the
-   right level (example / property / integration / e2e) for what it verifies —
-   add property tests for the law-shaped pure cores that currently lean on
-   examples; keep effectful coverage on the real thing. Maintenance, not
+8. `[quality]` **Test-type audit.** Revisit the existing suite and match each
+   test to the right level (example / property / integration / e2e) for what it
+   verifies — add property tests for the law-shaped pure cores that currently
+   lean on examples; keep effectful coverage on the real thing. Maintenance, not
    paradigm — slot in opportunistically. **Started 2026-05-28:** property tests
    added for the **log codec** round-trip (`parseLog ∘ serializeLog = id`) and
    the **envelope** containment-lattice laws (reflexive / `all`-is-top /
@@ -370,53 +377,56 @@ above.)
      structural, not bugs: joined list elements (args/perms/ran-with) carry no
      newline/space and attr values (ids/source/program) no `"`/newline — those
      fields never hold such values by construction.
-9. **Approval intent line (UX).** Before presenting the raw script at the human
-   gate, auto-generate a one-sentence plain-English summary of what the script
-   will do — "reads all `.ts` files in the repo and writes a line count to
-   `summary.txt`." Distinct from the advisory reviewer (which flags _risk_);
-   this is about _comprehension_. A fast/small model call with a tight
+9. `[frontend]` **Approval intent line (UX).** Before presenting the raw script
+   at the human gate, auto-generate a one-sentence plain-English summary of what
+   the script will do — "reads all `.ts` files in the repo and writes a line
+   count to `summary.txt`." Distinct from the advisory reviewer (which flags
+   _risk_); this is about _comprehension_. A fast/small model call with a tight
    structured prompt produces it cheaply; display it above the script body so
    the reviewer can spot intent mismatch before reading code. Sits naturally as
    a handler inserted before `approve` in the pipeline —
    `pipeline([cage, narrate, approve,
    run])`.
-10. **Live runner output streaming.** `runScript` collects stdout/stderr and
-    returns them at exit. For long-running scripts (test suites, data
-    processing) the user sees nothing until completion. The respond phase
-    already streams model tokens via `UI.stream`; extend the same model to the
-    runner: `runScript` returns an `AsyncIterable<string>` side-channel
+10. `[frontend]` **Live runner output streaming.** `runScript` collects
+    stdout/stderr and returns them at exit. For long-running scripts (test
+    suites, data processing) the user sees nothing until completion. The respond
+    phase already streams model tokens via `UI.stream`; extend the same model to
+    the runner: `runScript` returns an `AsyncIterable<string>` side-channel
     alongside the batch `RunResult`. TUI and ACP frontends consume the stream;
     CLI falls back to batch. No security implications — the output is already
     gated by net-granted check before re-entering context.
-11. **Session fuzzy search.** `/open` lists sessions by name/timestamp; finding
-    a session from days ago requires reading through the list. Add a text filter
-    (substring or fuzzy) over session names + first user messages to the picker.
-    Metadata for filtering is available at session-list time (frontmatter `name`
+11. `[frontend]` `[config]` **Session fuzzy search.** `/open` lists sessions by
+    name/timestamp; finding a session from days ago requires reading through the
+    list. Add a text filter (substring or fuzzy) over session names + first user
+    messages to the picker. Metadata for filtering is available at session-list
+    time (frontmatter `name`
     - first `message` entry). Pure UX, no security implications, composable with
       the existing `selectFromList` picker.
-12. **Type-enforced gate-never-widen. Partial — shipped 2026-05-28.** Layer 1
-    landed: `PermissionSet = readonly Permission[]` + `Envelope.allow/deny`
-    readonly properties + `AgentContext.envelope` readonly — prevents any code
-    from pushing to the session envelope or replacing it at runtime; enforced by
-    `deno check`. Remaining: a `ReadonlyExec` view so the terminal handlers
-    (`autoApprove`, `run`) can't accidentally widen `exec.perms` either — needs
-    a typed narrowing operation at the gate/terminal boundary; deferred until
-    config-driven pluggability (#2) shapes the handler API.
-13. **`grammar.ts` enum value type. Shipped 2026-05-28.** `{ enum: string[] }`
-    value type added to `validateValue`; 4 tests cover accept/reject. Unlocks
-    `git log --format=<oneline|short|full>` and similar parameterized rules in
-    `tasks/defaults.ts`.
-14. **The subscribable event stream — one primitive, many subscribers.** The
-    remote-client work (ACP remote, a management/observability surface, alerting
-    webhooks) is not a pile of new frontends; structurally each is a
-    **subscriber to the canonical event log**, differing only in renderer and in
-    whether it can write back. The unifying observation: CLI/TUI/ACP/remote/ntfy
-    are all _the same primitive_ — a subscribable typed event stream off the one
-    log — with different presentation and write-back capability. Prerequisite is
-    the addressable/streamable event representation (see State model → the
-    markdown container assumes a single co-located reader): offset/event-id +
-    tail. Once that exists, **observability is a filtered projection of the log,
-    not a parallel pipeline** — per-turn cost, advisor flags, approvals, and
+12. `[security]` `[harness]` **Type-enforced gate-never-widen. Partial — shipped
+    2026-05-28.** Layer 1 landed: `PermissionSet = readonly Permission[]` +
+    `Envelope.allow/deny` readonly properties + `AgentContext.envelope` readonly
+    — prevents any code from pushing to the session envelope or replacing it at
+    runtime; enforced by `deno check`. Remaining: a `ReadonlyExec` view so the
+    terminal handlers (`autoApprove`, `run`) can't accidentally widen
+    `exec.perms` either — needs a typed narrowing operation at the gate/terminal
+    boundary; deferred until config-driven pluggability (#2) shapes the handler
+    API.
+13. `[config]` **`grammar.ts` enum value type. Shipped 2026-05-28.**
+    `{ enum: string[] }` value type added to `validateValue`; 4 tests cover
+    accept/reject. Unlocks `git log --format=<oneline|short|full>` and similar
+    parameterized rules in `tasks/defaults.ts`.
+14. `[harness]` `[frontend]` **The subscribable event stream — one primitive,
+    many subscribers.** The remote-client work (ACP remote, a
+    management/observability surface, alerting webhooks) is not a pile of new
+    frontends; structurally each is a **subscriber to the canonical event log**,
+    differing only in renderer and in whether it can write back. The unifying
+    observation: CLI/TUI/ACP/remote/ntfy are all _the same primitive_ — a
+    subscribable typed event stream off the one log — with different
+    presentation and write-back capability. Prerequisite is the
+    addressable/streamable event representation (see State model → the markdown
+    container assumes a single co-located reader): offset/event-id + tail. Once
+    that exists, **observability is a filtered projection of the log, not a
+    parallel pipeline** — per-turn cost, advisor flags, approvals, and
     `before-approve`/post-result hook firings are already events (or become so),
     so a trace timeline / cost dashboard / audit feed is a `fold` with a filter,
     nothing new in the core. Keep the conversation log **single-writer
@@ -445,21 +455,22 @@ above.)
       offsets are per-array-lifetime, not yet per-session (fine for the
       single-session case #15/#16 need; revisit when a live remote client tails
       across switches).
-15. **Approval as an event with a lifecycle (async-gate prerequisite).** With a
-    co-located TUI the gate is synchronous and the loop just `await`s a fast
-    human. A non-co-located approver (phone, on a train) makes approval latency
-    arbitrary — minutes to hours. The loop already tolerates this (the
-    `Approver` is just an async function), but the _product_ shape needs
-    "pending approval" as first-class: the proposed-script entry and the
-    decision entry are separate log events, possibly hours apart, with a state
-    (proposed → pending → granted/denied/**expired**). This makes two things
-    natural that are awkward today: **standing approvals with a TTL**
-    ("auto-approve scripts matching this envelope for the next hour") — which is
-    just a human-authored _temporary ceiling_, reusing the capability-ladder
-    machinery, not a new bypass — and a **staleness marker** ("proposed against
-    system state X, which may have moved") so a 3am-incident fix isn't blindly
-    applied at 9am. Bounds the residual-human -recogniser risk (Threat model) by
-    giving the rare gate better async framing rather than more frequent prompts.
+15. `[harness]` `[frontend]` `[security]` **Approval as an event with a
+    lifecycle (async-gate prerequisite).** With a co-located TUI the gate is
+    synchronous and the loop just `await`s a fast human. A non-co-located
+    approver (phone, on a train) makes approval latency arbitrary — minutes to
+    hours. The loop already tolerates this (the `Approver` is just an async
+    function), but the _product_ shape needs "pending approval" as first-class:
+    the proposed-script entry and the decision entry are separate log events,
+    possibly hours apart, with a state (proposed → pending →
+    granted/denied/**expired**). This makes two things natural that are awkward
+    today: **standing approvals with a TTL** ("auto-approve scripts matching
+    this envelope for the next hour") — which is just a human-authored
+    _temporary ceiling_, reusing the capability-ladder machinery, not a new
+    bypass — and a **staleness marker** ("proposed against system state X, which
+    may have moved") so a 3am-incident fix isn't blindly applied at 9am. Bounds
+    the residual-human -recogniser risk (Threat model) by giving the rare gate
+    better async framing rather than more frequent prompts.
     - **Design spec'd 2026-05-29**
       (`docs/specs/2026-05-29-async-approval-design.md`, brainstorm→grill). The
       deep slice — durable suspend/resume — resolves to: `Flow` stays binary
@@ -493,12 +504,12 @@ above.)
         scoped perms. ACP is already covered by `resumePending`. **Deferred:**
         the staleness marker, proactive/human-specified grants, remote
         `{grant}`, `GET /events`, TLS, multi-session serve.
-16. **Scheduled short-lived agents (cron for contained agents).** The
-    operationally useful shape of "long-running agent" is **not** an immortal
-    process — that accumulates two unbounded quantities (context drift +
-    liveness risk / wedged loops). It is a **recurring short session over the
-    durable log**: each firing is a fresh session off one profile (see the
-    config/state line — many sessions, one profile), fixed envelope, bounded
+16. `[harness]` `[frontend]` **Scheduled short-lived agents (cron for contained
+    agents).** The operationally useful shape of "long-running agent" is **not**
+    an immortal process — that accumulates two unbounded quantities (context
+    drift + liveness risk / wedged loops). It is a **recurring short session
+    over the durable log**: each firing is a fresh session off one profile (see
+    the config/state line — many sessions, one profile), fixed envelope, bounded
     budget, appends events, exits. Continuity that an immortal process would
     hold in accumulated context instead comes from the event store — the next
     run can `read` prior runs' events, _bounded and inspectable_, vs an opaque
@@ -566,31 +577,32 @@ above.)
     _cross-session_ hop, or a file poisoned today silently informs every nightly
     proposal thereafter (slow-motion injection). The invariant already covers it
     in principle; the cross-session read is exactly where it's easy to forget.
-17. **The agent-management model — three axes, bundles, profiles, sessions.**
-    The model is owned by `docs/CONCEPTS.md` (→ Axes and bundles); the _roadmap_
-    for realizing it lives here. Managing an agent collapses to three composable
-    axes — **personality** (context), **access** (permission), **policy**
-    (capability) — with **skill / role / project / MCP** as bundles (partial
-    assignments) and a **profile** as the full assignment one launches. Today's
-    pieces map on but aren't yet decoupled cleanly: roles bundle context+access;
-    "project" is welded to directory+context the way other tools do it. The work
-    is to **decouple personality as its own axis** (same access+tools, swappable
-    disposition), let any axis be swapped/saved independently, and make
-    `profile` the named composition. Composition is the existing fold (prose
-    monoid + permission lattice + policy union) at a higher grain — _no new
-    merge law_. **Constraint for whoever implements:** the fold (bundles →
-    resolved profile) must happen _above_ the hermetic `createContext`, which by
-    contract reads no ambient config — resolution produces a fully-folded
-    explicit assignment and passes it in; composition logic in the core would
-    break hermeticity. This is what a management _client_ (the remote surface,
-    #14) would present, so it and the event-stream work are natural companions.
-    **Refined + sliced (design, this session):** the three behavioral axes get a
-    fourth — **provider/model** as a separate _substrate_ axis (which engine
-    runs it, orthogonal to what the agent is/does). Bundle→axis mapping: a
-    **role** spans personality+access+policy; a **skill** = context+policy (its
-    prose/files + verbatim scripts); a **project** = access+context (cwd/repo is
-    both a permission scope and a context root); **MCP** = policy. **Slice A
-    (first) — `profile` as a named composition:** a markdown bundle
+17. `[config]` `[frontend]` **The agent-management model — three axes, bundles,
+    profiles, sessions.** The model is owned by `docs/CONCEPTS.md` (→ Axes and
+    bundles); the _roadmap_ for realizing it lives here. Managing an agent
+    collapses to three composable axes — **personality** (context), **access**
+    (permission), **policy** (capability) — with **skill / role / project /
+    MCP** as bundles (partial assignments) and a **profile** as the full
+    assignment one launches. Today's pieces map on but aren't yet decoupled
+    cleanly: roles bundle context+access; "project" is welded to
+    directory+context the way other tools do it. The work is to **decouple
+    personality as its own axis** (same access+tools, swappable disposition),
+    let any axis be swapped/saved independently, and make `profile` the named
+    composition. Composition is the existing fold (prose monoid + permission
+    lattice + policy union) at a higher grain — _no new merge law_. **Constraint
+    for whoever implements:** the fold (bundles → resolved profile) must happen
+    _above_ the hermetic `createContext`, which by contract reads no ambient
+    config — resolution produces a fully-folded explicit assignment and passes
+    it in; composition logic in the core would break hermeticity. This is what a
+    management _client_ (the remote surface, #14) would present, so it and the
+    event-stream work are natural companions. **Refined + sliced (design, this
+    session):** the three behavioral axes get a fourth — **provider/model** as a
+    separate _substrate_ axis (which engine runs it, orthogonal to what the
+    agent is/does). Bundle→axis mapping: a **role** spans
+    personality+access+policy; a **skill** = context+policy (its prose/files +
+    verbatim scripts); a **project** = access+context (cwd/repo is both a
+    permission scope and a context root); **MCP** = policy. **Slice A (first) —
+    `profile` as a named composition:** a markdown bundle
     `<scope>/profiles/<name>.md` (mirrors roles; project shadows global) whose
     frontmatter is a `ConfigLayer` + reference fields `roles`/`skills` +
     provider/model + inline access/policy overrides, with an optional prose
