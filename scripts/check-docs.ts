@@ -21,6 +21,7 @@
 const REPO = new URL("../", import.meta.url).pathname;
 const DOCS = [
   "CONTEXT.md",
+  "ROADMAP.md",
   "README.md",
   "AGENTS.md",
   "docs/CONCEPTS.md",

@@ -1,12 +1,13 @@
 # AGENTS.md — working in pagu
 
 Operating manual for an agent (or human) picking up this codebase cold.
-**Usage** lives in `README.md`. **`CONTEXT.md` is the single source of truth**
-for project design, rationale, threat model, roadmap, and the idea backlog — put
-durable project context there, not scattered across docs. **`docs/CONCEPTS.md`**
-is the mental-models reference (our nouns/verbs + why). This file is the _how we
-work here_ layer. (It's also the cross-tool AGENTS.md standard — and pagu reads
-it itself, so keep it concise.)
+**Usage** lives in `README.md`. **`CONTEXT.md` is the source of truth for
+design** — rationale, threat model, the system/security model — put durable
+design context there, not scattered across docs. The **forward plan, idea
+backlog, and milestones** live in **`ROADMAP.md`** (organized by concern).
+**`docs/CONCEPTS.md`** is the mental-models reference (our nouns/verbs + why).
+This file is the _how we work here_ layer. (It's also the cross-tool AGENTS.md
+standard — and pagu reads it itself, so keep it concise.)
 
 ## What pagu is (the goal)
 
@@ -54,7 +55,7 @@ the blast radius statically enumerable._
   inheritance/hierarchy** — hierarchy emerges from composing values, so prefer
   combinators over class trees; lean on category-theory / algebraic thinking for
   abstractions that are safe _and_ powerful (lawful, composable units). The
-  forward backlog in `CONTEXT.md` → Roadmap is designed through this lens.
+  forward backlog in `ROADMAP.md` is designed through this lens.
 - **Iterate-to-stable, then codify.** Ship the simplest correct thing, let the
   next constraint surface, verify live, commit small.
 - **Surface intended behavior.** Decisions encoded in code — precedence,
@@ -322,10 +323,11 @@ Configuration deep module (`buildContext` is the public interface):
 
 ## How to resume, in good spirit
 
-1. Read `CONTEXT.md` (the source of truth) + this file; skim `README.md`.
+1. Read `CONTEXT.md` (design source of truth) + `ROADMAP.md` (the plan) + this
+   file; skim `README.md`.
 2. Run the suite; do one live Ollama run to feel the loop.
-3. Pick the next slice from **`CONTEXT.md` → Roadmap**. Prefer the lowest-risk
-   thing that serves daily usefulness; don't over-build.
+3. Pick the next slice from **`ROADMAP.md`**. Prefer the lowest-risk thing that
+   serves daily usefulness; don't over-build.
 4. Respect the invariants above. New provider → behind `chat()`. New frontend →
    behind `Approver`/`UI`. New capability → never an agent exec path.
 5. Verify live, commit small, keep the TCB small. When unsure between patterns,

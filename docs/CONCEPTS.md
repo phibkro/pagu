@@ -130,8 +130,7 @@ today's `role`/`ConfigLayer` (the `allow`/`write`/`deny` envelope);
 bundle that carries personality+access(+policy) together — the axes are the
 decomposition of it, not a replacement noun. So when this doc says "access" and
 the codebase says "role", they are the same thing seen at different grain; the
-decoupling (#17 in `CONTEXT.md` → Roadmap) is what would make them separate
-nouns in code.
+decoupling (#17 in `ROADMAP.md`) is what would make them separate nouns in code.
 
 Two consequences worth internalising. First, **a project is not a primitive** —
 it dissolves into an access contribution (and maybe a default
@@ -143,8 +142,7 @@ temptation will always be to add a primitive** — resist it. A new concept earn
 axis status only if it speaks to exactly one concern; otherwise it's a bundle (a
 composition of the three). Keeping the axis count at three _is_ the conceptual
 integrity. (Roadmap status of personality-as-decoupled-axis and
-profile-as-composition lives in `CONTEXT.md` → Roadmap; this file owns only the
-model.)
+profile-as-composition lives in `ROADMAP.md`; this file owns only the model.)
 
 **Session is not on this list, by design.** Axes and bundles are _config_ — the
 static description of an agent. A **session** is _state_ — a running instance of
@@ -391,7 +389,7 @@ that can halt. Still value-level — config-driven pluggability (the point where
 the gate-never-widen law gets type-enforced) and generalizing to the
 `skills`/`tasks` executors are the next increments; algebraic effect handlers
 (operation-granularity interception) are the lawful spine underneath, reached
-for only if a real need surfaces. (See `CONTEXT.md` → Roadmap.)
+for only if a real need surfaces. (See `ROADMAP.md`.)
 
 **The static sibling — declare locally, aggregate centrally.** Where the handler
 pipeline _interprets_ contributions, a plain **list of declarations consumed by

@@ -6,8 +6,9 @@ auditable conversation log; you approve it; a separate sandboxed process runs
 it. Named for _Paguroidea_ (hermit crabs): soft and untrusted inside, operating
 only through a hard, borrowed, disposable shell.
 
-See [`CONTEXT.md`](./CONTEXT.md) for the full rationale, threat model, and
-roadmap (the project's single source of truth).
+See [`CONTEXT.md`](./CONTEXT.md) for the rationale, threat model, and design
+(the source of truth for _design_), and [`ROADMAP.md`](./ROADMAP.md) for the
+forward plan, idea backlog, and milestones (organized by concern).
 
 ## How it works
 
@@ -399,6 +400,6 @@ permissions inferred and cached on first run, stale on source-file change);
 config); **advisory reviewer** (`--advisor` / `/advisor`, fails open);
 AGENTS.md + config; `pagu --help` and shell completions.
 
-Deferred (see `CONTEXT.md`): OS-layer read isolation (writes + network are done;
+Deferred (see `ROADMAP.md`): OS-layer read isolation (writes + network are done;
 reads still rely on the Deno floor), Landlock, `.gitignore` read-protection, ACP
 frontend.
