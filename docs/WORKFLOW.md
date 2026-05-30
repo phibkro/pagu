@@ -97,11 +97,42 @@ prose  →  comment  →  test  →  type / lint / CI rule
 | Standup                               | the `wrap-session` handoff (a standup to the future)    | ◐ only this                          |
 | Sprints · estimation · tickets · RACI | —                                                       | ✗ coordinate persistent humans       |
 
+## The dogfood: test the SDLC by running it (and it reviews the _design_)
+
+The truest test of this lifecycle is to **spawn a fresh agent into an isolated
+worktree with only a task + the repo**, have it onboard cold and ship the
+feature, and keep a **friction log** of everything unclear. Each run's friction
+feeds back into the docs, so the next cold agent inherits the fix — an
+externalized, compounding version of "the team gets better at onboarding."
+
+Measured over four runs (2026-05-30), orientation fell **~15 → ~10 → ~5 → ~5
+min** and friction strictly decreased as fixes landed — evidence the loop
+compounds, not just exists.
+
+The non-obvious finding: a cold-agent dogfood is **not only an onboarding/docs
+test — it is a _design_ review.** Two distinct things it surfaces:
+
+- **Docs gaps** (the obvious one): stale paths, missing definitions, the
+  installed-binary-vs-worktree trap — each fixed and re-tested by the next run.
+- **Design flaws** (the deep one): handing an agent a _recorded design_ (an ADR)
+  to **implement** makes the design _executable_, and executable design exposes
+  holes that prose review — even a careful grill — misses. The proof: the
+  per-project-config dogfood faithfully implemented ADR-0003, and reviewing that
+  implementation revealed the ADR had mis-classified `baseURL` (the egress
+  destination) as "non-security" — a real exfil hole that the grill _and_ the
+  reviewer had both missed. Making it run is what made the flaw visible.
+
+So the dogfood doubles as the **independent-context review** the Definition of
+Done calls for (a different context can't share the author's blind spots) — and
+applies it at the _design_ level, not just the code. Reach for it on
+security/capability-path work especially. (See `docs/decisions/0001` for the
+governing model.)
+
 ## The throughline
 
 **pagu's security model and its development-process model are the same idea** —
 least privilege, bounded blast radius, claims bound to evidence, transparency by
 construction. What makes a _compromised model_ safe is what makes an _amnesiac
-teammate_ predictable. (Proven, not asserted: a fresh agent onboarded cold off
-these docs and shipped the #16 token ceiling correctly — the loop above, walked
-by a literal new teammate.)
+teammate_ predictable. (Proven, not asserted: four fresh agents onboarded cold
+off these docs and shipped real features — including one whose ADR the dogfood
+caught a security flaw in. The loop above, walked by literal new teammates.)

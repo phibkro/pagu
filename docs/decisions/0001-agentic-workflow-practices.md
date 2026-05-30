@@ -48,6 +48,10 @@ Lean into ceremony where it's cheap for an agent and enforces transparency:
   code review. For security/capability-path work, "done" requires a live run of
   the headline journey (not a model-stubbed test); a separate reviewer agent
   (`/code-review ultra`, the cage self-test, the advisor) is the escalation.
+  Stronger still: a **cold-agent dogfood** (spawn a fresh agent to _implement_
+  from the docs/an ADR) reviews the **design**, not just the code — making a
+  design executable exposes flaws prose review misses (see the dogfood section
+  in `docs/WORKFLOW.md`).
 - **Bounded autonomy / least privilege** — already pagu's core thesis (the
   capability ladder, scoped Deno perms); it applies to its own agents too.
 - **Session handoff** — the only "standup" that transfers: `wrap-session` writes

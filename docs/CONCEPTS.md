@@ -619,3 +619,25 @@ aren't visible in the file they're reading). The barrel files make dependencies
 explicit. The hexagonal zones make the direction of dependencies explicit. The
 capability folders make co-change relationships explicit. An agent with a fresh
 context window can orient itself from the directory tree alone.
+
+## pagu as the systems-programming tetrahedron (a lens)
+
+A recurring observation: pagu keeps rediscovering the four pillars of systems
+programming, because in miniature it _is_ one of each. This is a **navigational
+lens** — when a subsystem feels under-designed, it says _which body of knowledge
+to raid_.
+
+| Pillar                 | pagu subsystem                                                                                                                                                                                                                                               | knowledge to raid                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| **Compiler**           | the command **grammar** (LangSec — a legal argv sublanguage, recognized default-deny), config **scopes & precedence** (the ConfigLayer fold), **data-transformation pipelines** (phase FSM, handler pipeline)                                                | grammars, scope/type resolution, IR passes    |
+| **OS**                 | capability-phased **processes with scoped perms**; the **envelope is virtual memory's trick** — the agent gets the _illusion_ of free access while hard-bounded by the runtime, not its own cooperation; #16 wires the orchestrator to **schedulers (cron)** | process isolation, virtual memory, schedulers |
+| **Build system / VCS** | the event-store log — already has **forks**; _wants_ **hashable entries + a content-addressed DAG** (offset-resumption + incremental replay fall out). _Latent._                                                                                             | git internals (DAG, content-addressing)       |
+| **DBMS**               | the **addressable cross-session event store** (CONTEXT → State model: indexed JSONL/SQLite). Single-writer log = serializability for free; standing grants = a transactional ceiling. _The unbuilt corner._                                                  | indexing, query planning, transactions/ACID   |
+
+Two framings worth holding. **DBMS ≈ OS** — both are resource management; OS is
+_dynamic_ (a single run's processes/memory), DBMS is _persistent_ (the
+cross-session store) — which is why OS-process-isolation governs one run while
+DB concepts fit the durable log. And the **two latent corners point the same
+way**: the log is the seam where build-system (DAG/forks) and DBMS (indexed
+queries) knowledge both apply — which is why the "addressable event
+representation" roadmap item is high-leverage: it's two pillars at once.
