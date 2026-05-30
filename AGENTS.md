@@ -9,6 +9,8 @@ Operating manual for an agent (or human) picking up this codebase cold.
   model (the _why_). Put durable design context here, not scattered.
 - `ROADMAP.md` — the **forward plan**: in-progress, planned, idea backlog,
   milestones (navigable by concern tag — the _what's next_).
+- `CHANGELOG.md` — what's **shipped** (the history tier; keeps ROADMAP
+  forward-only).
 - `docs/WORKFLOW.md` — the **agentic dev lifecycle** (how a fresh agent onboards
   → builds → verifies → hands off), with diagrams. This file is the terse rules;
   WORKFLOW is the picture.
