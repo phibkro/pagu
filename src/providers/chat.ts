@@ -127,9 +127,18 @@ function openAIRequest(
     "content-type": "application/json",
   };
   if (cfg.apiKey) headers["authorization"] = `Bearer ${cfg.apiKey}`;
+  // pagu's `tool` messages are contextual data (read observations, run results),
+  // not protocol tool-call responses — they carry no tool_call_id and aren't
+  // paired with an assistant `tool_calls` turn, so strict OpenAI/OpenRouter
+  // reject them as orphan tool messages. Re-role to `user` (the Anthropic
+  // adapter already collapses tool→user). Ollama tolerated the raw form, which
+  // is why this was latent — it would break a multi-step run on real OpenAI.
+  const wireMessages = messages.map((m) =>
+    m.role === "tool" ? { ...m, role: "user" as const } : m
+  );
   const body = {
     model: cfg.model,
-    messages,
+    messages: wireMessages,
     stream,
     tools: tools.length > 0
       ? tools.map((t) => ({

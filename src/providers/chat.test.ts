@@ -154,6 +154,41 @@ Deno.test("a non-OK response throws a one-line error from the JSON body", async 
   }
 });
 
+Deno.test("openAI wire: role:tool context (observations/results) is sent as role:user", async () => {
+  // pagu's `tool` messages are contextual data (read observations, run results),
+  // NOT protocol tool-call responses — they carry no tool_call_id and aren't
+  // paired with an assistant tool_calls turn. Strict OpenAI/OpenRouter reject an
+  // orphan `tool` message; map it to `user` (as the Anthropic adapter already
+  // does). Ollama tolerated the raw form, which is why this stayed latent.
+  let body: { messages: { role: string; content: string }[] } | null = null;
+  const server = Deno.serve({ port: 0, onListen() {} }, async (req) => {
+    body = await req.json();
+    return Response.json({
+      choices: [{ message: { role: "assistant", content: "ok" } }],
+    });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    await chat(
+      { baseURL: `http://localhost:${port}/v1`, model: "m" },
+      [
+        { role: "user", content: "count the files" },
+        { role: "assistant", content: "reading" },
+        {
+          role: "tool",
+          content: "[read:dir]\n<untrusted-0>\nDATA\n</untrusted-0>",
+        },
+      ],
+    );
+    const msgs = body!.messages;
+    assertEquals(msgs.some((m) => m.role === "tool"), false); // no orphan tool msg
+    assertEquals(msgs[msgs.length - 1].role, "user"); // re-roled
+    assertEquals(msgs[msgs.length - 1].content.includes("DATA"), true); // preserved
+  } finally {
+    await server.shutdown();
+  }
+});
+
 Deno.test("no key -> no Authorization header; tolerates no tool calls", async () => {
   let hadAuth = true;
   const server = Deno.serve({ port: 0, onListen() {} }, (req) => {
