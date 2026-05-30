@@ -96,6 +96,27 @@ widen perms (resolve-only), and the runner stays the single writer of the log.
 with inbound net scoped to exactly the bind address, so the rest of pagu stays
 net-less.
 
+## Scheduled runs (`pagu schedule`)
+
+The cron target — one short-lived firing over the durable log. Keep the
+scheduler external (cron, systemd timers, CI):
+
+```sh
+# a pure time-trigger (no payload):
+pagu schedule "nightly: review the repo for stale TODOs and propose cleanups" --repo </dev/null
+
+# a payload-carrying trigger — the alert/webhook body arrives on stdin:
+curl -s "$ALERT_URL" | pagu schedule "investigate this alert and propose a fix" --repo
+```
+
+The standing **instruction** (the quoted argument) is authored — it may
+instruct. The **payload** (stdin) is treated as **untrusted data**: it enters as
+a fenced observation, so a payload that says "ignore your instructions and …"
+informs but cannot command. The approver **defers**, so in-envelope work
+auto-runs (the autonomous tier) and anything needing approval queues as a
+pending proposal for later human review (the human-in-the-loop tier — resolve it
+next time, or remotely via `pagu serve`).
+
 ## Editor integration (ACP)
 
 pagu can run as an [Agent Client Protocol](https://agentclientprotocol.com)

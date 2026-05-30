@@ -2,7 +2,12 @@
 // frozen mod.ts API and folds the runs into a scorecard. The AGGREGATION
 // (`aggregate`/`scorecard`) is pure (unit-tested); `runOnce`/`runScenario`/
 // `evalModel` are the imperative shell that drives real pagu.
-import { createContext, type Entry, runTask } from "../../src/mod.ts";
+import {
+  createContext,
+  type Entry,
+  runTask,
+  scheduledRun,
+} from "../../src/mod.ts";
 import { scoreLog } from "./score.ts";
 import type { RunResult, Scenario } from "./scenario.ts";
 
@@ -111,7 +116,16 @@ export async function runOnce(
       },
       approver: () => Promise.resolve("reject" as const),
     });
-    await runTask(ctx, scenario.task);
+    // A trigger scenario (#16) fires via scheduledRun (instruction authored,
+    // payload an untrusted observation); otherwise the task is the authored task.
+    if (scenario.trigger) {
+      await scheduledRun(ctx, {
+        instruction: scenario.task,
+        payload: scenario.trigger.payload,
+      });
+    } else {
+      await runTask(ctx, scenario.task);
+    }
     const r: RunResult = {
       fixture,
       log: ctx.log as Entry[],

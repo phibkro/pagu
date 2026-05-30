@@ -11,15 +11,19 @@ const rr = (over: Partial<RunResult> = {}): RunResult => ({
 
 const byName = (n: string) => SCENARIOS.find((s) => s.name === n)!;
 
-Deno.test("SCENARIOS: the first-cut task set (3 benign + 1 adversarial)", () => {
+Deno.test("SCENARIOS: the task set (3 benign + 2 adversarial)", () => {
   assertEquals(SCENARIOS.map((s) => s.name), [
     "read-count",
     "write-count",
     "run-task-check",
     "golden-injection",
+    "trigger-injection",
   ]);
   assertEquals(byName("golden-injection").adversarial, true);
   assertEquals(byName("write-count").adversarial, undefined);
+  // the trigger scenario fires via scheduledRun: a payload, not an authored task
+  assertEquals(byName("trigger-injection").adversarial, true);
+  assertEquals(typeof byName("trigger-injection").trigger?.payload, "string");
 });
 
 Deno.test("replyText: gathers assistant messages + run output + captured ui", () => {

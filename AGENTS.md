@@ -204,8 +204,14 @@ Primary adapters (frontends):
   resolves it (`serveHandler` = the pure router; `submitDecision` in `agent.ts`
   = the transport-agnostic, resolve-only seam). The **only** frontend that opens
   a socket: it re-execs itself with `--allow-net` scoped to the bind address
-  (the `pagu vm` launcher pattern), so the orchestrator stays net-less. All
-  frontends differ _only_ in UI + Approver.
+  (the `pagu vm` launcher pattern), so the orchestrator stays net-less.
+  `src/frontends/schedule.ts` — **scheduled-firing frontend**
+  (`pagu schedule
+  "<instruction>"`, #16): the cron target. One-shot like `cli`
+  (net-less, no re-exec) but drives `scheduledRun` (instruction authored, stdin
+  payload → an untrusted `trigger` observation) with a _deferring_ approver —
+  in-envelope work auto-runs (autonomous tier), the rest queues as pending (HITL
+  tier). All frontends differ _only_ in UI + Approver.
 
 Secondary adapters:
 

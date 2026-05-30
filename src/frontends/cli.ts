@@ -46,6 +46,14 @@ if (Deno.args[0] === "serve") {
   Deno.exit(0);
 }
 
+// `pagu schedule "<instruction>"` runs one scheduled firing (#16): the cron
+// target. The trigger payload (if any) arrives on stdin. The instruction is
+// authored; the payload is an untrusted observation (it can't instruct).
+if (Deno.args[0] === "schedule") {
+  await (await import("./schedule.ts")).scheduleMain(Deno.args.slice(1));
+  Deno.exit(0);
+}
+
 const { config: fileConfig, agents } = await loadConfig();
 const opts = await parseArgs(fileConfig, Deno.args);
 
