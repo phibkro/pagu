@@ -82,7 +82,9 @@ export interface RunState {
  */
 export async function makeRunState(params: {
   opts: {
-    base: PaguConfig;
+    // ConfigLayer (not PaguConfig): the base is only folded via composeLayers,
+    // and a profile-merged base is a ConfigLayer. PaguConfig is assignable.
+    base: ConfigLayer;
     cli: ConfigLayer;
     roles: string[];
     skills: string[];

@@ -1074,11 +1074,19 @@ above.)
     body. `--profile X` resolves in `config/setup.ts` (the config layer, above
     the core — the existing fold, no new law): it prepends the profile's
     roles/skills and folds its layer+prose into the stack, **composing with**
-    (not replacing) explicit `--role`/flags. Precedence (intended):
-    `defaults ⋄ config.json ⋄ profile (refs then its inline layer) ⋄ explicit
-    CLI roles/skills ⋄ CLI flags`
-    — a profile is a named preset; explicit CLI wins (most-specific). Grants
-    union, deny wins (lattice unchanged). `--profile`
+    (not replacing) explicit `--role`/flags. **Shipped — precedence (as
+    implemented):** the profile's inline layer is `mergeLayer`'d onto the config
+    **base** (a preset), its referenced roles/skills + explicit roles/skills
+    then fold above, then flags:
+    `defaults ⋄ config.json ⋄ profile-inline ⋄ profile-roles ⋄ explicit CLI
+    roles/skills ⋄ CLI flags`
+    — a named preset; explicit CLI wins (most-specific). Grants union, deny wins
+    (lattice unchanged). _NB this simplifies the originally-grilled "inline
+    overrides its own referenced roles": here the profile's referenced roles
+    override its inline layer (it's a base preset). They differ only in a rare
+    self-conflict (inline + a referenced role set the same scalar); grants union
+    regardless. Chosen for one `mergeLayer` and zero `makeRunState` change._
+    `--profile`
     - `--list-profiles` fall out like roles; a TUI `/profile save` is a
       fast-follow. **Slice B (then) — per-axis independent swap:** restructure
       `makeRunState` (now a value — the unblock) to track the axis-assignments

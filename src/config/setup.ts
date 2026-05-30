@@ -3,7 +3,13 @@ import { Command } from "@cliffy/command";
 import { CompletionsCommand } from "@cliffy/command/completions";
 import { fromFileUrl, resolve } from "@std/path";
 import type { Entry } from "../log/schema.ts";
-import { type ConfigLayer, DEFAULTS, type PaguConfig } from "./config.ts";
+import {
+  type ConfigLayer,
+  DEFAULTS,
+  mergeLayer,
+  type PaguConfig,
+} from "./config.ts";
+import { loadProfile } from "./profiles.ts";
 import { gitRoot, loadRepoPrefs, saveRepoPref } from "./repo.ts";
 import { detectSandbox } from "../runner/sandbox.ts";
 import { maybeLoadEnvFile } from "./envfile.ts";
@@ -43,6 +49,8 @@ export interface RunOpts {
   cont: boolean;
   /** `--list-sessions`: print the stored conversations and exit. */
   listSessions: boolean;
+  /** `--list-profiles`: print the available profiles and exit. */
+  listProfiles: boolean;
   /** `--no-sandbox`: disable the OS sandbox tier (Deno floor still applies). */
   noSandbox: boolean;
   repo: boolean;
@@ -50,6 +58,9 @@ export interface RunOpts {
   tui: boolean;
   /** `--skill <name>` names, in compose order. */
   skills: string[];
+  /** `--profile <name>`: a named composition (#17) — expands to roles/skills +
+   * inline overrides + prose, folded below explicit flags (see buildContext). */
+  profile?: string;
   /** `--acp`: run as an ACP agent over stdio (the entrypoint reads this). */
   acp: boolean;
   /** Workspace root for repo/read-allowlist detection. ACP sets it from the
@@ -100,6 +111,7 @@ function makeCommand() {
     .option("--session <id:string>", "Open a specific stored conversation.")
     .option("--continue", "Resume the most recent conversation.")
     .option("--list-sessions", "Print saved conversations and exit.")
+    .option("--list-profiles", "Print available profiles and exit.")
     .option(
       "--log <file:string>",
       "Use an explicit log file, bypassing the session store.",
@@ -118,6 +130,10 @@ function makeCommand() {
       "--skill <name:string>",
       "Apply a skill (repeatable; folds after roles).",
       { collect: true },
+    )
+    .option(
+      "--profile <name:string>",
+      "Launch a named profile (#17): its roles/skills + overrides, below flags.",
     )
     .option(
       "--hide <glob:string>",
@@ -190,11 +206,13 @@ export async function parseArgs(
     session: options.session,
     cont: options.continue ?? false,
     listSessions: options.listSessions ?? false,
+    listProfiles: options.listProfiles ?? false,
     noSandbox: !options.sandbox, // cliffy: --no-sandbox → sandbox === false
     repo: options.repo ?? false,
     tui: options.tui ?? false,
     acp: options.acp ?? false,
     skills: options.skill ?? [],
+    profile: options.profile,
   };
 }
 
@@ -248,6 +266,8 @@ export function createContext(opts: {
   write?: string[];
   repo?: boolean;
   roles?: string[];
+  /** Launch a named profile (#17) — folded below the explicit opts here. */
+  profile?: string;
   hide?: string[];
   reveal?: string[];
   hideSecrets?: boolean;
@@ -279,10 +299,12 @@ export function createContext(opts: {
     task: "",
     cont: false,
     listSessions: false,
+    listProfiles: false,
     noSandbox: false,
     repo: opts.repo ?? false,
     tui: false,
     skills: [],
+    profile: opts.profile,
     acp: false,
     cwd: opts.cwd,
   };
@@ -346,15 +368,32 @@ export async function buildContext(
     );
   }
 
+  // A `--profile` (#17, slice A) expands ABOVE the run-state fold — the existing
+  // law, no new merge: prepend its referenced roles/skills (so explicit ones
+  // override), fold its inline layer onto the base preset, prepend its prose.
+  // Precedence: defaults ⋄ config.json ⋄ profile-inline ⋄ profile-roles ⋄
+  // explicit roles ⋄ skills ⋄ flags. Fails loud on a missing profile name.
+  let rsBase: ConfigLayer = opts.base;
+  let rsRoles = opts.roles;
+  let rsSkills = opts.skills;
+  let agentsText = agents;
+  if (opts.profile) {
+    const profile = await loadProfile(opts.profile, projectBase);
+    rsBase = mergeLayer(opts.base, profile.layer); // inline onto the config base
+    rsRoles = [...profile.roles, ...opts.roles]; // explicit roles fold after
+    rsSkills = [...profile.skills, ...opts.skills];
+    if (profile.prose) agentsText = `${profile.prose}\n\n${agents}`;
+  }
+
   // The live, role-dependent run-state — provider, envelope, concealment,
   // prose, capabilities, command entries + the runtime mutators — extracted
   // into a constructible value (src/config/run-state.ts). Its initial fold of
   // --role/--skill names happens inside (fail-loud on a bad name).
   const rs = await makeRunState({
-    opts,
+    opts: { base: rsBase, cli: opts.cli, roles: rsRoles, skills: rsSkills },
     projectBase,
     repo,
-    agents,
+    agents: agentsText,
     phaseDir,
     injectedHandlers,
   });

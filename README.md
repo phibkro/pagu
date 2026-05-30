@@ -159,6 +159,12 @@ Flags (run `pagu --help` for the full list; for shell completions,
 - `--skill <name>` (repeatable) — apply a skill: a capability bundle from
   `./.pagu/skills/<name>/` or `~/.config/pagu/skills/<name>/`. Skills extend
   roles with reference files and pre-approved scripts (see **Skills** below).
+- `--profile <name>` — launch a named **profile**: a markdown bundle
+  `./.pagu/profiles/<name>.md` (project) or `~/.config/pagu/profiles/<name>.md`
+  (global) whose frontmatter names `roles`/`skills` + a provider/access/policy
+  layer (optional prose body). It's the full assignment you launch; it folds as
+  a preset **below** explicit `--role`/flags (which still win).
+  `--list-profiles` prints the available ones.
 - `--model <name>` — model id (default `qwen3.5:9b`).
 - `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or
   `anthropic`.

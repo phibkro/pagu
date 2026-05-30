@@ -10,6 +10,7 @@ import {
 import { type Approver, resumePending, runTask, type UI } from "../agent.ts";
 import { gitRoot } from "../config/repo.ts";
 import { listSessions } from "../config/sessions.ts";
+import { listProfiles } from "../config/profiles.ts";
 
 /**
  * pagu CLI — the one-shot frontend onto the I/O-agnostic core
@@ -65,6 +66,15 @@ if (opts.listSessions) {
   for (const s of sessions) {
     console.log(`${s.id}  (${s.entries})  ${s.title}`);
   }
+  Deno.exit(0);
+}
+
+// --list-profiles: print available profiles (project shadows global) and exit.
+if (opts.listProfiles) {
+  const base = (await gitRoot(Deno.cwd())) ?? Deno.cwd();
+  const profiles = await listProfiles(base);
+  if (profiles.length === 0) console.log("no profiles found.");
+  for (const p of profiles) console.log(`${p.name}  (${p.scope})`);
   Deno.exit(0);
 }
 
