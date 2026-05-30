@@ -21,6 +21,33 @@ makes that binding auditable at a glance.
 `CONTEXT.md` owns the _consequences_ (threat model, roadmap); this file owns the
 _enforcement tier_ of each claim and nothing else. One home per topic.
 
+## At a glance
+
+Strongest rung each claim has reached (`[law]` > `[structural]` > `[prose]`);
+"promote?" marks a `[prose]` claim worth lifting to a check. Details below.
+
+| Claim                                                          | Tier                                        |
+| -------------------------------------------------------------- | ------------------------------------------- |
+| **Security**                                                   |                                             |
+| #1 No agent exec path                                          | `[structural]`                              |
+| #2 Boundary = environment + permissions, not perms alone       | `[structural]`                              |
+| #3 Human gate is the capability ladder's backstop              | `[structural]` + `[prose]`                  |
+| #4 Command policy is deny-by-default                           | `[law: recognize]` + `[structural]`         |
+| #5 Sandbox tiers degrade without regression                    | `[prose]` — promote?                        |
+| **Compositional (the three axes)**                             |                                             |
+| Permission: composition only holds-or-tightens, never widens   | `[law: deny wins]`                          |
+| Context: untrusted context may inform, never instruct          | `[law: untrusted spans fenced]` + `[prose]` |
+| Policy: authority is attested per-invocation, never propagated | `[structural]` + `[law: recognize]`         |
+| **State / log**                                                |                                             |
+| The log round-trips losslessly                                 | `[law: log round-trips]`                    |
+| Event schema is public API — no incompatible change on v1      | `[structural]` + `[law]`                    |
+| The conversation log is single-writer authoritative            | `[prose]`                                   |
+| Always replayable; every approved run is within its envelope   | `[law]` (replay) + `[prose]` (envelope)     |
+| Duration does not widen the envelope                           | `[structural]`                              |
+| **Handlers / orchestration**                                   |                                             |
+| Handlers tighten, never widen                                  | `[structural]`                              |
+| The loop combinators satisfy their algebraic laws              | `[law: fanOut]`                             |
+
 ## The tiers
 
 Each claim carries exactly one tag:

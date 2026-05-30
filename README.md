@@ -39,6 +39,20 @@ When a script is proposed via `write`, it goes through:
    envelope, or when it matches a skill or task ceiling).
 3. **Run** — a separate `deno run --no-prompt <granted flags>` executes it.
 
+```mermaid
+flowchart LR
+    model["model authors<br/>a script"] --> cage["cage self-test<br/>no net · scratch-only"]
+    cage -->|"bug"| model
+    cage -->|"clean"| gate{"human gate<br/>y / n"}
+    gate -->|"reject"| done["discarded"]
+    gate -->|"approve<br/>(or in-envelope auto)"| runner["runner<br/>deno run --no-prompt<br/>&lt;granted perms&gt;"]
+    runner --> fx["real effect<br/>confined to granted paths"]
+```
+
+The model never runs anything: it only _authors_. Autonomous execution is
+confined to the no-net, no-real-write cage; real effect happens only past the
+human gate, in a separately-permissioned runner.
+
 ## Requirements
 
 - [Deno](https://deno.com/) 2.x
