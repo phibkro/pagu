@@ -991,46 +991,58 @@ above.)
     invoking `pagu --role … --skill …`) for as long as possible — an in-core
     scheduler is stateful and long-lived, exactly what grows the TCB past
     "readable in one sitting." Two new threat-model surfaces to carry if this
-    lands: a **budget / iteration ceiling** as a first-class envelope dimension
-    (the one unbounded quantity the short-session decomposition doesn't
-    auto-cap), and **trigger provenance** — "run skill X in response to alert Y"
-    means a forged alert chooses _which_ vetted skill fires and when; the
-    grammar/ceiling bounds _what_ a skill does but the trigger bounds
-    _when/why_, so triggers join the trust surface (same class as prompt
-    injection, different hat). External scheduler keeps this as "trust your
-    cron," a problem admins already reason about. **Resolved (design — the
-    payload half):** a trigger decomposes along the _existing_ trust gradient,
-    so no new trust level is needed. The schedule's standing _instruction_ is
-    **authored** (the human wrote it at schedule-creation time — may instruct);
-    the trigger _payload_ (alert/email/webhook body, attacker-influenceable) is
-    **untrusted** — it must enter as a fenced `observation`, never as an
-    `authored` `role:"user"` message. So `runTask(task)` (task = authored) is
-    the wrong shape for a trigger: #16 provides a typed seam —
-    `scheduledRun({
-    instruction, payload })` — that constructs the log with
-    `instruction →
-    authored` + `payload → fenced observation`, making
-    "promote a payload to an instruction" _unrepresentable_ rather than a
-    discipline (the enforcement ladder: type, not prose). **Shipped (slice 1):**
-    `seedTrigger` (pure: instruction→authored message, payload→untrusted
-    `trigger` observation; empty payload = a pure time-trigger) + `scheduledRun`
-    (the effectful seed+loop shell, sibling to `runTask`) in `agent.ts`,
-    `mod.ts`-exported + floored. The pure `seedTrigger` is `trust()`-law-tested.
-    _Deferred:_ the budget ceiling (slice 2), a CLI entry for cron, and the
-    continuity mechanism (a firing reads prior firings via the existing `read`
-    tool for now — no dedicated code yet). This composes with risk (b) below —
-    the payload, as an observation, already carries the untrusted label across
-    the session hop. **Two interaction risks to carry before building:** (a) a
-    batch of pending approvals reviewed at 9am is _itself_ the approval-fatigue
-    condition (Threat model) — #15's async framing improves presentation but
-    batching can _worsen_ per-item attention; design the queue to resist
-    rubber-stamping, not just to hold items. (b) "continuity via the event
-    store" means a run reads prior runs' **observations** —
-    accumulated-untrusted context — so the trust label (Threat model → the
-    context axis is a trust gradient) must survive the _cross-session_ hop, or a
-    file poisoned today silently informs every nightly proposal thereafter
-    (slow-motion injection). The invariant already covers it in principle; the
-    cross-session read is exactly where it's easy to forget.
+    lands: a **budget / iteration ceiling** — the one unbounded quantity the
+    short-session decomposition doesn't auto-cap — and **trigger provenance** —
+    "run skill X in response to alert Y" means a forged alert chooses _which_
+    vetted skill fires and when; the grammar/ceiling bounds _what_ a skill does
+    but the trigger bounds _when/why_, so triggers join the trust surface (same
+    class as prompt injection, different hat). External scheduler keeps this as
+    "trust your cron," a problem admins already reason about. **Resolved (design
+    — the payload half):** a trigger decomposes along the _existing_ trust
+    gradient, so no new trust level is needed. The schedule's standing
+    _instruction_ is **authored** (the human wrote it at schedule-creation time
+    — may instruct); the trigger _payload_ (alert/email/webhook body,
+    attacker-influenceable) is **untrusted** — it must enter as a fenced
+    `observation`, never as an `authored` `role:"user"` message. So
+    `runTask(task)` (task = authored) is the wrong shape for a trigger: #16
+    provides a typed seam — `scheduledRun({
+    instruction, payload })` — that
+    constructs the log with `instruction →
+    authored` +
+    `payload → fenced observation`, making "promote a payload to an instruction"
+    _unrepresentable_ rather than a discipline (the enforcement ladder: type,
+    not prose). **Shipped (slice 1):** `seedTrigger` (pure: instruction→authored
+    message, payload→untrusted `trigger` observation; empty payload = a pure
+    time-trigger) + `scheduledRun` (the effectful seed+loop shell, sibling to
+    `runTask`) in `agent.ts`, `mod.ts`-exported + floored. The pure
+    `seedTrigger` is `trust()`-law-tested. The
+    **`pagu schedule "<instruction>"`** CLI (the cron target; payload on stdin,
+    deferring approver) + a `trigger-injection` ci:live scenario (the semantic
+    half — a real model ignores an in-payload injection — permanently guarded)
+    also shipped. **Slice 2 — budget ceiling (shipped):** a separate
+    `Budget {
+    maxTurns?, deadlineMs? }` value (NOT an `Envelope` field — the
+    envelope bounds _what_ the agent may touch; a budget bounds _how much_, an
+    orthogonal run-bound), threaded into `runTask`/`scheduledRun` → the loop.
+    `maxTurns` generalizes the hardcoded `MAX_TURNS=6`; `deadlineMs` is the new
+    wall-clock cap (the pure `loop` keeps the turn bound; the deadline check
+    lives in the effectful turn via the pure `pastDeadline`). `pagu schedule`
+    exposes `--max-turns`/`--deadline <seconds>` (fail-loud parse) so cron
+    bounds an unattended firing; `Budget` is `mod.ts`-floored. _Deferred:_
+    token/cost budget (needs usage threaded out of `chat()`), and the continuity
+    mechanism (a firing reads prior firings via the existing `read` tool for
+    now). This composes with risk (b) below — the payload, as an observation,
+    already carries the untrusted label across the session hop. **Two
+    interaction risks to carry before building:** (a) a batch of pending
+    approvals reviewed at 9am is _itself_ the approval-fatigue condition (Threat
+    model) — #15's async framing improves presentation but batching can _worsen_
+    per-item attention; design the queue to resist rubber-stamping, not just to
+    hold items. (b) "continuity via the event store" means a run reads prior
+    runs' **observations** — accumulated-untrusted context — so the trust label
+    (Threat model → the context axis is a trust gradient) must survive the
+    _cross-session_ hop, or a file poisoned today silently informs every nightly
+    proposal thereafter (slow-motion injection). The invariant already covers it
+    in principle; the cross-session read is exactly where it's easy to forget.
 17. **The agent-management model — three axes, bundles, profiles, sessions.**
     The model is owned by `docs/CONCEPTS.md` (→ Axes and bundles); the _roadmap_
     for realizing it lives here. Managing an agent collapses to three composable

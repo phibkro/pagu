@@ -107,6 +107,9 @@ pagu schedule "nightly: review the repo for stale TODOs and propose cleanups" --
 
 # a payload-carrying trigger — the alert/webhook body arrives on stdin:
 curl -s "$ALERT_URL" | pagu schedule "investigate this alert and propose a fix" --repo
+
+# bound an unattended firing: at most 4 turns, give up after 5 minutes
+pagu schedule "nightly review" --repo --max-turns 4 --deadline 300 </dev/null
 ```
 
 The standing **instruction** (the quoted argument) is authored — it may

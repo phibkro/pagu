@@ -15,6 +15,26 @@ export type { AgentContext, ApprovalOutcome, Approver, UI };
 const MAX_TURNS = 6;
 
 /**
+ * A firing's resource ceiling (#16, slice 2). Orthogonal to the permission
+ * envelope: the envelope bounds *what* the agent may touch (blast radius), a
+ * budget bounds *how much* it may do. Both fields optional — absent means the
+ * defaults (`MAX_TURNS`, no deadline). `maxTurns` caps the turn loop;
+ * `deadlineMs` is a wall-clock duration for the whole firing. Token/cost is a
+ * later slice (it needs usage threaded out of the provider).
+ */
+export interface Budget {
+  maxTurns?: number;
+  /** Wall-clock ceiling for the firing, in ms from its start. */
+  deadlineMs?: number;
+}
+
+/** Pure: has the wall-clock deadline (absolute ms) passed? No deadline → never.
+ * Lives here, not in the pure `loop`, because the loop imports no clock. */
+export function pastDeadline(nowMs: number, deadlineMs?: number): boolean {
+  return deadlineMs !== undefined && nowMs >= deadlineMs;
+}
+
+/**
  * The respond phase's permissions — **invariant #1 in code**. The only process
  * the model drives may read the allowlist and reach the model, nothing else:
  * never write, run, env, or blanket allow. `agent.test.ts` asserts this so a
@@ -82,11 +102,18 @@ function showReply(ctx: AgentContext, entries: Entry[]): void {
 }
 
 /** One conversational turn: spawn respond, append what it produced, dispatch
- * any action entry via the capability registry. */
-function makeTurn(ctx: AgentContext, signal?: AbortSignal): Step<AgentContext> {
+ * any action entry via the capability registry. `deadline` (absolute ms) is the
+ * budget's wall-clock ceiling — checked here (not in the pure `loop`, which has
+ * no clock) before any model work, so a passed deadline stops the firing. */
+function makeTurn(
+  ctx: AgentContext,
+  signal?: AbortSignal,
+  deadline?: number,
+): Step<AgentContext> {
   let turnIndex = 0;
   return async (): Promise<Flow> => {
     if (signal?.aborted) return "done"; // inter-turn cancellation check
+    if (pastDeadline(Date.now(), deadline)) return "done"; // budget: wall-clock
     ctx.ui.status(turnIndex++ === 0 ? "thinking…" : "continuing…");
     const produced = await ctx.respond();
     ctx.log.push(...produced);
@@ -100,6 +127,21 @@ function makeTurn(ctx: AgentContext, signal?: AbortSignal): Step<AgentContext> {
     const cap = actionCapabilities.find((c) => c.entryKind === action.kind)!;
     return (await cap.execute(action, ctx)) === "stop" ? "done" : "continue";
   };
+}
+
+/** Run the bounded turn loop under a budget (shared by runTask/scheduledRun):
+ * `maxTurns` caps iterations (the pure loop); `deadlineMs` becomes an absolute
+ * wall-clock deadline from now (checked in the turn). Wrap with `guarded`. */
+async function runLoop(
+  ctx: AgentContext,
+  signal?: AbortSignal,
+  budget?: Budget,
+): Promise<void> {
+  const deadline = budget?.deadlineMs !== undefined
+    ? Date.now() + budget.deadlineMs
+    : undefined;
+  const maxTurns = budget?.maxTurns ?? MAX_TURNS;
+  await loop(makeTurn(ctx, signal, deadline), maxTurns)(ctx);
 }
 
 /** Run `body`, turning a cancellation into a clean message and any other error
@@ -154,13 +196,12 @@ export async function scheduledRun(
   ctx: AgentContext,
   trigger: { instruction: string; payload?: string },
   signal?: AbortSignal,
+  budget?: Budget,
 ): Promise<void> {
   injectRespond(ctx, signal);
   ctx.log.push(...seedTrigger(trigger.instruction, trigger.payload));
   ctx.persist();
-  await guarded(ctx, async () => {
-    await loop(makeTurn(ctx, signal), MAX_TURNS)(ctx);
-  });
+  await guarded(ctx, () => runLoop(ctx, signal, budget));
 }
 
 /**
@@ -172,13 +213,12 @@ export async function runTask(
   ctx: AgentContext,
   task: string,
   signal?: AbortSignal,
+  budget?: Budget,
 ): Promise<void> {
   injectRespond(ctx, signal);
   ctx.log.push({ kind: "message", role: "user", text: task });
   ctx.persist();
-  await guarded(ctx, async () => {
-    await loop(makeTurn(ctx, signal), MAX_TURNS)(ctx);
-  });
+  await guarded(ctx, () => runLoop(ctx, signal, budget));
 }
 
 /**

@@ -12,6 +12,7 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "scheduledRun", kind: "function" }, // the #16 trigger-provenance seam
   { name: "AgentContext", kind: "interface" },
   { name: "UI", kind: "interface" },
+  { name: "Budget", kind: "interface" }, // #16 slice 2: the firing's resource ceiling
   { name: "Approver", kind: "typeAlias" },
   // Loop combinators
   { name: "loop", kind: "function" },

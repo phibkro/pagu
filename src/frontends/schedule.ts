@@ -11,17 +11,67 @@
 //   pagu schedule "nightly: review the repo for stale TODOs" --repo </dev/null
 import { loadConfig } from "../config/config.ts";
 import { buildContext, parseArgs } from "../config/setup.ts";
-import { type Approver, scheduledRun, type UI } from "../agent.ts";
+import { type Approver, type Budget, scheduledRun, type UI } from "../agent.ts";
+
+/** Pull the budget flags out of the raw argv so the rest flows to the standard
+ * `parseArgs` (which would reject unknowns). `--max-turns <n>` caps iterations;
+ * `--deadline <seconds>` is a wall-clock ceiling for the firing. Pure + fail-loud
+ * on a malformed value — an unattended cron firing should not silently run
+ * unbounded. The testable core of the budget surface. */
+export function parseBudgetFlags(
+  rawArgs: string[],
+): { budget: Budget; rest: string[] } {
+  const budget: Budget = {};
+  const rest: string[] = [];
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    const take = (flag: string): string | null =>
+      a === flag
+        ? (rawArgs[++i] ?? "")
+        : a.startsWith(`${flag}=`)
+        ? a.slice(flag.length + 1)
+        : null;
+    const mt = take("--max-turns");
+    if (mt !== null) {
+      const n = Number(mt);
+      if (!Number.isInteger(n) || n < 1) {
+        throw new Error(
+          `--max-turns must be a positive integer, got ${JSON.stringify(mt)}`,
+        );
+      }
+      budget.maxTurns = n;
+      continue;
+    }
+    const dl = take("--deadline");
+    if (dl !== null) {
+      const s = Number(dl);
+      if (!Number.isFinite(s) || s <= 0) {
+        throw new Error(
+          `--deadline must be a positive number of seconds, got ${
+            JSON.stringify(dl)
+          }`,
+        );
+      }
+      budget.deadlineMs = Math.round(s * 1000);
+      continue;
+    }
+    rest.push(a);
+  }
+  return { budget, rest };
+}
 
 export async function scheduleMain(rawArgs: string[]): Promise<never> {
+  const { budget, rest } = parseBudgetFlags(rawArgs);
   const { config: fileConfig, agents } = await loadConfig();
-  const opts = await parseArgs(fileConfig, rawArgs);
+  const opts = await parseArgs(fileConfig, rest);
   if (!opts.task) {
     console.error(
-      'usage: pagu schedule "<instruction>" [--repo] [--role r] [flags]\n' +
+      'usage: pagu schedule "<instruction>" [--repo] [--role r]\n' +
+        "                     [--max-turns <n>] [--deadline <seconds>] [flags]\n" +
         "       the trigger payload (if any) is read from stdin — pipe it in:\n" +
         '         curl -s "$ALERT_URL" | pagu schedule "investigate" --repo\n' +
-        "       a TTY (no pipe) means no payload — a pure time-trigger.",
+        "       a TTY (no pipe) means no payload — a pure time-trigger.\n" +
+        "       --max-turns / --deadline bound an unattended firing.",
     );
     Deno.exit(2);
   }
@@ -41,6 +91,11 @@ export async function scheduleMain(rawArgs: string[]): Promise<never> {
     ? undefined
     : await new Response(Deno.stdin.readable).text();
 
-  await scheduledRun(ctx, { instruction: opts.task, payload });
+  await scheduledRun(
+    ctx,
+    { instruction: opts.task, payload },
+    undefined,
+    budget,
+  );
   Deno.exit(0);
 }

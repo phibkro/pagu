@@ -24,7 +24,13 @@ export {
   scheduledRun,
   submitDecision,
 } from "./agent.ts";
-export type { AgentContext, ApprovalOutcome, Approver, UI } from "./agent.ts";
+export type {
+  AgentContext,
+  ApprovalOutcome,
+  Approver,
+  Budget,
+  UI,
+} from "./agent.ts";
 
 // Loop combinators (pure, lawful)
 export { andThen, fanOut, loop, pipeline } from "./loop.ts";
