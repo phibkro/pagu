@@ -89,6 +89,10 @@ function makeCommand() {
       "--base-url <url:string>",
       "Override the API root (OpenAI-compatible endpoint).",
     )
+    .option(
+      "--max-tokens <n:number>",
+      "Max output tokens per turn (Anthropic requires it; default 4096).",
+    )
     .option("--allow <path:string>", "Read-allowlist path (repeatable).", {
       collect: true,
     })
@@ -190,6 +194,7 @@ export async function parseArgs(
   if (options.model) cli.model = options.model;
   if (options.provider) cli.provider = options.provider;
   if (options.baseUrl) cli.baseURL = options.baseUrl;
+  if (options.maxTokens !== undefined) cli.maxTokens = options.maxTokens;
   if (options.allow) cli.allow = options.allow;
   if (options.write) cli.write = options.write;
   if (options.advisor) cli.advisor = true;
@@ -268,6 +273,7 @@ export function createContext(opts: {
   provider?: string;
   model?: string;
   baseURL?: string;
+  maxTokens?: number;
   allow?: string[];
   write?: string[];
   repo?: boolean;
@@ -292,6 +298,7 @@ export function createContext(opts: {
   if (opts.provider !== undefined) cli.provider = opts.provider;
   if (opts.model !== undefined) cli.model = opts.model;
   if (opts.baseURL !== undefined) cli.baseURL = opts.baseURL;
+  if (opts.maxTokens !== undefined) cli.maxTokens = opts.maxTokens;
   if (opts.allow !== undefined) cli.allow = opts.allow;
   if (opts.write !== undefined) cli.write = opts.write;
   if (opts.hide !== undefined) cli.hide = opts.hide;

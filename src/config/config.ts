@@ -19,6 +19,9 @@ export interface PaguConfig {
   apiKeyEnv?: string;
   /** Wire format override; presets set this (anthropic uses its own API). */
   format?: "openai" | "anthropic";
+  /** Max output tokens per turn. Anthropic requires it (defaults to 4096);
+   * the OpenAI path leaves it to the model default. */
+  maxTokens?: number;
   allow: string[];
   /** When true, run the advisory reviewer before the human approval prompt. */
   advisor?: boolean;
@@ -54,6 +57,7 @@ export interface ConfigLayer {
   baseURL?: string;
   apiKeyEnv?: string;
   format?: "openai" | "anthropic";
+  maxTokens?: number;
   allow?: string[];
   write?: string[];
   advisor?: boolean;
@@ -218,6 +222,8 @@ export function mergeLayer(a: ConfigLayer, b: ConfigLayer): ConfigLayer {
   if (apiKeyEnv !== undefined) out.apiKeyEnv = apiKeyEnv;
   const format = b.format ?? a.format;
   if (format !== undefined) out.format = format;
+  const maxTokens = b.maxTokens ?? a.maxTokens;
+  if (maxTokens !== undefined) out.maxTokens = maxTokens;
   const allow = unionLists(a.allow, b.allow);
   if (allow !== undefined) out.allow = allow;
   const write = unionLists(a.write, b.write);
@@ -267,6 +273,7 @@ export function toLayer(data: Record<string, unknown>): ConfigLayer {
   if (data.format === "openai" || data.format === "anthropic") {
     l.format = data.format;
   }
+  if (typeof data.maxTokens === "number") l.maxTokens = data.maxTokens;
   if (isStringArray(data.allow)) l.allow = data.allow;
   if (isStringArray(data.write)) l.write = data.write;
   if (typeof data.advisor === "boolean") l.advisor = data.advisor;

@@ -1,9 +1,11 @@
 // effects: network (model HTTP)
+import { TextLineStream } from "@std/streams";
 import {
   type ChatMessage,
   type ChatResponse,
   type ProviderConfig,
   providerError,
+  type TokenSink,
   type ToolCall,
   type ToolDef,
 } from "./chat.ts";
@@ -55,6 +57,8 @@ export async function chatAnthropic(
   cfg: ProviderConfig,
   messages: ChatMessage[],
   tools: ToolDef[] = [],
+  onToken?: TokenSink,
+  onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   const systemParts: string[] = [];
   const turns: { role: "user" | "assistant"; content: string }[] = [];
@@ -73,11 +77,13 @@ export async function chatAnthropic(
     turns.unshift({ role: "user", content: "(continue)" });
   }
 
+  const stream = !!onToken;
   const body = {
     model: cfg.model,
-    max_tokens: MAX_TOKENS,
+    max_tokens: cfg.maxTokens ?? MAX_TOKENS,
     ...(systemParts.length > 0 ? { system: systemParts.join("\n\n") } : {}),
     messages: turns,
+    ...(stream ? { stream: true } : {}),
     ...(tools.length > 0
       ? {
         tools: tools.map((t) => ({
@@ -102,7 +108,13 @@ export async function chatAnthropic(
   });
   if (!res.ok) throw await providerError("anthropic", res);
 
-  const data = await res.json() as AnthropicResponse;
+  return stream && res.body
+    ? streamAnthropic(res.body, onToken!, onReasoning)
+    : parseBuffered(await res.json() as AnthropicResponse);
+}
+
+/** Parse a buffered (non-streaming) Messages response. */
+function parseBuffered(data: AnthropicResponse): ChatResponse {
   let content = "";
   const toolCalls: ToolCall[] = [];
   for (const block of data.content ?? []) {
@@ -112,5 +124,80 @@ export async function chatAnthropic(
       toolCalls.push({ name: b.name, args: b.input ?? {} });
     }
   }
+  return { content, toolCalls };
+}
+
+interface StreamEvent {
+  type?: string;
+  index?: number;
+  content_block?: { type?: string; name?: string };
+  delta?: {
+    type?: string;
+    text?: string;
+    partial_json?: string;
+    thinking?: string;
+  };
+}
+
+/**
+ * Parse Anthropic's Messages SSE stream. Text streams as `text_delta` (live →
+ * `onToken`, accumulated into `content`); a tool call's name arrives in
+ * `content_block_start` and its input streams as `input_json_delta` fragments
+ * reassembled per index then JSON-parsed; `thinking_delta` (extended thinking)
+ * is routed to `onReasoning` and never enters `content` (ephemeral display).
+ * `event:` lines are ignored — the `type` field inside each `data:` JSON is
+ * the discriminator.
+ */
+async function streamAnthropic(
+  body: ReadableStream<Uint8Array>,
+  onToken: TokenSink,
+  onReasoning?: TokenSink,
+): Promise<ChatResponse> {
+  let content = "";
+  // tool_use blocks by content-block index: name + accumulated input JSON.
+  const tools = new Map<number, { name: string; args: string }>();
+  const lines = body
+    .pipeThrough(new TextDecoderStream())
+    .pipeThrough(new TextLineStream());
+  for await (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith("data:")) continue; // skip `event:` + blank lines
+    const payload = line.slice(5).trim();
+    if (!payload) continue;
+    let ev: StreamEvent;
+    try {
+      ev = JSON.parse(payload) as StreamEvent;
+    } catch {
+      continue; // tolerate keep-alive / malformed lines
+    }
+    if (ev.type === "content_block_start") {
+      const cb = ev.content_block;
+      if (cb?.type === "tool_use") {
+        tools.set(ev.index ?? 0, { name: cb.name ?? "", args: "" });
+      }
+    } else if (ev.type === "content_block_delta") {
+      const d = ev.delta ?? {};
+      if (d.type === "text_delta" && d.text) {
+        content += d.text;
+        onToken(d.text);
+      } else if (d.type === "input_json_delta" && d.partial_json) {
+        const t = tools.get(ev.index ?? 0);
+        if (t) t.args += d.partial_json;
+      } else if (d.type === "thinking_delta" && d.thinking) {
+        onReasoning?.(d.thinking);
+      }
+    }
+  }
+  const toolCalls: ToolCall[] = [...tools.values()].map((t) => {
+    let args: Record<string, unknown> = {};
+    if (t.args) {
+      try {
+        args = JSON.parse(t.args);
+      } catch {
+        args = {}; // tolerate malformed tool args
+      }
+    }
+    return { name: t.name, args };
+  });
   return { content, toolCalls };
 }

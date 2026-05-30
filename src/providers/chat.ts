@@ -42,6 +42,9 @@ export interface ProviderConfig {
   apiKey?: string;
   /** Wire format: OpenAI Chat Completions (default) or Anthropic Messages. */
   format?: "openai" | "anthropic";
+  /** Max output tokens. Anthropic *requires* it (defaults to 4096 if unset);
+   * the OpenAI path leaves it to the model default. Set via config/--max-tokens. */
+  maxTokens?: number;
 }
 
 interface OpenAIChatResponse {
@@ -77,9 +80,10 @@ export async function providerError(
 
 /**
  * Dispatch to the right wire format. The single entry point frontends use.
- * Pass `onToken` to stream content tokens as they arrive (OpenAI format
- * only; Anthropic stays buffered for now). The returned ChatResponse is
- * identical either way — streaming is purely a display affordance.
+ * Pass `onToken` to stream content tokens as they arrive (both formats now
+ * stream — OpenAI Chat Completions SSE and Anthropic Messages SSE). The
+ * returned ChatResponse is identical either way — streaming is purely a
+ * display affordance.
  */
 export function chat(
   cfg: ProviderConfig,
@@ -89,7 +93,7 @@ export function chat(
   onReasoning?: TokenSink,
 ): Promise<ChatResponse> {
   return cfg.format === "anthropic"
-    ? chatAnthropic(cfg, messages, tools)
+    ? chatAnthropic(cfg, messages, tools, onToken, onReasoning)
     : chatOpenAI(cfg, messages, tools, onToken, onReasoning);
 }
 

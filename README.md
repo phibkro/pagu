@@ -176,9 +176,12 @@ Flags (run `pagu --help` for the full list; for shell completions,
   `--list-profiles` prints the available ones.
 - `--model <name>` — model id (default `qwen3.5:9b`).
 - `--provider <preset>` — `ollama` (default), `openrouter`, `openai`, or
-  `anthropic`.
+  `anthropic` (e.g. `--provider anthropic --model claude-opus-4-8`). Responses
+  stream live on every provider, OpenAI-compatible **and** Anthropic.
 - `--base-url <url>` — override the API root for a custom OpenAI-compatible
   endpoint.
+- `--max-tokens <n>` — cap output tokens per turn (Anthropic requires it,
+  default 4096; raise it for longer script authoring).
 - `--repo` — **repo mode**: grant read+write to the current git repo,
   auto-approve scripts confined to it, and auto-allow all discovered project
   tasks (`deno.json`, `package.json`, `Justfile`) via `run_task`.

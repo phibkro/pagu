@@ -102,3 +102,113 @@ Deno.test("anthropic: system split out, tool→user coalesced, tool_use parsed",
     await server.shutdown();
   }
 });
+
+Deno.test("anthropic: max_tokens reflects cfg.maxTokens (overrides the 4096 default)", async () => {
+  let body: { max_tokens?: number } = {};
+  const server = Deno.serve({ port: 0, onListen() {} }, async (req) => {
+    body = await req.json();
+    return Response.json({ content: [{ type: "text", text: "ok" }] });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    await chat(
+      {
+        baseURL: `http://localhost:${port}`,
+        model: "claude-opus-4-8",
+        apiKey: "k",
+        format: "anthropic",
+        maxTokens: 8192,
+      },
+      [{ role: "user", content: "hi" }],
+    );
+    assertEquals(body.max_tokens, 8192);
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("anthropic streaming: forwards text deltas live, reassembles tool_use input", async () => {
+  // The Anthropic SSE event shape: text streams as `text_delta`; a tool call's
+  // name arrives in `content_block_start` and its input streams as
+  // `input_json_delta` fragments (the fiddly part we reassemble + parse).
+  let sawStream = false;
+  const frames = [
+    `event: message_start\ndata: {"type":"message_start","message":{}}\n\n`,
+    `event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}\n\n`,
+    `event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`,
+    `event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t1","name":"read","input":{}}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"pa"}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"th\\":\\"./x\\"}"}}\n\n`,
+    `event: content_block_stop\ndata: {"type":"content_block_stop","index":1}\n\n`,
+    `event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}\n\n`,
+    `event: message_stop\ndata: {"type":"message_stop"}\n\n`,
+  ];
+  const server = Deno.serve({ port: 0, onListen() {} }, async (req) => {
+    sawStream = (await req.json()).stream === true;
+    return new Response(frames.join(""), {
+      headers: { "content-type": "text/event-stream" },
+    });
+  });
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const seen: string[] = [];
+    const r = await chat(
+      {
+        baseURL: `http://localhost:${port}`,
+        model: "claude-opus-4-8",
+        apiKey: "sk-ant-x",
+        format: "anthropic",
+      },
+      [{ role: "user", content: "hi" }],
+      [{ name: "read", description: "read", parameters: { type: "object" } }],
+      (t) => seen.push(t), // onToken → triggers streaming
+    );
+    assertEquals(sawStream, true); // the request opted into streaming
+    assertEquals(seen, ["Hel", "lo"]); // text streamed live, in order
+    assertEquals(r.content, "Hello");
+    assertEquals(r.toolCalls, [{ name: "read", args: { path: "./x" } }]);
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("anthropic streaming: thinking_delta routes to onReasoning, not content", async () => {
+  const frames = [
+    `event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"pondering"}}\n\n`,
+    `event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}\n\n`,
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"answer"}}\n\n`,
+    `event: message_stop\ndata: {"type":"message_stop"}\n\n`,
+  ];
+  const server = Deno.serve(
+    { port: 0, onListen() {} },
+    () =>
+      new Response(frames.join(""), {
+        headers: { "content-type": "text/event-stream" },
+      }),
+  );
+  try {
+    const { port } = server.addr as Deno.NetAddr;
+    const content: string[] = [];
+    const reasoning: string[] = [];
+    const r = await chat(
+      {
+        baseURL: `http://localhost:${port}`,
+        model: "claude-opus-4-8",
+        apiKey: "k",
+        format: "anthropic",
+      },
+      [{ role: "user", content: "hi" }],
+      [],
+      (t) => content.push(t),
+      (t) => reasoning.push(t),
+    );
+    assertEquals(content.join(""), "answer");
+    assertEquals(reasoning.join(""), "pondering"); // ephemeral, separate channel
+    assertEquals(r.content, "answer"); // thinking not in the persisted content
+  } finally {
+    await server.shutdown();
+  }
+});

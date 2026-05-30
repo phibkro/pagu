@@ -11,6 +11,18 @@ import {
   resolveProvider,
   toLayer,
 } from "./config.ts";
+import { createContext } from "../mod.ts";
+
+Deno.test("resolution: maxTokens flows from config into ctx.provider", async () => {
+  const ctx = await createContext({
+    provider: "anthropic",
+    model: "claude-opus-4-8",
+    maxTokens: 8192,
+    ui: { status() {}, show() {} },
+    approver: () => Promise.resolve("reject"),
+  });
+  assertEquals(ctx.provider.maxTokens, 8192); // run-state → ProviderConfig wiring
+});
 
 Deno.test("mergeLayer: hide/reveal union, hide* toggles right-bias", () => {
   const a: ConfigLayer = { hide: ["*.pem"], hideSecrets: true };
@@ -48,6 +60,8 @@ Deno.test("toLayer keeps well-typed known fields, drops the rest", () => {
     { provider: "openai", allow: ["/a", "/b"], format: "anthropic" },
   );
   assertEquals(toLayer({ allow: ["/a", 3] }), {}); // not all strings → dropped
+  assertEquals(toLayer({ maxTokens: 8192 }).maxTokens, 8192); // number kept
+  assertEquals(toLayer({ maxTokens: "lots" }).maxTokens, undefined); // ill-typed
 });
 
 // --- the role-composition monoid (pure; property-checked) ---

@@ -194,6 +194,7 @@ export async function makeRunState(params: {
     cfg.baseURL = effective.baseURL;
     cfg.apiKeyEnv = effective.apiKeyEnv;
     cfg.format = effective.format;
+    cfg.maxTokens = effective.maxTokens;
     cfg.allow = effective.allow && effective.allow.length > 0
       ? effective.allow
       : ["."];
@@ -210,6 +211,7 @@ export async function makeRunState(params: {
       baseURL: prov.baseURL,
       apiKey,
       format: prov.format,
+      maxTokens: cfg.maxTokens,
     };
     liveHost = new URL(prov.baseURL).host;
 
@@ -405,6 +407,7 @@ export async function makeRunState(params: {
       baseURL: r.baseURL,
       apiKey: key,
       format: r.format,
+      maxTokens: cfg.maxTokens,
     };
     liveHost = new URL(r.baseURL).host;
     // A provider/baseURL switch invalidates the cached model list (a model-only
