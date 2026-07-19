@@ -1,7 +1,34 @@
 # ADR-0005: the grant schema and the box/gate boundary
 
-- Status: Accepted (design; implementation follows the ADR-0004 merge)
+- Status: Accepted (design; implementation follows the ADR-0004 merge).
+  Amended 2026-07-19: interface hierarchy (below) — SDK is the primary
+  surface for agents; CLI/TUI are human-operator UX over the same core.
 - Date: 2026-07-19
+
+## Amendment (2026-07-19): interface hierarchy — SDK for agents, CLI/TUI for humans
+
+Operator ruling: programmatic APIs are the main interface for coding agents;
+CLIs/TUIs/GUIs serve human UX. Consequences, in force before implementation
+starts:
+
+1. **One core, typed** — every capability (policy load/compile/`explain`,
+   grant derivation + attenuation checks, request filing, queue
+   read/resolution, decision persistence, evidence log) exists first as a
+   function of the SDK (`src/mod.ts`, the existing API-stable front door with
+   its floor-test discipline). Nothing ships CLI-only.
+2. **Agent surface = SDK + skill.** Agents author small scripts against the
+   SDK (pagu's founding idiom applied to its own tooling) instead of chaining
+   CLI calls. A `pagu` SKILL — herdr-style: the skill teaches, the installed
+   module is the authority on current signatures — ships in-repo and is the
+   agent onboarding path. The in-sandbox request client is an SDK module too.
+3. **Human surface = thin adapters.** `pagu-box <cmd>` stays a CLI because
+   wrapping a process is irreducibly argv-shaped; operator conveniences
+   (queue review, grants list/revoke) are CLI/TUI/herdr renderings that call
+   the SDK — never a parallel implementation.
+4. **Boundary intact**: the resolve-only property of the request channel
+   (falsifier 1) binds the SDK exactly as it binds any CLI — the inside-the-
+   sandbox module physically lacks the resolution capability, not merely the
+   command.
 
 ## Context
 
