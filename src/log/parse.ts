@@ -217,7 +217,7 @@ export function parseLog(md: string): Entry[] {
           kind: "policy-launch",
           ...(a.at ? { at: a.at } : {}),
           id: a.id ?? "",
-          grant: a.grant === "-" || a.grant === undefined ? null : a.grant,
+          grant: a.grant === undefined ? null : a.grant,
           session: a.session ?? "",
           policy: a.policy ?? "",
           pid: Number(a.pid ?? "0"),

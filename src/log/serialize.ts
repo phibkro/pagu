@@ -124,7 +124,7 @@ export function serializeEntry(e: Entry): string {
     case "policy-launch":
       open = head("policy-launch", {
         id: e.id,
-        grant: e.grant ?? "-",
+        ...(e.grant !== null ? { grant: e.grant } : {}),
         session: e.session,
         policy: e.policy,
         pid: String(e.pid),
