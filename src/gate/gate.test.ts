@@ -186,12 +186,13 @@ Deno.test("resume adapters: Codex is ID-bound and Claude is cwd-bound", () => {
     "$HOME/.claude",
     "$HOME/.claude.json",
   ]);
-  assertEquals(claudeResumeAdapter().command("ignored-session-id"), [
+  assertEquals(claudeResumeAdapter().command("session-2"), [
     "claude",
-    "--continue",
+    "--resume",
+    "session-2",
   ]);
   assertEquals(
-    claudeResumeAdapter().command("ignored-session-id").includes("--resume"),
+    claudeResumeAdapter().command("session-2").includes("--continue"),
     false,
   );
   assertThrows(
@@ -334,8 +335,8 @@ Deno.test("law: Claude relaunch keeps cwd continue argv and state", async () => 
       "/work/project",
     ]);
     assertEquals(launched.map((item) => item.resume), [
-      ["claude", "--continue"],
-      ["claude", "--continue"],
+      ["claude", "--resume", "session-a"],
+      ["claude", "--resume", "session-a"],
     ]);
     assertEquals(launched.map((item) => item.policy.fs.rw), [
       ["$HOME/.claude", "$HOME/.claude.json"],
@@ -352,8 +353,8 @@ Deno.test("law: Claude relaunch keeps cwd continue argv and state", async () => 
       "/work/project",
     ]);
     assertEquals(launches.map((entry) => entry.resume), [
-      ["claude", "--continue"],
-      ["claude", "--continue"],
+      ["claude", "--resume", "session-a"],
+      ["claude", "--resume", "session-a"],
     ]);
   } finally {
     gate?.close();

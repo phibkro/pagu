@@ -41,13 +41,16 @@ export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
   };
 }
 
-/** Claude's UUID resume flag is not reliable. `--continue` resumes the latest
- * session in the launch cwd, which the gate holds stable across relaunches. */
+/** Verified against `claude-code 2.x` (lead real-journey check 2026-07-20):
+ * boxed `claude --resume SESSION_ID` resumes the exact session with context
+ * intact, while boxed `claude --continue` reports "No conversation found to
+ * continue" even under an rw-HOME profile — so UUID resume, not `--continue`,
+ * is the reliable in-box form, and it is session-exact across relaunches. */
 export function claudeResumeAdapter(executable = "claude"): ResumeAdapter {
   return {
     harness: "claude",
     stateRw: ["$HOME/.claude", "$HOME/.claude.json"],
-    command: () => [executable, "--continue"],
+    command: (session) => [executable, "--resume", session],
   };
 }
 
