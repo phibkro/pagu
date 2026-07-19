@@ -46,3 +46,6 @@ export * from "./permissions/index.ts";
 // OS sandbox detection and command construction.
 export { detectSandbox, wrapForSandbox } from "./runner/sandbox.ts";
 export type { SandboxKind, SandboxScope } from "./runner/sandbox.ts";
+
+// Versioned standing policy / grant schema and pure policy compiler.
+export * from "./policy/index.ts";

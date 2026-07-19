@@ -40,6 +40,24 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "wrapForSandbox", kind: "function" },
   { name: "SandboxKind", kind: "typeAlias" },
   { name: "SandboxScope", kind: "interface" },
+  // Policy SDK v0.
+  { name: "parsePolicy", kind: "function" },
+  { name: "parseGrant", kind: "function" },
+  { name: "loadPolicy", kind: "function" },
+  { name: "compilePolicy", kind: "function" },
+  { name: "compileToBwrapArgs", kind: "function" },
+  { name: "explain", kind: "function" },
+  { name: "PolicyV0", kind: "interface" },
+  { name: "GrantV0", kind: "interface" },
+  { name: "PolicyLayers", kind: "interface" },
+  { name: "PolicyLoadContext", kind: "interface" },
+  { name: "LoadedPolicy", kind: "interface" },
+  { name: "BwrapCompileContext", kind: "interface" },
+  { name: "PolicyExplanation", kind: "interface" },
+  { name: "CompiledPolicy", kind: "interface" },
+  { name: "PolicyValidationError", kind: "class" },
+  { name: "PolicyCompileError", kind: "class" },
+  { name: "UnsupportedPlatformError", kind: "class" },
 ];
 
 interface DocSymbol {
