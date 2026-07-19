@@ -148,6 +148,54 @@ export function parseLog(md: string): Entry[] {
             ? a.scope
             : "session",
           fsRo: a["fs-ro"] ?? "",
+          canonicalFsRo: a["canonical-fs-ro"] ?? a["fs-ro"] ?? "",
+          session: a.session ?? "",
+          authority: a.authority ?? "",
+          policy: a.policy ?? "",
+        });
+        break;
+      case "policy-launch": {
+        let detail: {
+          resume?: unknown;
+          argv?: unknown;
+          environment?: unknown;
+        } = {};
+        try {
+          detail = JSON.parse(body);
+        } catch {
+          // Malformed evidence fails closed to empty display fields.
+        }
+        const strings = (value: unknown): string[] =>
+          Array.isArray(value) &&
+            value.every((item) => typeof item === "string")
+            ? value
+            : [];
+        entries.push({
+          kind: "policy-launch",
+          id: a.id ?? "",
+          grant: a.grant === "-" || a.grant === undefined ? null : a.grant,
+          session: a.session ?? "",
+          policy: a.policy ?? "",
+          pid: Number(a.pid ?? "0"),
+          resume: strings(detail.resume),
+          argv: strings(detail.argv),
+          environment: strings(detail.environment),
+        });
+        break;
+      }
+      case "policy-launch-failed":
+        entries.push({
+          kind: "policy-launch-failed",
+          grant: a.grant ?? "",
+          session: a.session ?? "",
+          reason: body,
+        });
+        break;
+      case "policy-grant-spent":
+        entries.push({
+          kind: "policy-grant-spent",
+          grant: a.grant ?? "",
+          session: a.session ?? "",
         });
         break;
         // Unknown pagu kinds are skipped (forward-compatibility).

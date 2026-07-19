@@ -58,6 +58,7 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "PolicyValidationError", kind: "class" },
   { name: "PolicyCompileError", kind: "class" },
   { name: "UnsupportedPlatformError", kind: "class" },
+  { name: "policyIdentity", kind: "function" },
   // Request gate.
   { name: "fileRequest", kind: "function" },
   { name: "serveGate", kind: "function" },
@@ -70,6 +71,28 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "GateApprover", kind: "typeAlias" },
   { name: "Gate", kind: "interface" },
   { name: "GatePaths", kind: "interface" },
+  { name: "GrantApplication", kind: "interface" },
+  { name: "GrantLaunchEvidence", kind: "interface" },
+  { name: "PreparedGrantLaunch", kind: "interface" },
+  { name: "GrantApplier", kind: "typeAlias" },
+  { name: "GrantApplicationError", kind: "class" },
+  { name: "canonicalizeGrantPath", kind: "function" },
+  // Relaunch and operator adapters.
+  { name: "codexResumeAdapter", kind: "function" },
+  { name: "claudeResumeAdapter", kind: "function" },
+  { name: "resumeAdapter", kind: "function" },
+  { name: "ResumeAdapter", kind: "interface" },
+  { name: "ResumeAdapterNotVerifiedError", kind: "class" },
+  { name: "createBoxLauncher", kind: "function" },
+  { name: "BoxLauncher", kind: "interface" },
+  { name: "readPendingQueue", kind: "function" },
+  { name: "submitOperatorResolution", kind: "function" },
+  { name: "createOperatorApprover", kind: "function" },
+  { name: "OperatorResolution", kind: "interface" },
+  { name: "assertOperatorBoundary", kind: "function" },
+  { name: "OperatorBoundaryError", kind: "class" },
+  { name: "ensurePrivateStateDirectory", kind: "function" },
+  { name: "UnsafeStateDirectoryError", kind: "class" },
 ];
 
 interface DocSymbol {

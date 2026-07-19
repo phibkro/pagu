@@ -112,6 +112,32 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
     request: "",
     scope: "session",
     fsRo: "",
+    canonicalFsRo: "",
+    session: "",
+    authority: "",
+    policy: "",
+  },
+  "policy-launch": {
+    kind: "policy-launch",
+    id: "",
+    grant: null,
+    session: "",
+    policy: "",
+    pid: 0,
+    resume: [],
+    argv: [],
+    environment: [],
+  },
+  "policy-launch-failed": {
+    kind: "policy-launch-failed",
+    grant: "",
+    session: "",
+    reason: "",
+  },
+  "policy-grant-spent": {
+    kind: "policy-grant-spent",
+    grant: "",
+    session: "",
   },
 };
 

@@ -27,9 +27,23 @@ only forward work.
 - Added the sandbox-side `fileRequest` SDK. The endpoint can submit and await a
   decision but cannot resolve its own request.
 
-The gate currently records approval; it does not relaunch the sandbox with a
-wider policy. Resume/relaunch and filesystem handoff safety are the next product
-slice.
+## Grant application and operator surface
+
+- Made the gate own the boxed child and apply approvals only by stopping it,
+  compiling a complete policy, and resuming the same Codex session.
+- Added a typed resume-adapter port: verified Codex argv and fail-loud,
+  not-yet-verified Claude behavior in `src/gate/resume.ts`.
+- Bound grants to the exact session and authoritative/decision policy hashes;
+  re-canonicalized paths at application; made once grants non-replayable.
+- Added TTY plus host-only queue/resolution adapters over one Approver port in
+  `src/gate/operator.ts`. The sandbox request protocol remains append-only.
+- Added retained launch/failure/spend events and exact post-spawn box evidence.
+- Enforced that gate state/socket stay outside sandbox mounts and the standing
+  policy stays non-writable; the same proof reruns after the old sandbox stops.
+- Required private, owned, non-replaceable operator state and made persist
+  intent crash-recoverable; prepared launches remain tracked through rollback.
+- Rechecked canonical targets after the old sandbox stops and on gate restart;
+  Linux boxes stop when their owning gate process disappears.
 
 ## Documentation realignment
 

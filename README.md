@@ -8,10 +8,9 @@ pagu wraps any coding-agent harness in two security components:
   adjudicate them, and retain the decision evidence.
 
 The hermit-crab model is literal: any harness is the crab, `pagu-box` is the
-borrowed shell, and `pagu gate` controls the shell's aperture.
-
-> Current boundary: the gate decides and records grants. Relaunching a harness
-> with an approved grant is the next slice and is not implemented yet.
+borrowed shell, and `pagu gate` controls the shell's aperture. A grant never
+mutates a live sandbox: the gate stops its owned child, recompiles the complete
+policy, and resumes the same harness session in a new box.
 
 The former integrated harness is preserved on branch `archive/harness` and at
 tag `harness-final`. It is not part of the live architecture. The pivot and the
@@ -21,11 +20,11 @@ box/gate contract are recorded in
 
 ## Platform status
 
-| Surface                              | Linux       | macOS                   |
-| ------------------------------------ | ----------- | ----------------------- |
-| Legacy `pagu-box --profile` launcher | bubblewrap  | `sandbox-exec`          |
-| Schema-v0 `--policy` compiler        | implemented | typed unsupported error |
-| `pagu gate` Unix-socket daemon       | implemented | implemented             |
+| Surface                              | Linux       | macOS                    |
+| ------------------------------------ | ----------- | ------------------------ |
+| Legacy `pagu-box --profile` launcher | bubblewrap  | `sandbox-exec`           |
+| Schema-v0 `--policy` compiler        | implemented | typed unsupported error  |
+| `pagu gate` request/operator daemon  | implemented | blocked by schema policy |
 
 Schema-policy enforcement currently targets Linux. The macOS legacy profiles
 remain available while a schema-to-seatbelt compiler is still open work.
@@ -59,8 +58,8 @@ empty object is deny-all.
   "subject": { "agent": "codex", "label": "pagu checkout" },
   "fs": {
     "home": "tmpfs",
-    "rw": ["$PWD"],
-    "ro": ["/srv/share/reference"],
+    "rw": ["$PWD", "$HOME/.codex"],
+    "ro": [],
     "deny": ["~/.ssh", "~/.gnupg"]
   },
   "net": false,
@@ -121,28 +120,38 @@ nix run .#pagu-box -- --profile=paranoid --no-net -- claude
 Run `pagu-box --help` for the complete compatibility surface. Legacy policy
 flags cannot be combined with `--policy`.
 
-## Run the gate
+## Run a gate-owned Codex session
 
-Start the gate outside the sandbox. The policy passed here is the user policy;
+The relaunch lifecycle requires the gate to own the boxed child. Supply an
+existing Codex session UUID; the verified adapter runs `codex resume UUID` for
+the initial box and every approved relaunch. The policy is the user policy;
 `persist` decisions update this file only.
 
 ```sh
-mkdir -p .pagu/gate
+SESSION="<codex-session-uuid>"
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  PAGU_STATE="$XDG_RUNTIME_DIR/pagu/$SESSION"
+else
+  PAGU_STATE="$(mktemp -d -t pagu.XXXXXX)"
+fi
+PAGU_POLICY="$HOME/.config/pagu/policy.json"
 
 nix run .#pagu -- gate \
-  --policy "$PWD/policy.json" \
-  --socket "$PWD/.pagu/gate/request.sock" \
-  --state-dir "$PWD/.pagu/gate"
+  --policy "$PAGU_POLICY" \
+  --session "$SESSION" \
+  --harness codex \
+  --state-dir "$PAGU_STATE"
 ```
 
-Then opt a boxed launch into that channel:
+Keep the user policy and gate state outside every `fs.rw`/`fs.ro` root. Startup
+checks the effective mount topology and rejects a sandbox-visible state/socket
+or sandbox-writable policy. The default state directory is
+`$XDG_RUNTIME_DIR/pagu/SESSION`. Without a runtime directory, pass an absolute
+private directory such as the `mktemp` result above. Startup rejects symlinks,
+foreign ownership, broad modes, and replaceable non-sticky ancestry.
 
-```sh
-nix run .#pagu-box -- \
-  --policy "$PWD/policy.json" \
-  --gate "$PWD/.pagu/gate/request.sock" \
-  -- codex
-```
+The gate starts `pagu-box` itself. The Claude resume port exists but raises the
+typed `ResumeAdapterNotVerifiedError`; no unverified argv fallback is used.
 
 The in-sandbox SDK call is:
 
@@ -166,13 +175,36 @@ Gate tiers:
 2. canonical child of an `auto` scope → session grant without a prompt;
 3. otherwise → queue projection plus a prompt on the gate's own terminal.
 
-Operator approvals may be `once`, `session`, or `persist`. Once and session
-grants are stored in the gate state directory and survive a gate restart.
-Persist adds the exact requested read-only rule to the user policy. Every
-request, decision, and grant is appended to `events.md`.
+Operator approvals may be `once`, `session`, or `persist`:
 
-Approving a request does not change the already-running sandbox in this release.
-Stop there unless you are developing the relaunch/resume slice.
+- `once` is durably marked before its one relaunch, so a crash can
+  conservatively spend it but can never replay it;
+- `session` survives gate restart only for the same session and authoritative
+  policy identity;
+- `persist` adds the canonical exact read-only rule to the user policy, never a
+  project policy; the retained approval/grant rebuilds a missing projection and
+  completes the edit on restart after an interrupted atomic policy write.
+
+The gate resolves the requested path at decision, on restored-grant loading, and
+again after the old sandbox stops immediately before enforcement. If its
+canonical target changed, the wider launch is refused. On a successful
+application a complete canonical policy is compiled, Codex resumes, durable
+state/evidence commits, and only then does the gate accept the provisional child
+as current.
+
+The gate terminal accepts deny/once/session/persist. A herdr pane can render
+`queue.json` and resolve the same Approver port from the trusted host:
+
+```sh
+nix run .#pagu -- resolve \
+  --state-dir "$PAGU_STATE" \
+  --request r1 \
+  --scope session
+```
+
+Use `--deny` instead of `--scope` to refuse. `resolution.json` is atomically
+published operator-side state and is never mounted into the box; the request
+socket remains the only inside surface.
 
 ## Programmatic API
 
@@ -181,11 +213,17 @@ The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 - strict policy and grant decoding;
 - trusted-user plus narrow-only project policy folding;
 - pure policy compilation and explanation;
-- the request client, gate core, and Approver port;
+- the request client, session-bound gate core, and Approver port;
+- Codex/Claude resume adapters and the gate-owned box lifecycle;
+- queue reads and resolve-only operator submission;
 - retained event-log and capability primitives.
 
 The public-export floor is checked by [`src/mod.test.ts`](src/mod.test.ts). This
 package is consumed from a checkout today; publication is not claimed.
+
+The agent-facing boundary guide ships at
+[`skills/pagu/SKILL.md`](skills/pagu/SKILL.md). It teaches the request and
+operator seams while treating the installed SDK as signature authority.
 
 ## Security model and development
 

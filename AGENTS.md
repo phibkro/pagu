@@ -42,7 +42,11 @@ The canonical invariant catalog is `docs/INVARIANTS.md`. In short:
 
 Never put adjudication inside the box or enforcement inside the gate. Never
 mount a general control socket into the sandbox. Unsupported enforcement must
-fail loud, not fall back to a weaker mode.
+fail loud, not fall back to a weaker mode. Gate state, operator resolution,
+launch evidence, and the user policy must stay outside sandbox-visible/writeable
+policy roots; `src/gate/boundary.ts` enforces this before launch and again after
+the old sandbox stops. State itself must pass the ownership/ancestry checks in
+`src/gate/state.ts`.
 
 ## Architecture discipline
 
@@ -83,13 +87,12 @@ documentation drift check, then tests.
 
 For box/gate capability work, also run a real packaged journey:
 
-1. start the built `pagu gate` outside the sandbox;
-2. launch the built `pagu-box` with `--policy` and `--gate`;
-3. file a request through `fileRequest` from inside;
-4. inspect the retained request → decision → grant events;
-5. attempt the relevant falsifier from a real bubblewrap process.
-
-Do not claim relaunch/resume behavior until Slice 5 implements and verifies it.
+1. start the built `pagu gate` with a real Codex session ID; it owns `pagu-box`;
+2. file a request through `fileRequest` from inside;
+3. approve through the TTY or host-only `pagu resolve` adapter;
+4. inspect request → decision → grant → launch/spent evidence;
+5. verify the resumed box reaches the canonical grant and the prior box stopped;
+6. attempt the relevant falsifier from a real bubblewrap process.
 
 ## Definition of done
 
@@ -120,7 +123,7 @@ Do not claim relaunch/resume behavior until Slice 5 implements and verifies it.
 Use Conventional Commits with a why-focused body and this exact trailer:
 
 ```text
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: GPT 5.6 Sol via Codex
 ```
 
 Repository identity:

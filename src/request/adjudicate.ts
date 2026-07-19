@@ -4,12 +4,14 @@ import type { GateDecision, GateRequest, OperatorDecision } from "./schema.ts";
 
 export type GateApprover = (
   request: GateRequest,
+  signal?: AbortSignal,
 ) => Promise<OperatorDecision>;
 
 export interface AdjudicationContext {
   /** Resolve an exact schema path to its canonical host path. Null fails
    * closed for auto-escalation. */
   readonly canonicalize: (path: string) => string | null;
+  readonly signal?: AbortSignal;
 }
 
 function normalizedRoot(path: string): string | null {
@@ -88,7 +90,7 @@ export async function adjudicateRequest(
       granted_rule: { "fs.ro": requested },
     };
   }
-  const decision = await approver(request);
+  const decision = await approver(request, context.signal);
   if (decision.verdict === "deny") {
     return {
       verdict: "deny",

@@ -205,6 +205,7 @@ export async function serveGate(
   return {
     async close() {
       closing = true;
+      options.gate.close();
       listener.close();
       await loop;
       await Promise.all(clients);

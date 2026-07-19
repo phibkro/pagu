@@ -50,16 +50,17 @@ flowchart LR
     H -. "typed file request" .-> S["append-and-await\nUnix socket"]
     S -.-> G
     G -->|"decision + retained grant"| E[("event log + projections")]
-    G -. "decision only\nno live widening" .-> H
+    G -->|"stop child · recompile · resume"| B
 ```
 
 The box and gate share a schema family, not a process:
 
 - the box receives a complete standing policy at launch;
 - the gate receives typed requests through an optional mounted socket;
-- decisions return to the caller, but approved mounts are not applied to the
-  running sandbox in the current release;
-- Slice 5 will make relaunch/resume the only widening application path.
+- a decision never mutates the running mount namespace;
+- the gate owns the boxed child, stops it after approval, and starts one new box
+  from a complete derived policy;
+- a resume adapter carries the same harness session across the new boundary.
 
 ## Trust model
 
@@ -68,7 +69,7 @@ The box and gate share a schema family, not a process:
 | User policy selected by the operator    | trusted authority        | may grant within schema v0                                           |
 | Project policy supplied by a repository | untrusted                | may only attenuate user authority; widening is ignored with warnings |
 | Harness and everything it reads         | untrusted                | may request; cannot resolve or edit gate state                       |
-| Gate process and its state directory    | trusted core             | single writer for requests, decisions, and grants                    |
+| Gate process and its state directory    | trusted core             | single writer and owner of the boxed child lifecycle                 |
 | Box compiler and OS sandbox             | trusted enforcement core | exact lowering is the security boundary                              |
 | Human-readable explanation              | evidence, not authority  | derived from the same compiled result used to launch                 |
 
@@ -92,8 +93,9 @@ The standing policy controls:
 - read-only auto-escalation and refusal scopes.
 
 A grant is gate-derived policy data with `parent` and `expires` derivation
-fields. It is not a hand-authored second policy language. Current once/session
-grant projections are decoded again on gate restart.
+fields. It is not a hand-authored second policy language. Stored grants also
+carry the session, authoritative policy hash, decision-policy hash, original
+path, canonical target, and application state.
 
 ### Narrow-only composition
 
@@ -134,7 +136,9 @@ Security-relevant properties:
 - the optional request socket and its environment name exist only when `--gate`
   is supplied;
 - `--explain` is a projection of the exact compiled result and omits secret
-  values.
+  values;
+- gate-owned launches use `--evidence` to persist that spawned result's argv,
+  environment names, command, and PID.
 
 [`src/policy/cli.ts`](src/policy/cli.ts) is the thin process adapter used by the
 Nix-built `pagu-box` launcher. Linux schema-policy compilation is implemented.
@@ -166,8 +170,16 @@ order:
 3. otherwise → the gate's Approver port.
 
 Canonicalization before auto-approval closes symlink aliases at decision time.
-The enforcement-time recheck required for relaunch is intentionally deferred
-with relaunch itself.
+[`src/request/gate.ts`](src/request/gate.ts) captures that canonical target and
+resolves the original path again immediately before application. A changed
+target fails before the old box is stopped. The applied policy contains the
+canonical path, not the mutable alias.
+
+[`src/gate/relaunch.ts`](src/gate/relaunch.ts) owns the active child. It
+verifies the request gate is reachable, stops the narrower box, and starts
+`pagu-box` with the complete derived policy.
+[`src/gate/resume.ts`](src/gate/resume.ts) is the harness port: Codex uses
+`codex resume SESSION_ID`; Claude fails with a typed not-yet-verified error.
 
 ## Gate state and evidence
 
@@ -177,29 +189,50 @@ The queue and session-grants JSON files are gate-owned projections:
 
 | Artifact              | Meaning                                                            |
 | --------------------- | ------------------------------------------------------------------ |
-| `events.md`           | retained request, decision, and policy-grant evidence              |
+| `events.md`           | request, decision, grant, launch/failure, and once-spent evidence  |
 | `queue.json`          | the operator request currently awaiting the Approver               |
-| `session-grants.json` | once/session grants that survive a gate restart                    |
+| `resolution.json`     | host-only operator response; never mounted into the box            |
+| `session-grants.json` | bound pending/applied/spent once/session/persist projections       |
+| `launches/`           | complete launch policies plus exact box-emitted evidence           |
 | user policy           | standing authority; changed only by an explicit `persist` decision |
 
-The CLI adapter in [`src/gate/cli.ts`](src/gate/cli.ts) renders the Approver as
-a TTY prompt. A future herdr surface is another adapter over the same port, not
-a second adjudicator.
+[`src/gate/operator.ts`](src/gate/operator.ts) supplies queue reads and a
+resolve-only host file adapter. The CLI races that adapter with asynchronous TTY
+input behind the same Approver port. A herdr pane renders the queue and invokes
+`pagu resolve`; it receives no sandbox mount or alternative adjudicator.
+[`src/gate/boundary.ts`](src/gate/boundary.ts) fails launch if the effective
+policy can see gate state/the host socket pathname or write the user policy. The
+default state lives below `XDG_RUNTIME_DIR`, never below the project mount.
+Without that directory the operator supplies a private absolute directory;
+ownership, final mode, symlinks, and replaceable ancestry are checked.
 
 ## Fail-secure behavior
 
 - No gate mount means no request capability and no new escalation path.
 - An absent or malformed policy fails before launch; `{}` compiles to bottom.
 - Gate unavailability cannot widen an already-running box.
+- The relaunch adapter checks gate reachability before stopping the narrower
+  child and has no wider fallback.
+- A symlink target or any existing policy root changed after decision, while the
+  gate was down, or before enforcement after the prior sandbox stops cannot
+  expose operator authority to the launcher.
+- A provisional widened child is stopped if durable grant state or launch
+  evidence cannot commit; there is no wider unrecorded fallback.
+- A persist decision and grant are retained in one append before projection, so
+  restart rebuilds missing state and completes an interrupted exact policy edit.
+- A grant for another session or authoritative policy hash cannot apply.
+- A once grant is durably spent before the irreversible spawn; crash recovery
+  prefers lost utility over possible replay.
 - Refuse and auto tiers do not depend on an operator prompt.
 - A malformed request creates no event or grant.
 - Project policy widening fails closed to the user policy ceiling.
 - Unsupported schema enforcement fails loud rather than falling back to a weaker
   mode.
 
-Fail-secure does not mean highly available. A harness can delay its own request
-path; bounded connections and timeouts cap that resource use. The standing box
-continues enforcing independently.
+Fail-secure does not mean highly available. Gate absence at the preflight keeps
+the standing box; an error after it stops is fail-stop rather than an unsafe
+wider fallback. On Linux the policy adapter also probes the gate PID from its
+trusted outer process, stopping the sandbox after an owning-gate crash.
 
 ## Evidence standard
 
@@ -209,6 +242,8 @@ Claims about enforcement bind to executable evidence:
   [`src/policy/policy.test.ts`](src/policy/policy.test.ts);
 - request protocol, tiers, persistence, socket boundary, and real bubblewrap
   falsifier: [`src/request/request.test.ts`](src/request/request.test.ts);
+- relaunch, resume, TOCTOU, once, binding, operator, and fail-secure falsifiers:
+  [`src/gate/gate.test.ts`](src/gate/gate.test.ts);
 - event wire compatibility: [`src/events.test.ts`](src/events.test.ts);
 - public SDK floor: [`src/mod.test.ts`](src/mod.test.ts).
 

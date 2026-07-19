@@ -10,7 +10,9 @@ import {
   fileRequest,
   type GateApprover,
   type GatePaths,
+  type GrantApplication,
   parseRequestInput,
+  type PreparedGrantLaunch,
   RequestValidationError,
   serveGate,
 } from "./index.ts";
@@ -48,6 +50,22 @@ const request = (path: string) => ({
 });
 
 const identityContext = { canonicalize: (path: string) => path };
+
+const apply = (application: GrantApplication): Promise<PreparedGrantLaunch> =>
+  Promise.resolve({
+    evidence: {
+      pid: 99,
+      argv: [
+        "--ro-bind",
+        application.canonicalFsRo,
+        application.canonicalFsRo,
+      ],
+      environment: ["HOME", "PATH"],
+      resume: ["codex", "resume", application.session],
+    },
+    commit() {},
+    rollback: () => Promise.resolve(),
+  });
 
 async function tempPaths(): Promise<{ root: string; paths: GatePaths }> {
   const root = await Deno.makeTempDir();
@@ -157,17 +175,21 @@ Deno.test("falsifier 4: session grants survive a gate restart", async () => {
         auto: [{ "fs.ro": `${root}/**`, scope: "session" }],
       })),
     );
-    const first = await createGate({ paths });
+    const first = await createGate({ paths, session: "test-session", apply });
     const decision = await first.handle(request(requested));
     assertEquals(decision.verdict, "approve");
     assertEquals(first.sessionGrants().length, 1);
 
-    const restarted = await createGate({ paths });
+    const restarted = await createGate({
+      paths,
+      session: "test-session",
+      apply,
+    });
     assertEquals(restarted.sessionGrants(), first.sessionGrants());
     const events = parseLog(await Deno.readTextFile(paths.eventLog));
     assertEquals(
       events.map((event) => event.kind),
-      ["request", "request-decision", "policy-grant"],
+      ["request", "request-decision", "policy-grant", "policy-launch"],
     );
   } finally {
     await Deno.remove(root, { recursive: true });
@@ -181,18 +203,73 @@ Deno.test("persist changes the user policy only and records the grant", async ()
     const initial = JSON.stringify(policy());
     await Deno.writeTextFile(paths.userPolicy, initial);
     await Deno.writeTextFile(projectPolicy, initial);
+    const granted = `${root}/reference`;
+    await Deno.mkdir(granted);
     const gate = await createGate({
       paths,
+      session: "test-session",
+      apply,
       approver: () => Promise.resolve({ verdict: "approve", scope: "persist" }),
     });
-    const result = await gate.handle(request("/opt/reference"));
+    const result = await gate.handle(request(granted));
     assertEquals(result.scope, "persist");
     const persisted = JSON.parse(await Deno.readTextFile(paths.userPolicy));
-    assertEquals(persisted.fs.ro, ["/opt/reference"]);
+    assertEquals(persisted.fs.ro, [granted]);
     assertEquals(await Deno.readTextFile(projectPolicy), initial);
-    assertEquals(gate.sessionGrants(), []);
+    assertEquals(gate.sessionGrants()[0].scope, "persist");
+    assertEquals(gate.sessionGrants()[0].state, "applied");
     const events = parseLog(await Deno.readTextFile(paths.eventLog));
-    assertEquals(events.at(-1)?.kind, "policy-grant");
+    assertEquals(events.at(-1)?.kind, "policy-launch");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("retained persist grant rebuilds a missing projection without ID reuse", async () => {
+  const { root, paths } = await tempPaths();
+  try {
+    await Deno.writeTextFile(paths.userPolicy, JSON.stringify(policy()));
+    const granted = `${root}/reference`;
+    await Deno.mkdir(granted);
+    const gate = await createGate({
+      paths,
+      session: "test-session",
+      approver: () => Promise.resolve({ verdict: "approve", scope: "persist" }),
+      apply: () => Promise.reject(new Error("box unavailable")),
+    });
+    await assertRejects(
+      () => gate.handle(request(granted)),
+      Error,
+      "unavailable",
+    );
+    assertEquals(gate.sessionGrants()[0].state, "pending");
+    assertEquals(
+      JSON.parse(await Deno.readTextFile(paths.userPolicy)).fs.ro,
+      [],
+    );
+    await Deno.remove(paths.sessionGrants);
+    const restarted = await createGate({
+      paths,
+      session: "test-session",
+      apply,
+      approver: () => Promise.resolve({ verdict: "approve", scope: "session" }),
+    });
+    assertEquals(restarted.sessionGrants()[0].state, "applied");
+    assertEquals(
+      JSON.parse(await Deno.readTextFile(paths.userPolicy)).fs.ro,
+      [granted],
+    );
+    assertEquals(restarted.effectivePolicy().fs.ro, [granted]);
+    const second = `${root}/second`;
+    await Deno.mkdir(second);
+    await restarted.handle(request(second));
+    const events = parseLog(await Deno.readTextFile(paths.eventLog));
+    assertEquals(
+      events.filter((entry) => entry.kind === "policy-grant").map((entry) =>
+        entry.id
+      ),
+      ["pg1", "pg2"],
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -204,7 +281,12 @@ Deno.test("operator requests are visible in queue while the Approver is pending"
     await Deno.writeTextFile(paths.userPolicy, JSON.stringify(policy()));
     let resolve!: (value: { verdict: "deny" }) => void;
     const answer = new Promise<{ verdict: "deny" }>((done) => resolve = done);
-    const gate = await createGate({ paths, approver: () => answer });
+    const gate = await createGate({
+      paths,
+      session: "test-session",
+      apply,
+      approver: () => answer,
+    });
     const pending = gate.handle(request("/outside"));
     for (let i = 0; i < 50; i++) {
       try {
@@ -237,7 +319,7 @@ Deno.test("fileRequest appends one request and awaits its tied decision", async 
         auto: [{ "fs.ro": `${root}/**`, scope: "session" }],
       })),
     );
-    const gate = await createGate({ paths });
+    const gate = await createGate({ paths, session: "test-session", apply });
     const server = await serveGate({ socket, gate });
     const decision = await fileRequest(request(requested), {
       socket,
@@ -269,6 +351,8 @@ Deno.test("auto tier fails closed when a requested child is a symlink escape", a
     let prompts = 0;
     const gate = await createGate({
       paths,
+      session: "test-session",
+      apply,
       approver: () => {
         prompts++;
         return Promise.resolve({ verdict: "deny" });
@@ -290,7 +374,7 @@ Deno.test("gate socket is private and an active listener cannot be replaced", as
   const socket = `${root}/request.sock`;
   try {
     await Deno.writeTextFile(paths.userPolicy, JSON.stringify(policy()));
-    const gate = await createGate({ paths });
+    const gate = await createGate({ paths, session: "test-session", apply });
     const server = await serveGate({ socket, gate });
     assertEquals((await Deno.stat(socket)).mode! & 0o777, 0o600);
     await assertRejects(
@@ -318,7 +402,7 @@ Deno.test("falsifier 1: real sandbox endpoint cannot submit a resolution", async
   const sandboxSocket = "/run/pagu/request.sock";
   try {
     await Deno.writeTextFile(paths.userPolicy, JSON.stringify(policy()));
-    const gate = await createGate({ paths });
+    const gate = await createGate({ paths, session: "test-session", apply });
     const server = await serveGate({ socket, gate });
     const home = Deno.env.get("HOME") ?? "/tmp";
     const environment = Deno.env.toObject();

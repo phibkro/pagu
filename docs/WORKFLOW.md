@@ -77,9 +77,10 @@ nix build .#pagu-box
 ./result/bin/pagu-box --help
 ```
 
-For gate behavior, exercise the real socket and evidence path with `pagu gate`
-and `pagu-box --gate`. A model stub is not a substitute for an end-to-end run
-when the changed seam depends on live process behavior.
+For gate behavior, give `pagu gate` a real harness session ID so it owns the
+boxed child. Exercise request → operator resolution → stop → recompile → resume,
+then compare the retained launch evidence with the applied policy. A model stub
+is not a substitute when the changed seam depends on live process behavior.
 
 Security-boundary work should receive an independent-context review. The
 reviewer should try to falsify the claim, not merely restate the diff.

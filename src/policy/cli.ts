@@ -14,6 +14,8 @@ interface Options {
   readonly explainOnly: boolean;
   readonly bwrap?: string;
   readonly gate?: string;
+  readonly evidence?: string;
+  readonly supervisorPid?: number;
   readonly command: readonly string[];
 }
 
@@ -27,6 +29,8 @@ function parseArgs(args: readonly string[]): Options {
   let explainOnly = false;
   let bwrap: string | undefined;
   let gate: string | undefined;
+  let evidence: string | undefined;
+  let supervisorPid: number | undefined;
   let index = 0;
   for (; index < args.length; index++) {
     const arg = args[index];
@@ -42,6 +46,16 @@ function parseArgs(args: readonly string[]): Options {
       bwrap = args[++index] ?? usageError("--bwrap requires an executable");
     } else if (arg === "--gate") {
       gate = args[++index] ?? usageError("--gate requires a socket");
+    } else if (arg === "--evidence") {
+      evidence = args[++index] ?? usageError("--evidence requires a file");
+    } else if (arg === "--supervisor-pid") {
+      const value = Number(
+        args[++index] ?? usageError("--supervisor-pid requires a PID"),
+      );
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        usageError("--supervisor-pid requires a positive PID");
+      }
+      supervisorPid = value;
     } else {
       usageError(`internal policy adapter received unknown option '${arg}'`);
     }
@@ -51,9 +65,26 @@ function parseArgs(args: readonly string[]): Options {
   if (explainOnly && command.length > 0) {
     usageError("--explain does not accept a command");
   }
+  if (explainOnly && evidence) {
+    usageError("--evidence cannot be combined with --explain");
+  }
   if (!explainOnly && command.length === 0) usageError("no command given");
   if (!explainOnly && !bwrap) usageError("internal --bwrap is required");
-  return { policyFile, explainOnly, bwrap, gate, command };
+  return {
+    policyFile,
+    explainOnly,
+    bwrap,
+    gate,
+    evidence,
+    supervisorPid,
+    command,
+  };
+}
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function supervisorLost(pid: number): Promise<void> {
+  while (Deno.ppid === pid) await delay(100);
 }
 
 function pathKind(path: string): "directory" | "file" | "missing" {
@@ -105,6 +136,11 @@ async function main(): Promise<number> {
     return 0;
   }
   const compiled = compilePolicy(loaded.policy, ctx);
+  if (
+    options.supervisorPid !== undefined && Deno.ppid !== options.supervisorPid
+  ) {
+    throw new PolicyCompileError("gate supervisor is not running");
+  }
   const child = new Deno.Command(options.bwrap!, {
     args: [...compiled.argv, "--", ...options.command],
     clearEnv: true,
@@ -113,7 +149,50 @@ async function main(): Promise<number> {
     stdout: "inherit",
     stderr: "inherit",
   }).spawn();
-  return (await child.status).code;
+  if (options.evidence) {
+    await Deno.writeTextFile(
+      options.evidence,
+      JSON.stringify({
+        version: 0,
+        platform: "linux",
+        pid: child.pid,
+        argv: [...compiled.argv],
+        environment: Object.keys(compiled.environment),
+        command: [...options.command],
+      }) + "\n",
+      { createNew: true, mode: 0o600 },
+    );
+  }
+  const status = child.status;
+  if (
+    options.supervisorPid !== undefined
+  ) {
+    const result = await Promise.race([
+      status.then((value) => ({ kind: "child" as const, value })),
+      supervisorLost(options.supervisorPid).then(
+        () => ({ kind: "supervisor" as const }),
+      ),
+    ]);
+    if (result.kind === "supervisor") {
+      console.error("pagu-box: gate supervisor exited; stopping sandbox");
+      try {
+        child.kill("SIGTERM");
+      } catch (error) {
+        if (!(error instanceof Deno.errors.NotFound)) throw error;
+      }
+      const stopped = await Promise.race([
+        status.then(() => true),
+        delay(2_000).then(() => false),
+      ]);
+      if (!stopped) {
+        child.kill("SIGKILL");
+        await status;
+      }
+      return 70;
+    }
+    return result.value.code;
+  }
+  return (await status).code;
 }
 
 try {

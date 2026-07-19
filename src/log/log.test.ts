@@ -220,6 +220,32 @@ const entryG: fc.Arbitrary<Entry> = fc.oneof(
       "persist" as const,
     ),
     fsRo: attrG,
+    canonicalFsRo: attrG,
+    session: attrG,
+    authority: attrG,
+    policy: attrG,
+  }),
+  fc.record({
+    kind: fc.constant("policy-launch" as const),
+    id: attrG,
+    grant: fc.option(attrG, { nil: null }),
+    session: attrG,
+    policy: attrG,
+    pid: fc.integer(),
+    resume: elemsG,
+    argv: elemsG,
+    environment: elemsG,
+  }),
+  fc.record({
+    kind: fc.constant("policy-launch-failed" as const),
+    grant: attrG,
+    session: attrG,
+    reason: bodyG,
+  }),
+  fc.record({
+    kind: fc.constant("policy-grant-spent" as const),
+    grant: attrG,
+    session: attrG,
   }),
 );
 

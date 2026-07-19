@@ -30,6 +30,8 @@ pkgs.writeShellApplication {
     NO_NET=0
     POLICY_FILE=""
     GATE_SOCKET=""
+    LAUNCH_EVIDENCE=""
+    SUPERVISOR_PID=""
     EXPLAIN=0
     LEGACY_OPTIONS=0
 
@@ -37,6 +39,8 @@ pkgs.writeShellApplication {
       case "$1" in
         --policy)       POLICY_FILE="$2"; shift 2 ;;
         --gate)         GATE_SOCKET="$2"; shift 2 ;;
+        --evidence)     LAUNCH_EVIDENCE="$2"; shift 2 ;;
+        --supervisor-pid) SUPERVISOR_PID="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
         --profile=*)    PROFILE="''${1#--profile=}"; LEGACY_OPTIONS=1; shift ;;
         --profile)      PROFILE="$2"; LEGACY_OPTIONS=1; shift 2 ;;
@@ -55,6 +59,9 @@ pkgs.writeShellApplication {
       --profile=NAME  default | strict | paranoid | loose  (default: default)
       --policy FILE   validate a schema-v0 JSON policy via the SDK (Linux compile only in v0)
       --gate SOCKET   request channel; schema-policy enforcement is unsupported on Darwin in v0
+      --evidence FILE operator-side launch evidence (schema policy is unsupported on Darwin)
+      --supervisor-pid PID
+                      owner lifecycle signal (schema policy is unsupported on Darwin)
       --explain       print compiled argv JSON; requires --policy (typed unsupported error on Darwin)
       --allow PATH    extra RW allow — appends (allow file-read*/write*) (deny-by-default
                       profiles only — no-op for default/loose since they allow by default)
@@ -85,6 +92,8 @@ pkgs.writeShellApplication {
       }
       adapter_args=( --policy "$POLICY_FILE" )
       [ -z "$GATE_SOCKET" ] || adapter_args+=( --gate "$GATE_SOCKET" )
+      [ -z "$LAUNCH_EVIDENCE" ] || adapter_args+=( --evidence "$LAUNCH_EVIDENCE" )
+      [ -z "$SUPERVISOR_PID" ] || adapter_args+=( --supervisor-pid "$SUPERVISOR_PID" )
       [ "$EXPLAIN" -eq 0 ] || adapter_args+=( --explain )
       if [ "$EXPLAIN" -eq 0 ]; then
         [ $# -gt 0 ] || { echo "pagu-box: no command given" >&2; exit 64; }
@@ -97,6 +106,14 @@ pkgs.writeShellApplication {
     fi
     [ -z "$GATE_SOCKET" ] || {
       echo "pagu-box: --gate requires --policy" >&2
+      exit 64
+    }
+    [ -z "$LAUNCH_EVIDENCE" ] || {
+      echo "pagu-box: --evidence requires --policy" >&2
+      exit 64
+    }
+    [ -z "$SUPERVISOR_PID" ] || {
+      echo "pagu-box: --supervisor-pid requires --policy" >&2
       exit 64
     }
     [ "$EXPLAIN" -eq 0 ] || {

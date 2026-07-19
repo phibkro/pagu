@@ -38,6 +38,8 @@ pkgs.writeShellApplication {
     NEEDS_JOURNAL=0       # opt in to read-only journalctl access (journal dirs + machine-id)
     POLICY_FILE=""
     GATE_SOCKET=""
+    LAUNCH_EVIDENCE=""
+    SUPERVISOR_PID=""
     EXPLAIN=0
     LEGACY_OPTIONS=0
 
@@ -45,6 +47,8 @@ pkgs.writeShellApplication {
       case "$1" in
         --policy)       POLICY_FILE="$2"; shift 2 ;;
         --gate)         GATE_SOCKET="$2"; shift 2 ;;
+        --evidence)     LAUNCH_EVIDENCE="$2"; shift 2 ;;
+        --supervisor-pid) SUPERVISOR_PID="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
         --profile=*)    PROFILE="''${1#--profile=}"; LEGACY_OPTIONS=1; shift ;;
         --profile)      PROFILE="$2"; LEGACY_OPTIONS=1; shift 2 ;;
@@ -75,6 +79,9 @@ pkgs.writeShellApplication {
       --profile=NAME    default | strict | paranoid | loose  (default: default)
       --policy FILE     compile and enforce a schema-v0 JSON policy via the SDK
       --gate SOCKET     mount the gate's append-and-await request socket; requires --policy
+      --evidence FILE   write the exact spawned policy argv as operator-side launch evidence
+      --supervisor-pid PID
+                        stop the sandbox if its owning gate process exits
       --explain         print the policy's compiled bwrap argv as JSON; requires --policy
       --allow PATH      extra read-write bind mount (repeatable)
       --ro-allow PATH   extra read-only bind mount (repeatable)
@@ -122,6 +129,8 @@ pkgs.writeShellApplication {
       }
       adapter_args=( --policy "$POLICY_FILE" )
       [ -z "$GATE_SOCKET" ] || adapter_args+=( --gate "$GATE_SOCKET" )
+      [ -z "$LAUNCH_EVIDENCE" ] || adapter_args+=( --evidence "$LAUNCH_EVIDENCE" )
+      [ -z "$SUPERVISOR_PID" ] || adapter_args+=( --supervisor-pid "$SUPERVISOR_PID" )
       if [ "$EXPLAIN" -eq 1 ]; then
         [ $# -eq 0 ] || { echo "pagu-box: --explain does not accept a command" >&2; exit 64; }
         adapter_args+=( --explain )
@@ -129,12 +138,22 @@ pkgs.writeShellApplication {
         [ $# -gt 0 ] || { echo "pagu-box: no command given" >&2; exit 64; }
         adapter_args+=( --bwrap ${pkgs.bubblewrap}/bin/bwrap -- "$@" )
       fi
+      deno_permissions=( --allow-read --allow-env --allow-run=${pkgs.bubblewrap}/bin/bwrap )
+      [ -z "$LAUNCH_EVIDENCE" ] || deno_permissions+=( --allow-write="$LAUNCH_EVIDENCE" )
       exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
-        --allow-read --allow-env --allow-run=${pkgs.bubblewrap}/bin/bwrap \
+        "''${deno_permissions[@]}" \
         ${policySdk}/cli.ts "''${adapter_args[@]}"
     fi
     [ -z "$GATE_SOCKET" ] || {
       echo "pagu-box: --gate requires --policy" >&2
+      exit 64
+    }
+    [ -z "$LAUNCH_EVIDENCE" ] || {
+      echo "pagu-box: --evidence requires --policy" >&2
+      exit 64
+    }
+    [ -z "$SUPERVISOR_PID" ] || {
+      echo "pagu-box: --supervisor-pid requires --policy" >&2
       exit 64
     }
     [ "$EXPLAIN" -eq 0 ] || {

@@ -11,6 +11,7 @@ The runtime has two independent executables and one shared typed core:
 flowchart TB
     subgraph operator["trusted host"]
         GC["src/gate/cli.ts\npagu gate"]
+        R["src/gate/relaunch.ts\nchild ownership + resume"]
         G["src/request/gate.ts\nPA state + adjudication"]
         P["src/policy/\nschema · fold · compile"]
         BC["box/src/linux.nix\npagu-box"]
@@ -21,23 +22,27 @@ flowchart TB
     end
 
     GC --> G
+    GC --> R
     BC -->|"thin adapter"| P
     P -->|"bubblewrap argv + scrubbed env"| BC
     BC --> H
     H --> C
     C -. "strict Unix request" .-> G
+    G -->|"validated grant"| R
+    R -->|"stop + new complete policy"| BC
     G --> L[("log + projections")]
 ```
 
 ## Entrypoints and packages
 
-| Surface              | Source                                     | Current role                                                                     |
-| -------------------- | ------------------------------------------ | -------------------------------------------------------------------------------- |
-| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux. |
-| `pagu gate`          | `src/gate/cli.ts`                          | Outside-sandbox daemon, TTY Approver adapter, Unix listener.                     |
-| SDK                  | `src/mod.ts`                               | Stable front door for policy, request, event, and retained security primitives.  |
-| Root flake           | `flake.nix`                                | Builds `pagu-box`, `pagu`, formatter, and the Linux development shell.           |
-| Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                               |
+| Surface              | Source                                     | Current role                                                                                 |
+| -------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.             |
+| `pagu gate`          | `src/gate/cli.ts`                          | Owns a resumed harness session, request listener, operator surfaces, and relaunch lifecycle. |
+| `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                       |
+| SDK                  | `src/mod.ts`                               | Stable front door for policy, request, event, and retained security primitives.              |
+| Root flake           | `flake.nix`                                | Builds `pagu-box`, `pagu`, formatter, and the Linux development shell.                       |
+| Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                           |
 
 The default root package is `pagu-box`. A unified `pagu box` command is planned
 but not implemented.
@@ -51,6 +56,7 @@ All policy core files are pure and exported through `src/policy/index.ts`.
 | `src/policy/schema.ts`      | Strict policy/grant v0 types and decoding; bottom policy; built-in denies; refusal containment.                   |
 | `src/policy/load.ts`        | Trusted-user plus narrow-only project fold; warnings for widening; canonical child validation.                    |
 | `src/policy/compile.ts`     | Explicit-context policy lowering to Linux bubblewrap argv and scrubbed environment; exact explanation projection. |
+| `src/policy/identity.ts`    | Canonical SHA-256 identity binding grants to complete policy authority.                                           |
 | `src/policy/presets.ts`     | Schema representations of the four legacy profile baselines used for equivalence testing.                         |
 | `src/policy/cli.ts`         | Effectful adapter: read JSON, assemble host context, explain or spawn bubblewrap.                                 |
 | `src/policy/policy.test.ts` | Schema, attenuation, canonicalization, legacy equivalence, explain, and real-adapter falsifiers.                  |
@@ -75,24 +81,39 @@ The request module exports through `src/request/index.ts`.
 | `src/request/schema.ts`       | pure     | Exact request/frame and decision types; fail-loud request decoding.                                                                 |
 | `src/request/adjudicate.ts`   | pure     | Refuse → auto → operator tier selection with lexical and canonical containment.                                                     |
 | `src/request/channel.ts`      | effects  | One-request-per-connection client/server; size, timeout, connection, socket-mode, and listener-ownership bounds.                    |
-| `src/request/gate.ts`         | effects  | Single writer for events, queue, session grants, and user-policy persistence.                                                       |
+| `src/request/gate.ts`         | effects  | Session-bound single writer; TOCTOU recheck; grant application state; events, queue, and persistence.                               |
 | `src/request/request.test.ts` | evidence | Real bubblewrap resolution attack, tier behavior, restart persistence, symlink escape, socket ownership, and user-only persistence. |
 
-`src/gate/cli.ts` supplies a TTY `GateApprover` and fixed state paths. The core
-does not know about terminals or herdr.
+Gate-side adapters export through `src/gate/index.ts`:
+
+| Module                  | Responsibility                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `src/gate/resume.ts`    | `ResumeAdapter` port; verified Codex argv; typed-unverified Claude adapter.      |
+| `src/gate/relaunch.ts`  | Gate-owned child replacement, active-gate check, policy artifacts, box evidence. |
+| `src/gate/operator.ts`  | Queue read, ID-bound resolution submission, TTY/file Approver composition.       |
+| `src/gate/boundary.ts`  | Proves operator state/socket stay hidden and user policy stays non-writable.     |
+| `src/gate/state.ts`     | Establishes private owned state with non-replaceable host ancestry.              |
+| `src/gate/gate.test.ts` | Widened explain, TOCTOU, once, binding, operator, and fail-secure falsifiers.    |
+
+`src/gate/cli.ts` composes those adapters. The request core does not know about
+terminals, herdr, Codex argv, or process spawning.
 
 ## Event and evidence core
 
-| Module                 | Responsibility                                                               |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| `src/log/schema.ts`    | Entry union, including request, request-decision, and policy-grant evidence. |
-| `src/log/serialize.ts` | Typed entry → tilde-fenced markdown block.                                   |
-| `src/log/parse.ts`     | Markdown blocks → typed entries; unknown future kinds are skipped.           |
-| `src/events.ts`        | Offset-addressed reads and live wakeups over an append-only entry array.     |
-| `src/events.test.ts`   | Wire-contract floor: every entry kind must round-trip.                       |
+| Module                 | Responsibility                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `src/log/schema.ts`    | Entry union, including request, decision, grant, launch/failure, and spent evidence. |
+| `src/log/serialize.ts` | Typed entry → tilde-fenced markdown block.                                           |
+| `src/log/parse.ts`     | Markdown blocks → typed entries; unknown future kinds are skipped.                   |
+| `src/events.ts`        | Offset-addressed reads and live wakeups over an append-only entry array.             |
+| `src/events.test.ts`   | Wire-contract floor: every entry kind must round-trip.                               |
 
-The markdown log is retained history. Queue and session-grant JSON are mutable
-gate projections.
+The markdown log is retained history. Queue, resolution, and session-grant JSON
+are mutable gate projections outside all sandbox mounts. `launches/` retains
+complete applied policies and exact evidence emitted after the box adapter
+spawns bubblewrap. A prepared-launch transaction rolls the child back unless
+those durable updates complete; pending persist projections recover an
+interrupted standing-policy write.
 
 ## Box enforcement adapters
 
@@ -105,7 +126,8 @@ gate projections.
 
 With `--policy`, legacy policy flags are rejected. With `--gate`, the Linux
 compiler bind-mounts the host socket at `/run/pagu/request.sock` and sets only
-the sandbox path in `PAGU_REQUEST_SOCKET`.
+the sandbox path in `PAGU_REQUEST_SOCKET`. `--evidence` writes the actual
+compiled argv after spawn; the gate never passes its operator resolution path.
 
 ## Retained SDK primitives
 
@@ -145,4 +167,6 @@ authority path.
 | Adjudication tiers         | `src/request/adjudicate.ts`                              |
 | Gate persistence/evidence  | `src/request/gate.ts` + log/event codecs                 |
 | Human approval surface     | adapter over `GateApprover`; do not fork adjudication    |
-| Grant application          | Slice 5; new launch/resume path, not live mount mutation |
+| Resume syntax              | `src/gate/resume.ts` + live adapter test                 |
+| Grant application          | `src/request/gate.ts` + `src/gate/relaunch.ts`           |
+| Operator resolution        | `src/gate/operator.ts`; keep it outside compiler context |

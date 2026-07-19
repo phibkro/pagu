@@ -14,8 +14,7 @@
         "x86_64-darwin"
         "aarch64-darwin"
       ];
-      forEachSystem =
-        f: nixpkgs.lib.genAttrs systems (system: f system nixpkgs.legacyPackages.${system});
+      forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f system nixpkgs.legacyPackages.${system});
       devSystem = "x86_64-linux";
       devPkgs = nixpkgs.legacyPackages.${devSystem};
     in
@@ -30,10 +29,13 @@
           };
           pagu = pkgs.writeShellApplication {
             name = "pagu";
-            runtimeInputs = [ pkgs.deno ];
+            runtimeInputs = [
+              pkgs.deno
+              paguBox
+            ];
             text = ''
               exec deno run --quiet --no-prompt \
-                --allow-read --allow-write --allow-env --allow-net \
+                --allow-read --allow-write --allow-env --allow-net --allow-run \
                 ${paguSource}/gate/cli.ts "$@"
             '';
           };

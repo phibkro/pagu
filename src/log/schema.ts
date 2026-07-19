@@ -19,7 +19,10 @@ export type Entry =
   | RevokeEntry
   | FileRequestEntry
   | RequestDecisionEntry
-  | PolicyGrantEntry;
+  | PolicyGrantEntry
+  | PolicyLaunchEntry
+  | PolicyLaunchFailedEntry
+  | PolicyGrantSpentEntry;
 
 /** A sandbox-originated request. The gate allocates `id` before append. */
 export interface FileRequestEntry {
@@ -47,6 +50,38 @@ export interface PolicyGrantEntry {
   request: string;
   scope: "once" | "session" | "persist";
   fsRo: string;
+  canonicalFsRo: string;
+  session: string;
+  authority: string;
+  policy: string;
+}
+
+/** Evidence from the box adapter that spawned the actual compiled launch. */
+export interface PolicyLaunchEntry {
+  kind: "policy-launch";
+  id: string;
+  grant: string | null;
+  session: string;
+  policy: string;
+  pid: number;
+  resume: string[];
+  argv: string[];
+  environment: string[];
+}
+
+/** A loud application/commit failure; any provisional child is rolled back. */
+export interface PolicyLaunchFailedEntry {
+  kind: "policy-launch-failed";
+  grant: string;
+  session: string;
+  reason: string;
+}
+
+/** Durable consumption marker for an at-most-once launch grant. */
+export interface PolicyGrantSpentEntry {
+  kind: "policy-grant-spent";
+  grant: string;
+  session: string;
 }
 
 /** A conversational turn (the user's task, or the model's prose). */

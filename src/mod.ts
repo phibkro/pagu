@@ -52,3 +52,4 @@ export * from "./policy/index.ts";
 
 // Sandbox request SDK and outside-sandbox gate ports.
 export * from "./request/index.ts";
+export * from "./gate/index.ts";

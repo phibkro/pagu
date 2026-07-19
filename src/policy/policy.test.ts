@@ -509,6 +509,7 @@ Deno.test("falsifier 5: adapter enforces explained argv without logging env valu
   try {
     const policyFile = `${dir}/policy.json`;
     const fakeBwrap = `${dir}/fake-bwrap`;
+    const evidenceFile = `${dir}/launch-evidence.json`;
     const secret = "slice3-secret-must-not-appear-in-explain";
     await Deno.writeTextFile(
       policyFile,
@@ -534,6 +535,7 @@ Deno.test("falsifier 5: adapter enforces explained argv without logging env valu
           "run",
           "--quiet",
           "--allow-read",
+          `--allow-write=${dir}`,
           "--allow-env",
           "--allow-run",
           cli,
@@ -563,6 +565,8 @@ Deno.test("falsifier 5: adapter enforces explained argv without logging env valu
       policyFile,
       "--bwrap",
       fakeBwrap,
+      "--evidence",
+      evidenceFile,
       "--",
       "ignored-command",
     ]);
@@ -575,6 +579,10 @@ Deno.test("falsifier 5: adapter enforces explained argv without logging env valu
       "ARG:ignored-command",
       `SECRET:${secret}`,
     ]);
+    const evidence = JSON.parse(await Deno.readTextFile(evidenceFile));
+    assertEquals(evidence.argv, explained.argv);
+    assertEquals(evidence.environment, explained.environment);
+    assertEquals(evidence.command, ["ignored-command"]);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

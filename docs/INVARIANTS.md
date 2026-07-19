@@ -33,14 +33,16 @@ Enforcement:
 | runtime     | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket. |
 | schema      | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.      |
 | pure core   | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.      |
-| persistence | `src/request/gate.ts` owns queue, grant, user-policy, and event writes outside the box.                                 |
+| persistence | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                         |
 | packaging   | `src/policy/compile.ts` emits the socket mount and `PAGU_REQUEST_SOCKET` only when a gate socket is supplied.           |
+| application | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace. |
 
 Bound laws:
 
 - [law: sandbox endpoint cannot submit resolution]
 - [law: auto grants only requested child scope]
 - [law: project policy cannot widen user authority]
+- [law: fail secure unavailable gate leaves narrower box running]
 
 Review questions:
 
@@ -96,7 +98,7 @@ Enforcement:
 | Rung          | Enforcer                                                                                                                             |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | fold          | `src/policy/load.ts` treats the project policy as attenuation of user authority and returns warnings for widening attempts.          |
-| path boundary | Project children and auto requests require canonical containment; failures route to warnings or operator review.                     |
+| path boundary | Project children and auto requests require canonical containment; grant application requires the same target at relaunch.            |
 | gate          | `src/request/adjudicate.ts` never uses `need` or `justification` as authority; only the typed rule and standing policy affect tiers. |
 | operator seam | `GateApprover` receives the full request but returns only deny or an explicit decision scope.                                        |
 
@@ -105,6 +107,8 @@ Bound laws:
 - [law: canonical paths reject symlink escapes accept symbolic aliases]
 - [law: project dot segments cannot escape trusted path]
 - [law: auto tier fails closed requested child symlink escape]
+- [law: symlink swapped after decision cannot widen relaunch]
+- [law: grant binding session policy cannot apply]
 
 Review questions:
 
@@ -124,13 +128,14 @@ views but cannot replace retained events.
 
 Enforcement:
 
-| Rung        | Enforcer                                                                                              |
-| ----------- | ----------------------------------------------------------------------------------------------------- |
-| compiler    | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                     |
-| event codec | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define the retained wire entries. |
-| stream      | `src/events.ts` addresses the append-only entry array by stable offset.                               |
-| writer      | `src/request/gate.ts` serializes request, decision, projection, and grant evidence writes.            |
-| API floor   | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                         |
+| Rung        | Enforcer                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| compiler    | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                           |
+| event codec | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define the retained wire entries.       |
+| stream      | `src/events.ts` addresses the append-only entry array by stable offset.                                     |
+| writer      | `src/request/gate.ts` serializes request, decision, projection, grant, launch, failure, and spend evidence. |
+| launch      | `src/policy/cli.ts` writes evidence from the same `CompiledPolicy` value after spawning bubblewrap.         |
+| API floor   | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                               |
 
 Bound laws:
 
@@ -138,6 +143,16 @@ Bound laws:
 - [law: event wire schema every entry kind round trips]
 - [law: log round trips any entry sequence]
 - [law: session grants survive gate restart]
+- [law: widened launch evidence uses explained compiled argv]
+- [law: once grant applies once durably spent]
+- [law: operator file surface resolves same Approver port]
+- [law: operator authority paths stay outside sandbox policy roots]
+- [law: TOCTOU relaunch resolves again after old sandbox stops]
+- [law: widened child rolls back if durable launch evidence fails]
+- [law: operator boundary rechecked after old sandbox stops]
+- [law: operator state directory rejects replaceable ancestry symlinks]
+- [law: failed rollback keeps child tracked shutdown retry]
+- [law: retained persist grant rebuilds missing projection without ID reuse]
 
 Review questions:
 
@@ -153,7 +168,7 @@ flowchart LR
     R["untrusted read/request"] --> N["narrow-only policy + strict schema"]
     N --> A{"refuse · auto · operator"}
     A --> E["typed retained evidence"]
-    A -. "approved grant" .-> L["new launch · Slice 5"]
+    A -->|"approved grant"| L["recanonicalize · stop · compile · resume"]
     D["deny"] -->|"absorbs allow"| N
 ```
 

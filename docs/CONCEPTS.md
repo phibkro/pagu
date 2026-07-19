@@ -17,7 +17,7 @@ tags: [concepts, reference]
 | **grant**          | Gate-derived policy data tied to a request and decision scope.                             |
 | **request**        | Exact read-only scope plus need and justification, sent out of the box.                    |
 | **decision**       | Deny or approve with once/session/persist scope.                                           |
-| **event**          | Append-only evidence of a request, decision, or grant.                                     |
+| **event**          | Append-only evidence of a request, decision, grant, launch, failure, or spend.             |
 | **projection**     | Mutable gate-owned view such as the queue or session-grants JSON.                          |
 | **explain**        | Redacted view of the same compiled result used to launch the box.                          |
 | **attenuation**    | Producing authority less than or equal to a trusted parent.                                |
@@ -33,7 +33,7 @@ flowchart LR
     P --> PEP["box · PEP"]
     PEP --> H["harness"]
     H -. "request" .-> PA
-    PA -. "decision" .-> H
+    PA -->|"stop · compile · resume"| PEP
 ```
 
 Why the separation is load-bearing:
@@ -143,14 +143,18 @@ an out-of-scope path.
 
 ## Decision scopes
 
-| Scope     | Current gate behavior                            | Application behavior                                    |
-| --------- | ------------------------------------------------ | ------------------------------------------------------- |
-| `once`    | Store a gate-owned grant projection.             | Slice 5 must consume it exactly once.                   |
-| `session` | Store a projection that survives gate restart.   | Slice 5 must bind it to its originating session/policy. |
-| `persist` | Add the exact read-only rule to the user policy. | Future launches compile the standing rule normally.     |
+| Scope     | Authority lifetime                                  | Relaunch behavior                                                                                                       |
+| --------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `once`    | One replacement launch.                             | Durably mark spent before spawn; exclude it from later relaunches. A crash may conservatively lose it, never replay it. |
+| `session` | Same harness session and authoritative-policy hash. | Rebuild the applied grant chain on gate restart only when both bindings match.                                          |
+| `persist` | Standing user policy.                               | Retain approval + grant in one append, project it, then atomically write; rebuild missing projection on restart.        |
 
-No scope widens the running mount namespace today. The caller receives a
-decision so it can stop, explain, or await the future relaunch integration.
+Every approval creates a complete new launch policy. The gate re-resolves the
+requested path, rejects a changed canonical target, stops its current child,
+re-resolves once more, and starts a provisional box through the resume adapter.
+It rechecks the complete operator boundary after the old sandbox stops and
+commits that child only after durable evidence/state succeeds; otherwise the
+wider child stops. There is no live mount widening.
 
 ## Event store and projections
 
@@ -159,10 +163,16 @@ The gate's markdown event log is retained history. Current gate event kinds:
 - `request` — identity, requested rule, need, justification;
 - `request-decision` — verdict, tier, scope, rationale;
 - `policy-grant` — derived grant identity, request, scope, exact rule.
+- `policy-launch` — grant/session/policy linkage plus the exact spawned argv,
+  environment names, resume command, and PID;
+- `policy-launch-failed` — loud application or commit failure; any provisional
+  wider box has been stopped;
+- `policy-grant-spent` — durable once-consumption evidence.
 
-The queue and session-grants files can be replaced atomically because they are
-projections. They are useful for restart and UI, but they do not replace the
-append-only evidence record.
+The queue, operator resolution, and session-grants files can be replaced
+atomically because they are projections. They and the launch artifacts live
+outside every sandbox-visible policy root. They are useful for restart and UI,
+but they do not replace the append-only evidence record.
 
 `eventStream` gives entries stable offsets equal to their log-array index. A UI
 can read backlog and then subscribe without becoming a writer.
@@ -179,8 +189,9 @@ interface CompiledPolicy {
 ```
 
 The process adapter launches with that value. `explain` returns the same argv
-and only the environment names. This prevents display logic and enforcement
-logic from drifting.
+and only the environment names. Gate-owned launches also ask the adapter to
+write evidence after spawning that exact value. This prevents display, retained
+evidence, and enforcement logic from becoming separate compilers.
 
 ## SDK first, adapters second
 
@@ -189,13 +200,16 @@ The public functions live behind `src/mod.ts`:
 - decode, fold, compile, explain;
 - file a request and serve the gate channel;
 - adjudicate and persist through typed ports;
+- apply a bound grant through `GrantApplier` and `ResumeAdapter` ports;
+- read a pending queue and submit an ID-bound operator resolution;
 - read retained events.
 
 Human surfaces are adapters:
 
 - `pagu-box` maps argv and host facts into the policy compiler;
-- `pagu gate` maps the Approver port onto a TTY;
-- herdr can later render the same queue and resolution seam.
+- `pagu gate` owns the box and races the Approver port between its TTY and the
+  host-only resolution projection;
+- `pagu resolve` lets a herdr pane resolve that same port.
 
 An adapter may choose presentation. It may not duplicate policy meaning or
 invent authority.
@@ -204,8 +218,10 @@ invent authority.
 
 - Schema-v0 enforcement is Linux-only today.
 - macOS retains legacy profiles but has no schema-to-seatbelt lowering yet.
-- Gate decisions are retained but not applied to a live or relaunched box.
-- Structured PEP denial and launch evidence is follow-on work.
+- Codex resume is verified against `codex-cli 0.144.4`; Claude is a typed
+  not-yet-verified adapter.
+- A new Codex session must currently exist before pagu can resume its UUID.
+- Structured PEP denial evidence is follow-on work.
 - Multi-host cryptographic discharge is outside v0.
 
 These are explicit scope limits, not fallback permissions.

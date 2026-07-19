@@ -96,6 +96,38 @@ export function serializeEntry(e: Entry): string {
         request: e.request,
         scope: e.scope,
         "fs-ro": e.fsRo,
+        "canonical-fs-ro": e.canonicalFsRo,
+        session: e.session,
+        authority: e.authority,
+        policy: e.policy,
+      });
+      body = "";
+      break;
+    case "policy-launch":
+      open = head("policy-launch", {
+        id: e.id,
+        grant: e.grant ?? "-",
+        session: e.session,
+        policy: e.policy,
+        pid: String(e.pid),
+      });
+      body = JSON.stringify({
+        resume: e.resume,
+        argv: e.argv,
+        environment: e.environment,
+      });
+      break;
+    case "policy-launch-failed":
+      open = head("policy-launch-failed", {
+        grant: e.grant,
+        session: e.session,
+      });
+      body = e.reason;
+      break;
+    case "policy-grant-spent":
+      open = head("policy-grant-spent", {
+        grant: e.grant,
+        session: e.session,
       });
       body = "";
       break;
