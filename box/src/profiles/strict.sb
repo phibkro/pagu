@@ -1,0 +1,54 @@
+;; pagu-box `strict` profile — deny-by-default with narrow allow-list.
+;;
+;; For untrusted agents or experimental tools. The process can read system
+;; paths (so binaries and libraries work) and write to `$PWD` and `~/.claude`
+;; only. Network still allowed (most agents need their API). Use `--no-net`
+;; on top for fully offline runs.
+;;
+;; Parameters:
+;;   HOME — user's home directory.
+;;   PWD  — current working directory (becomes the agent's writable workspace).
+
+(version 1)
+(deny default)
+
+;; Process management within the sandbox.
+(allow process-fork)
+(allow process-exec)
+(allow signal (target same-sandbox))
+
+;; System read access — needed for binaries, libraries, /etc, /System, /Library
+;; (frameworks live here).
+(allow file-read*
+  (subpath "/usr")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/System")
+  (subpath "/Library")
+  (subpath "/private/etc")
+  (subpath "/private/var/db/dyld")
+  (subpath "/private/var/folders")
+  (subpath "/nix")
+  (subpath "/opt"))
+
+;; Working dir + agent state — RW.
+(allow file-read* file-write*
+  (subpath (param "PWD"))
+  (subpath (string-append (param "HOME") "/.claude"))
+  (subpath "/private/tmp")
+  (subpath "/private/var/folders"))
+
+;; Read-only on dotfiles outside the deny-list, so tools like git can read
+;; ~/.gitconfig and editors can read ~/.config without writing anywhere it
+;; shouldn't.
+(allow file-read*
+  (subpath (string-append (param "HOME") "/.config"))
+  (literal (string-append (param "HOME") "/.gitconfig"))
+  (literal (string-append (param "HOME") "/.editorconfig")))
+
+;; mach-lookup needed for many darwin frameworks (Foundation, dispatch, etc.)
+(allow mach-lookup)
+(allow iokit-open)
+(allow sysctl-read)
+
+(allow network*)

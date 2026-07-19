@@ -1,0 +1,42 @@
+;; pagu-box `paranoid` profile — deny-by-default, $PWD only, no network.
+;;
+;; For running unknown CLI binaries from the wild. The process can read
+;; system paths (it needs to load libraries) and read+write only the current
+;; working directory. No `~/.claude`, no network.
+;;
+;; Parameters:
+;;   HOME — user's home directory (read by the runtime; not given any access).
+;;   PWD  — the only writable path the process gets.
+
+(version 1)
+(deny default)
+
+(allow process-fork)
+(allow process-exec)
+(allow signal (target same-sandbox))
+
+(allow file-read*
+  (subpath "/usr")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/System")
+  (subpath "/Library")
+  (subpath "/private/etc")
+  (subpath "/private/var/db/dyld")
+  (subpath "/private/var/folders")
+  (subpath "/nix")
+  (subpath "/opt"))
+
+(allow file-read* file-write*
+  (subpath (param "PWD"))
+  (subpath "/private/tmp")
+  (subpath "/private/var/folders"))
+
+(allow mach-lookup)
+(allow iokit-open)
+(allow sysctl-read)
+
+;; No network. Localhost stays available so the process can talk to local
+;; dev services (the host is trusted, not a real exfil channel).
+(allow network* (local ip))
+(allow network* (remote ip "localhost:*"))

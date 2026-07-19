@@ -1,0 +1,53 @@
+;; pagu-box `default` profile — allow-by-default with a secret deny-list.
+;;
+;; Day-to-day coding-agent use. The agent has read+write access to most of
+;; the FS — including your shell config, editor config, project files — but
+;; cannot reach credential-bearing paths.
+;;
+;; Parameters expected (passed via `sandbox-exec -D NAME=value`):
+;;   HOME — absolute path to the user's home directory.
+
+(version 1)
+(allow default)
+
+(deny file-read* file-write*
+  ;; SSH / signing
+  (subpath (string-append (param "HOME") "/.ssh"))
+  (subpath (string-append (param "HOME") "/.gnupg"))
+
+  ;; Cloud credentials
+  (subpath (string-append (param "HOME") "/.aws"))
+  (subpath (string-append (param "HOME") "/.azure"))
+  (subpath (string-append (param "HOME") "/.config/gcloud"))
+
+  ;; Secret-decryption keys
+  (subpath (string-append (param "HOME") "/.config/sops"))
+  (subpath (string-append (param "HOME") "/.config/age"))
+
+  ;; CLI tool tokens
+  (subpath (string-append (param "HOME") "/.config/gh"))
+  (subpath (string-append (param "HOME") "/.config/op"))
+
+  ;; Password stores
+  (subpath (string-append (param "HOME") "/.password-store"))
+
+  ;; macOS-specific secret stores
+  (subpath (string-append (param "HOME") "/Library/Keychains"))
+  (subpath (string-append (param "HOME") "/Library/Cookies"))
+  (subpath (string-append (param "HOME") "/Library/Mail"))
+  (subpath (string-append (param "HOME") "/Library/Messages"))
+  (subpath (string-append (param "HOME") "/Library/Safari"))
+  (subpath (string-append (param "HOME") "/Library/Application Support/1Password"))
+  (subpath (string-append (param "HOME") "/Library/Application Support/Bitwarden"))
+  (subpath (string-append (param "HOME") "/Library/Application Support/Firefox"))
+  (subpath (string-append (param "HOME") "/Library/Application Support/Google/Chrome"))
+)
+
+(deny file-read* file-write*
+  (literal (string-append (param "HOME") "/.netrc"))
+  (literal (string-append (param "HOME") "/.bash_history"))
+  (literal (string-append (param "HOME") "/.zsh_history"))
+  (literal (string-append (param "HOME") "/.python_history"))
+)
+
+(allow network*)

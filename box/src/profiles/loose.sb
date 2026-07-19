@@ -1,0 +1,17 @@
+;; pagu-box `loose` profile — allow-by-default with the absolute-minimum
+;; deny-list (just SSH + GPG).
+;;
+;; For agents you actually trust, where you mostly want "stop the obvious
+;; exfil paths" without paying ergonomic cost. If you trust the agent
+;; further, don't sandbox at all.
+
+(version 1)
+(allow default)
+
+(deny file-read* file-write*
+  (subpath (string-append (param "HOME") "/.ssh"))
+  (subpath (string-append (param "HOME") "/.gnupg"))
+  (subpath (string-append (param "HOME") "/Library/Keychains"))
+)
+
+(allow network*)
