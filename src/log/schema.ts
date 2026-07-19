@@ -17,6 +17,7 @@ export type Entry =
   | ResultEntry
   | GrantEntry
   | RevokeEntry
+  | GateSessionEntry
   | FileRequestEntry
   | RequestDecisionEntry
   | PolicyGrantEntry
@@ -24,9 +25,24 @@ export type Entry =
   | PolicyLaunchFailedEntry
   | PolicyGrantSpentEntry;
 
+/** Versioned gate-run metadata. Later request events inherit the most recent
+ * metadata in their log; the event keeps telemetry a projection of the
+ * canonical append-only store rather than a parallel metadata database. */
+export interface GateSessionEntry {
+  kind: "gate-session";
+  version: 0;
+  at: string;
+  session: string;
+  profile: string | null;
+  subjectAgent: string;
+  subjectLabel: string;
+}
+
 /** A sandbox-originated request. The gate allocates `id` before append. */
 export interface FileRequestEntry {
   kind: "request";
+  /** ISO timestamp; absent only in logs written before telemetry v0. */
+  at?: string;
   id: string;
   need: string;
   justification: string;
@@ -36,6 +52,7 @@ export interface FileRequestEntry {
 /** The gate's tiered decision for an addressable request. */
 export interface RequestDecisionEntry {
   kind: "request-decision";
+  at?: string;
   request: string;
   verdict: "approve" | "deny";
   scope: "once" | "session" | "persist" | null;
@@ -46,6 +63,7 @@ export interface RequestDecisionEntry {
 /** Evidence that an approved request produced a gate-owned policy grant. */
 export interface PolicyGrantEntry {
   kind: "policy-grant";
+  at?: string;
   id: string;
   request: string;
   scope: "once" | "session" | "persist";
@@ -59,6 +77,7 @@ export interface PolicyGrantEntry {
 /** Evidence from the box adapter that spawned the actual compiled launch. */
 export interface PolicyLaunchEntry {
   kind: "policy-launch";
+  at?: string;
   id: string;
   grant: string | null;
   session: string;
@@ -72,6 +91,7 @@ export interface PolicyLaunchEntry {
 /** A loud application/commit failure; any provisional child is rolled back. */
 export interface PolicyLaunchFailedEntry {
   kind: "policy-launch-failed";
+  at?: string;
   grant: string;
   session: string;
   reason: string;
@@ -80,6 +100,7 @@ export interface PolicyLaunchFailedEntry {
 /** Durable consumption marker for an at-most-once launch grant. */
 export interface PolicyGrantSpentEntry {
   kind: "policy-grant-spent";
+  at?: string;
   grant: string;
   session: string;
 }

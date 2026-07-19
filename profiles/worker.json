@@ -1,0 +1,53 @@
+{
+  "version": 0,
+  "subject": { "agent": "category", "label": "worker" },
+  "fs": {
+    "home": "tmpfs",
+    "rw": ["$PWD", "/nix/var/nix/daemon-socket"],
+    "ro": [],
+    "deny": [
+      "~/.ssh",
+      "~/.gnupg",
+      "~/.aws",
+      "~/.azure",
+      "~/.config/sops",
+      "~/.config/age",
+      "~/.config/gh",
+      "~/.config/op",
+      "~/.config/gcloud",
+      "~/.password-store",
+      "~/.netrc",
+      "~/.bash_history",
+      "~/.zsh_history",
+      "~/.python_history"
+    ]
+  },
+  "net": true,
+  "env": {
+    "pass": [
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "GEMINI_API_KEY",
+      "NIX_REMOTE"
+    ]
+  },
+  "escalation": {
+    "auto": [{ "fs.ro": "/srv/share/projects/**", "scope": "session" }],
+    "refuse": [
+      "~/.ssh/**",
+      "~/.gnupg/**",
+      "~/.aws/**",
+      "~/.azure/**",
+      "~/.config/sops/**",
+      "~/.config/age/**",
+      "~/.config/gh/**",
+      "~/.config/op/**",
+      "~/.config/gcloud/**",
+      "~/.password-store/**",
+      "~/.netrc",
+      "~/.bash_history",
+      "~/.zsh_history",
+      "~/.python_history"
+    ]
+  }
+}

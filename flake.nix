@@ -22,6 +22,10 @@
       packages = forEachSystem (
         system: pkgs:
         let
+          categoryProfiles = builtins.path {
+            path = ./profiles;
+            name = "pagu-category-profiles-v0";
+          };
           paguSource = builtins.path {
             path = ./src;
             name = "pagu-source";
@@ -34,7 +38,7 @@
               paguBox
             ];
             text = ''
-              exec deno run --quiet --no-prompt \
+              PAGU_PROFILE_DIR=${categoryProfiles} exec deno run --quiet --no-prompt \
                 --allow-read --allow-write --allow-env --allow-net --allow-run \
                 ${paguSource}/gate/cli.ts "$@"
             '';

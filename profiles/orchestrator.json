@@ -1,0 +1,58 @@
+{
+  "version": 0,
+  "subject": { "agent": "category", "label": "orchestrator" },
+  "fs": {
+    "home": "tmpfs",
+    "rw": ["$PWD"],
+    "ro": ["/etc/profiles/per-user"],
+    "deny": [
+      "~/.ssh",
+      "~/.gnupg",
+      "~/.aws",
+      "~/.azure",
+      "~/.config/sops",
+      "~/.config/age",
+      "~/.config/gh",
+      "~/.config/op",
+      "~/.config/gcloud",
+      "~/.password-store",
+      "~/.netrc",
+      "~/.bash_history",
+      "~/.zsh_history",
+      "~/.python_history",
+      "~/.config/herdr"
+    ]
+  },
+  "net": true,
+  "env": {
+    "pass": [
+      "ANTHROPIC_API_KEY",
+      "OPENAI_API_KEY",
+      "GEMINI_API_KEY",
+      "AGENT_DISPATCH_DEPTH",
+      "AGENT_DISPATCH_PROVIDER",
+      "AGENT_SANDBOX_PROFILE",
+      "AGENT_SANDBOX_PWD_MODE"
+    ]
+  },
+  "escalation": {
+    "auto": [{ "fs.ro": "/srv/share/projects/**", "scope": "session" }],
+    "refuse": [
+      "~/.ssh/**",
+      "~/.gnupg/**",
+      "~/.aws/**",
+      "~/.azure/**",
+      "~/.config/sops/**",
+      "~/.config/age/**",
+      "~/.config/gh/**",
+      "~/.config/op/**",
+      "~/.config/gcloud/**",
+      "~/.password-store/**",
+      "~/.netrc",
+      "~/.bash_history",
+      "~/.zsh_history",
+      "~/.python_history",
+      "~/.config/herdr/**"
+    ]
+  }
+}

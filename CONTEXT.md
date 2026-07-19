@@ -17,7 +17,10 @@ The architecture pivot is authoritative in
 [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md); the schema and
 interface boundary are authoritative in
 [ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md). This file
-explains the durable model. Forward work belongs in [ROADMAP.md](ROADMAP.md).
+explains the durable model. Category profiles and the policy-growth telemetry
+loop are authoritative in
+[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md). Forward work
+belongs in [ROADMAP.md](ROADMAP.md).
 
 ## Why the split exists
 
@@ -119,6 +122,26 @@ The schema always adds the built-in SSH and GPG denies. A refusal must be
 covered by a filesystem deny. During Linux lowering, allows are emitted before
 denies so later deny mounts overlay earlier access.
 
+### Category profiles and overlays
+
+The six policy-v0 artifacts in [`profiles/`](profiles/) are curated categories,
+not inferred per-task policies: advisor, worker, proof, web, infra, and
+orchestrator. Their axes are explicit policy data and checked together in CI.
+Every category carries the full secret refusal floor and at least one narrow
+read-only session-auto seed.
+
+Named launch is sugar for selecting one immutable artifact. Persist-scoped
+growth is stored as a sparse read-only grant overlay in private gate state and
+re-composed with a freshly materialized copy of the latest base at each start;
+it is not a forked profile snapshot. The private materialization also prevents
+a source-checkout profile under writable `$PWD` from entering the sandbox. Fast
+operational growth therefore cannot silently rewrite or freeze the curated
+category. Promotion into a profile requires review and profile assertions. The
+proof category keeps direct network isolated while the explicit
+Nix-daemon mount mediates cache and substitution work. Infra alone exposes
+journal paths. Orchestrator strips the Herdr control environment/socket surface;
+schema v0 does not claim to enforce a general per-executable allowlist.
+
 ## Enforcement model
 
 [`src/policy/compile.ts`](src/policy/compile.ts) is a pure lowering from a
@@ -132,6 +155,9 @@ Security-relevant properties:
 - missing allow paths grant nothing;
 - missing deny paths become empty mounts, preserving the deny if a writable
   parent later creates the path;
+- a missing deny below an overlapping read-only mount fails before launch,
+  because the host could create it after the check and bubblewrap cannot safely
+  install the destination mask below RO;
 - network remains isolated unless `net` is true;
 - the optional request socket and its environment name exist only when `--gate`
   is supplied;
@@ -187,14 +213,14 @@ verifies the request gate is reachable, stops the narrower box, and starts
 append-only log is the retained source of request, decision, and grant events.
 The queue and session-grants JSON files are gate-owned projections:
 
-| Artifact              | Meaning                                                            |
-| --------------------- | ------------------------------------------------------------------ |
-| `events.md`           | request, decision, grant, launch/failure, and once-spent evidence  |
-| `queue.json`          | the operator request currently awaiting the Approver               |
-| `resolution.json`     | host-only operator response; never mounted into the box            |
-| `session-grants.json` | bound pending/applied/spent once/session/persist projections       |
-| `launches/`           | complete launch policies plus exact box-emitted evidence           |
-| user policy           | standing authority; changed only by an explicit `persist` decision |
+| Artifact                      | Meaning                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `events.md`                   | request, decision, grant, launch/failure, and once-spent evidence                           |
+| `queue.json`                  | the operator request currently awaiting the Approver                                        |
+| `resolution.json`             | host-only operator response; never mounted into the box                                     |
+| `session-grants.json`         | bound pending/applied/spent once/session/persist projections                                |
+| `launches/`                   | complete launch policies plus exact box-emitted evidence                                    |
+| user policy / profile overlay | custom standing authority, or sparse named-profile `fs.ro` growth changed only by `persist` |
 
 [`src/gate/operator.ts`](src/gate/operator.ts) supplies queue reads and a
 resolve-only host file adapter. The CLI races that adapter with asynchronous TTY
@@ -205,6 +231,17 @@ policy can see gate state/the host socket pathname or write the user policy. The
 default state lives below `XDG_RUNTIME_DIR`, never below the project mount.
 Without that directory the operator supplies a private absolute directory;
 ownership, final mode, symlinks, and replaceable ancestry are checked.
+
+Every new gate run appends a versioned `gate-session` entry with its profile,
+subject, session, and timestamp. Request, decision, grant, and launch evidence
+also carries timestamps. [`src/telemetry/`](src/telemetry/) folds those retained
+events into a versioned in-memory view; the CLI's table and JSON are two
+renderings of that same value. No telemetry database or flow dependency exists.
+
+The current prune query can prove only that an old approved grant lacks launch
+evidence. It cannot prove whether an enforced filesystem capability was used.
+That stronger claim waits for the syscall-interception observation substrate
+specified—but deliberately not implemented—by ADR-0006.
 
 ## Fail-secure behavior
 
@@ -224,7 +261,7 @@ ownership, final mode, symlinks, and replaceable ancestry are checked.
 - A once grant is durably spent before the irreversible spawn; crash recovery
   prefers lost utility over possible replay.
 - Refuse and auto tiers do not depend on an operator prompt.
-- A malformed request creates no event or grant.
+- A malformed request creates no request, decision, or grant event.
 - Project policy widening fails closed to the user policy ceiling.
 - Unsupported schema enforcement fails loud rather than falling back to a weaker
   mode.
@@ -245,6 +282,9 @@ Claims about enforcement bind to executable evidence:
 - relaunch, resume, TOCTOU, once, binding, operator, and fail-secure falsifiers:
   [`src/gate/gate.test.ts`](src/gate/gate.test.ts);
 - event wire compatibility: [`src/events.test.ts`](src/events.test.ts);
+- category profile and telemetry projections:
+  [`src/policy/profiles.test.ts`](src/policy/profiles.test.ts) and
+  [`src/telemetry/telemetry.test.ts`](src/telemetry/telemetry.test.ts);
 - public SDK floor: [`src/mod.test.ts`](src/mod.test.ts).
 
 The complete invariant catalog and enforcement tiers live in

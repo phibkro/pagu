@@ -75,8 +75,24 @@ export function serializeEntry(e: Entry): string {
       body = e.output;
       break;
     }
+    case "gate-session":
+      open = head("gate-session", {
+        version: String(e.version),
+      });
+      body = JSON.stringify({
+        at: e.at,
+        session: e.session,
+        profile: e.profile,
+        subjectAgent: e.subjectAgent,
+        subjectLabel: e.subjectLabel,
+      });
+      break;
     case "request":
-      open = head("request", { id: e.id, "fs-ro": e.fsRo });
+      open = head("request", {
+        id: e.id,
+        "fs-ro": e.fsRo,
+        ...(e.at ? { at: e.at } : {}),
+      });
       body = JSON.stringify({ need: e.need, justification: e.justification });
       break;
     case "request-decision": {
@@ -85,6 +101,7 @@ export function serializeEntry(e: Entry): string {
         verdict: e.verdict,
         tier: e.tier,
       };
+      if (e.at) decisionAttrs.at = e.at;
       if (e.scope !== null) decisionAttrs.scope = e.scope;
       open = head("request-decision", decisionAttrs);
       body = e.rationale;
@@ -100,6 +117,7 @@ export function serializeEntry(e: Entry): string {
         session: e.session,
         authority: e.authority,
         policy: e.policy,
+        ...(e.at ? { at: e.at } : {}),
       });
       body = "";
       break;
@@ -110,6 +128,7 @@ export function serializeEntry(e: Entry): string {
         session: e.session,
         policy: e.policy,
         pid: String(e.pid),
+        ...(e.at ? { at: e.at } : {}),
       });
       body = JSON.stringify({
         resume: e.resume,
@@ -121,6 +140,7 @@ export function serializeEntry(e: Entry): string {
       open = head("policy-launch-failed", {
         grant: e.grant,
         session: e.session,
+        ...(e.at ? { at: e.at } : {}),
       });
       body = e.reason;
       break;
@@ -128,6 +148,7 @@ export function serializeEntry(e: Entry): string {
       open = head("policy-grant-spent", {
         grant: e.grant,
         session: e.session,
+        ...(e.at ? { at: e.at } : {}),
       });
       body = "";
       break;

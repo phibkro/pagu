@@ -189,6 +189,15 @@ const entryG: fc.Arbitrary<Entry> = fc.oneof(
     grant: attrG,
   }),
   fc.record({
+    kind: fc.constant("gate-session" as const),
+    version: fc.constant(0 as const),
+    at: bodyG,
+    session: bodyG,
+    profile: fc.option(bodyG, { nil: null }),
+    subjectAgent: bodyG,
+    subjectLabel: bodyG,
+  }),
+  fc.record({
     kind: fc.constant("request" as const),
     id: attrG,
     need: bodyG,

@@ -97,6 +97,42 @@ Deno.test("request schema: exact typed frame; unknown keys fail loud", () => {
   );
 });
 
+Deno.test("gate session metadata is versioned and retained before initial launch", async () => {
+  const { root, paths } = await tempPaths();
+  try {
+    await Deno.writeTextFile(paths.userPolicy, JSON.stringify(policy()));
+    const gate = await createGate({
+      paths,
+      session: "session-profile",
+      profile: "worker",
+      now: () => new Date("2026-07-19T12:00:00.000Z"),
+    });
+    await gate.recordInitialLaunch({
+      pid: 42,
+      argv: ["--unshare-all"],
+      environment: ["HOME"],
+      resume: ["codex", "resume", "session-profile"],
+    });
+    const entries = parseLog(await Deno.readTextFile(paths.eventLog));
+    assertEquals(entries[0], {
+      kind: "gate-session",
+      version: 0,
+      at: "2026-07-19T12:00:00.000Z",
+      session: "session-profile",
+      profile: "worker",
+      subjectAgent: "test",
+      subjectLabel: "gate",
+    });
+    const launch = entries[1];
+    assertEquals(launch.kind, "policy-launch");
+    if (launch.kind === "policy-launch") {
+      assertEquals(launch.at, "2026-07-19T12:00:00.000Z");
+    }
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("refuse tier records denial and never invokes the approver", async () => {
   let prompts = 0;
   const approver: GateApprover = () => {
@@ -189,7 +225,14 @@ Deno.test("falsifier 4: session grants survive a gate restart", async () => {
     const events = parseLog(await Deno.readTextFile(paths.eventLog));
     assertEquals(
       events.map((event) => event.kind),
-      ["request", "request-decision", "policy-grant", "policy-launch"],
+      [
+        "gate-session",
+        "request",
+        "request-decision",
+        "policy-grant",
+        "policy-launch",
+        "gate-session",
+      ],
     );
   } finally {
     await Deno.remove(root, { recursive: true });
@@ -220,6 +263,54 @@ Deno.test("persist changes the user policy only and records the grant", async ()
     assertEquals(gate.sessionGrants()[0].state, "applied");
     const events = parseLog(await Deno.readTextFile(paths.eventLog));
     assertEquals(events.at(-1)?.kind, "policy-launch");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("profile overlay re-composes persistent grants with the latest curated base", async () => {
+  const { root, paths } = await tempPaths();
+  const profilePaths: GatePaths = {
+    ...paths,
+    profileOverlay: `${root}/worker-overlay.json`,
+  };
+  try {
+    const granted = `${root}/reference`;
+    await Deno.mkdir(granted);
+    const initial = policy({ deny: ["~/.ssh", "~/.gnupg"] });
+    await Deno.writeTextFile(paths.userPolicy, JSON.stringify(initial));
+    const gate = await createGate({
+      paths: profilePaths,
+      session: "profile-session",
+      profile: "worker",
+      approver: () => Promise.resolve({ verdict: "approve", scope: "persist" }),
+      apply,
+    });
+    await gate.handle(request(granted));
+    assertEquals(
+      JSON.parse(await Deno.readTextFile(paths.userPolicy)),
+      initial,
+    );
+    assertEquals(
+      JSON.parse(await Deno.readTextFile(profilePaths.profileOverlay!)),
+      { version: 0, "fs.ro": [granted] },
+    );
+
+    const revised = policy({
+      deny: ["~/.ssh", "~/.gnupg", `${root}/new-secret`],
+    });
+    await Deno.writeTextFile(paths.userPolicy, JSON.stringify(revised));
+    const restarted = await createGate({
+      paths: profilePaths,
+      session: "profile-session",
+      profile: "worker",
+      apply,
+    });
+    assertEquals(restarted.effectivePolicy().fs.ro, [granted]);
+    assertEquals(
+      restarted.effectivePolicy().fs.deny.includes(`${root}/new-secret`),
+      true,
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -461,7 +552,10 @@ Deno.test("falsifier 1: real sandbox endpoint cannot submit a resolution", async
     assertStringIncludes(output, '"status":"error"');
     assertStringIncludes(output, "invalid request");
     const eventLog = await Deno.readTextFile(paths.eventLog).catch(() => "");
-    assertEquals(parseLog(eventLog), []);
+    assertEquals(
+      parseLog(eventLog).some((entry) => entry.kind === "request"),
+      false,
+    );
     await server.close();
   } finally {
     await Deno.remove(root, { recursive: true });

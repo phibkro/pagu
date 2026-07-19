@@ -7,7 +7,9 @@ tags: [roadmap, planning]
 
 The live product is the box + gate pair defined by
 [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) and
-[ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md).
+[ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md), with profile
+growth and telemetry governed by
+[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md).
 [CONTEXT.md](CONTEXT.md) owns durable design; this file owns sequence and
 remaining work.
 
@@ -20,8 +22,24 @@ remaining work.
 | 3 — enforcement adapter | Pure Linux lowering, `--policy`, exact `--explain`, fail-loud unsupported platforms.                             | ✓ shipped    |
 | 4 — gate MVP            | Typed append-and-await request channel; refuse/auto/operator tiers; once/session/persist state; retained events. | ✓ shipped    |
 | docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                    | ✓ shipped    |
-| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ this slice |
+| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped    |
+| 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped    |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next         |
+
+## Slice 6 shipped boundary
+
+- Six immutable schema-v0 category policies define advisor, worker, proof,
+  web, infra, and orchestrator axes under `profiles/`.
+- `pagu-box --profile NAME` and `pagu gate --profile NAME` resolve those
+  artifacts without weakening the explicit `--policy` path or legacy names.
+- Profile-wide assertions bind the secret floor, advisor read-only posture,
+  journal exclusivity, Herdr control-plane concealment, and deny-last lowering.
+- Versioned gate-session metadata and timestamps extend the canonical event
+  log; the public telemetry-v0 SDK projects one or many logs into denial,
+  approval, tier, and conservative prune-candidate queries.
+- Human and JSON CLI output render the same projection. No flow dependency,
+  syscall interception, automatic request generation, or automatic profile
+  mutation is introduced.
 
 ## Slice 5 shipped boundary
 
@@ -81,6 +99,8 @@ Next:
 These items follow the complete Slice 5 lifecycle:
 
 - Linux structured denial evidence from the enforcement adapter;
+- syscall-interception observation and automatic request generation;
+- reviewed overlay-to-profile promotion and unused-allow pruning tooling;
 - fresh-session creation/discovery so Codex need not start from an existing
   session UUID;
 - live verification and implementation of the Claude resume adapter;

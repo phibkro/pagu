@@ -183,10 +183,31 @@ function compile(
   for (
     const path of dedupe(policy.fs.deny.map((item) => expandPath(item, ctx)))
   ) {
-    // A tmpfs HOME already makes a nested built-in deny redundant. Skipping it
-    // preserves strict/paranoid compatibility without weakening concealment.
-    if (policy.fs.home === "tmpfs" && contains(ctx.home, path)) continue;
+    // A tmpfs HOME makes a nested deny redundant only while no explicit mount
+    // overlaps it. `$PWD` may itself be HOME or a denied child; those later
+    // mounts would otherwise re-expose the host subtree after the HOME mask.
+    const overlapsRw = rw.some((allowed) =>
+      contains(allowed, path) || contains(path, allowed)
+    );
+    const overlapsRo = ro.some((allowed) =>
+      contains(allowed, path) || contains(path, allowed)
+    );
+    const overlapsAllow = overlapsRw || overlapsRo;
     const kind = ctx.pathKind(path);
+    if (
+      policy.fs.home === "tmpfs" && contains(ctx.home, path) && !overlapsAllow
+    ) continue;
+    // A missing target can appear later through a live host RO bind, while
+    // bwrap cannot create its mask mountpoint below that RO destination. Fail
+    // before launch rather than expose a stat→mount race.
+    if (
+      policy.fs.home === "tmpfs" && contains(ctx.home, path) &&
+      kind === "missing" && !overlapsRw
+    ) {
+      throw new PolicyCompileError(
+        `cannot conceal missing denied path below read-only allow: ${path}`,
+      );
+    }
     if (kind === "file") args.push("--bind", "/dev/null", path);
     else args.push("--tmpfs", path);
   }

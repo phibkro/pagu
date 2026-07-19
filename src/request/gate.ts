@@ -21,6 +21,9 @@ export interface GatePaths {
   readonly sessionGrants: string;
   readonly queue: string;
   readonly userPolicy: string;
+  /** Curated profiles keep persistent RO growth in this projection. The base
+   * policy remains immutable and is re-composed on every gate start. */
+  readonly profileOverlay?: string;
 }
 
 export type StoredGrantState = "pending" | "applied" | "spent";
@@ -88,6 +91,9 @@ export interface Gate {
 export interface CreateGateOptions {
   readonly paths: GatePaths;
   readonly session: string;
+  /** Curated category name, or null for an explicit custom policy. Retained in
+   * the event log so telemetry needs no parallel session registry. */
+  readonly profile?: string | null;
   readonly approver?: GateApprover;
   readonly apply?: GrantApplier;
   /** Test seam; production uses realPathSync immediately before decision and
@@ -96,6 +102,8 @@ export interface CreateGateOptions {
   readonly validatePolicy?: (policy: PolicyV0) => void;
   /** Process owner hook: a post-stop lifecycle failure must end the gate. */
   readonly onFatal?: (reason: string) => void;
+  /** Deterministic timestamp seam for retained audit events. */
+  readonly now?: () => Date;
 }
 
 function dirname(path: string): string {
@@ -190,6 +198,55 @@ async function loadStored(path: string): Promise<StoredGrant[]> {
   }
 }
 
+async function loadProfileOverlay(path?: string): Promise<string[]> {
+  if (!path) return [];
+  try {
+    const value = await readJson(path);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("profile overlay: expected an object");
+    }
+    const item = value as Record<string, unknown>;
+    exactKeys(item, ["version", "fs.ro"], "profile overlay");
+    if (
+      item.version !== 0 || !Array.isArray(item["fs.ro"]) ||
+      item["fs.ro"].some((path) => typeof path !== "string")
+    ) throw new Error("profile overlay: invalid version or fs.ro");
+    return [...new Set(item["fs.ro"] as string[])];
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return [];
+    throw error;
+  }
+}
+
+function withPersistentRo(base: PolicyV0, ro: readonly string[]): PolicyV0 {
+  return {
+    ...base,
+    fs: { ...base.fs, ro: [...new Set([...base.fs.ro, ...ro])] },
+  };
+}
+
+async function persistStandingPolicy(
+  paths: GatePaths,
+  base: PolicyV0,
+  target: PolicyV0,
+): Promise<void> {
+  if (!paths.profileOverlay) {
+    await atomicJson(paths.userPolicy, target);
+    return;
+  }
+  const expected = withPersistentRo(base, target.fs.ro);
+  if (JSON.stringify(expected) !== JSON.stringify(target)) {
+    throw new GrantApplicationError(
+      "profile overlay may persist only read-only grants",
+    );
+  }
+  const baseRo = new Set(base.fs.ro);
+  await atomicJson(paths.profileOverlay, {
+    version: 0,
+    "fs.ro": target.fs.ro.filter((path) => !baseRo.has(path)),
+  });
+}
+
 function asPolicy(grant: GrantV0): PolicyV0 {
   const { parent: _parent, expires: _expires, ...policy } = grant;
   return policy;
@@ -230,7 +287,11 @@ export function canonicalizeGrantPath(path: string): string | null {
 
 /** Construct one session-bound outside-sandbox gate. All mutations serialize. */
 export async function createGate(options: CreateGateOptions): Promise<Gate> {
-  let standingPolicy = parsePolicy(await readJson(options.paths.userPolicy));
+  const basePolicy = parsePolicy(await readJson(options.paths.userPolicy));
+  let standingPolicy = withPersistentRo(
+    basePolicy,
+    await loadProfileOverlay(options.paths.profileOverlay),
+  );
   const grants = await loadStored(options.paths.sessionGrants);
   const canonicalize = options.canonicalize ?? canonicalizeGrantPath;
   let log: Entry[];
@@ -334,7 +395,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
     }
     options.validatePolicy?.(target);
     if (currentIdentity !== targetIdentity) {
-      await atomicJson(options.paths.userPolicy, target);
+      await persistStandingPolicy(options.paths, basePolicy, target);
       standingPolicy = target;
     }
     grants[index] = { ...stored, state: "applied" };
@@ -362,6 +423,8 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
   }
 
   const events = eventStream(log);
+  const now = options.now ?? (() => new Date());
+  const at = () => now().toISOString();
   let nextRequest = log.filter((entry) => entry.kind === "request").length + 1;
   let nextGrant = Math.max(
     0,
@@ -452,6 +515,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
       const appliedIdentity = await policyIdentity(application.policy);
       await append({
         kind: "policy-launch",
+        at: at(),
         id: `l${nextLaunch++}`,
         grant: application.id,
         session: options.session,
@@ -464,6 +528,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
       if (stored?.scope === "once") {
         await append({
           kind: "policy-grant-spent",
+          at: at(),
           grant: application.id,
           session: options.session,
         });
@@ -472,7 +537,11 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
         grants[sessionIndex] = { ...stored, state: "applied" };
         await storeGrants();
       } else if (application.scope === "persist") {
-        await atomicJson(options.paths.userPolicy, application.policy);
+        await persistStandingPolicy(
+          options.paths,
+          basePolicy,
+          application.policy,
+        );
         if (stored) {
           const index = grants.indexOf(stored);
           grants[index] = { ...stored, state: "applied" };
@@ -531,6 +600,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
       try {
         await append({
           kind: "policy-launch-failed",
+          at: at(),
           grant: application.id,
           session: options.session,
           reason,
@@ -588,6 +658,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
     const decisionCanonical = canonicalize(requestedPath);
     await append({
       kind: "request",
+      at: at(),
       id: request.id,
       need: request.need,
       justification: request.justification,
@@ -601,6 +672,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
     );
     const decisionEntry: Entry = {
       kind: "request-decision",
+      at: at(),
       request: request.id,
       verdict: decision.verdict,
       scope: decision.scope,
@@ -659,6 +731,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
       };
       const grantEntry: Entry = {
         kind: "policy-grant",
+        at: at(),
         id,
         request: request.id,
         scope: decision.scope,
@@ -678,6 +751,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
     await appendDecision();
     await append({
       kind: "policy-grant",
+      at: at(),
       id,
       request: request.id,
       scope: decision.scope,
@@ -705,6 +779,18 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
     return result;
   };
 
+  // Retain identity before returning any request-capable Gate. This ordering is
+  // structural: no adapter can serve `handle` before session metadata exists.
+  await append({
+    kind: "gate-session",
+    version: 0,
+    at: at(),
+    session: options.session,
+    profile: options.profile ?? null,
+    subjectAgent: effectivePolicy.subject.agent,
+    subjectLabel: effectivePolicy.subject.label,
+  });
+
   return {
     events,
     sessionGrants: () => structuredClone(grants),
@@ -715,6 +801,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
       serialized(async () => {
         await append({
           kind: "policy-launch",
+          at: at(),
           id: `l${nextLaunch++}`,
           grant: null,
           session: options.session,

@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import type { Entry } from "./log/schema.ts";
 import { parseLog } from "./log/parse.ts";
 import { serializeLog } from "./log/serialize.ts";
@@ -91,8 +91,18 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
   result: { kind: "result", script: "", exit: 0, ranWith: [], output: "" },
   grant: { kind: "grant", id: "", perms: [], expires: "" },
   revoke: { kind: "revoke", grant: "" },
+  "gate-session": {
+    kind: "gate-session",
+    version: 0,
+    at: "2026-07-19T00:00:00.000Z",
+    session: 'session "quoted"\nline',
+    profile: 'worker "blue"',
+    subjectAgent: "category\nagent",
+    subjectLabel: 'review "quoted" label',
+  },
   request: {
     kind: "request",
+    at: "2026-07-19T00:00:01.000Z",
     id: "",
     need: "",
     justification: "",
@@ -100,6 +110,7 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
   },
   "request-decision": {
     kind: "request-decision",
+    at: "2026-07-19T00:00:02.000Z",
     request: "",
     verdict: "deny",
     scope: null,
@@ -108,6 +119,7 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
   },
   "policy-grant": {
     kind: "policy-grant",
+    at: "2026-07-19T00:00:03.000Z",
     id: "",
     request: "",
     scope: "session",
@@ -119,6 +131,7 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
   },
   "policy-launch": {
     kind: "policy-launch",
+    at: "2026-07-19T00:00:04.000Z",
     id: "",
     grant: null,
     session: "",
@@ -130,12 +143,14 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
   },
   "policy-launch-failed": {
     kind: "policy-launch-failed",
+    at: "2026-07-19T00:00:05.000Z",
     grant: "",
     session: "",
     reason: "",
   },
   "policy-grant-spent": {
     kind: "policy-grant-spent",
+    at: "2026-07-19T00:00:06.000Z",
     grant: "",
     session: "",
   },
@@ -144,4 +159,15 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
 Deno.test("event wire schema: every entry kind round-trips (public-API floor)", () => {
   const all = Object.values(WIRE_CONTRACT);
   assertEquals(parseLog(serializeLog(all)), all);
+});
+
+Deno.test("event wire schema: unsupported gate-session version fails loud", () => {
+  assertThrows(
+    () =>
+      parseLog(
+        "~~~pagu:gate-session version=1\n{}\n~~~\n",
+      ),
+    Error,
+    "unsupported gate-session version 1",
+  );
 });

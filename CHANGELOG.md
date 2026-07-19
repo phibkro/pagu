@@ -56,5 +56,18 @@ only forward work.
 - Restored documentation drift checking to the full CI gate while keeping
   immutable ADR path references as historical evidence.
 
+## Category profiles and telemetry
+
+- Added six checked-in schema-v0 category policies—advisor, worker, proof, web,
+  infra, and orchestrator—with a shared secret refusal floor and safe session
+  auto seeds.
+- Added named category resolution to `pagu-box` and `pagu gate` while retaining
+  explicit `--policy` and the four legacy compatibility profiles.
+- Added CI assertions for advisor read-only behavior, journal exclusivity,
+  Herdr control-plane concealment, and deny-last compiled mounts.
+- Added versioned gate-session metadata and timestamped gate evidence, then
+  exposed a standalone telemetry-v0 SDK/CLI projection with human and JSON
+  denial, approval, tier, and conservative prune-candidate views.
+
 See `README.md` for current use, `CONTEXT.md` for the trust model, and
 `ROADMAP.md` for planned work.

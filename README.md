@@ -16,13 +16,16 @@ The former integrated harness is preserved on branch `archive/harness` and at
 tag `harness-final`. It is not part of the live architecture. The pivot and the
 box/gate contract are recorded in
 [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) and
-[ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md).
+[ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md). Curated
+category profiles and their telemetry loop are specified by
+[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md).
 
 ## Platform status
 
 | Surface                              | Linux       | macOS                    |
 | ------------------------------------ | ----------- | ------------------------ |
 | Legacy `pagu-box --profile` launcher | bubblewrap  | `sandbox-exec`           |
+| Category `pagu-box --profile` policy | implemented | typed unsupported error  |
 | Schema-v0 `--policy` compiler        | implemented | typed unsupported error  |
 | `pagu gate` request/operator daemon  | implemented | blocked by schema policy |
 
@@ -88,6 +91,11 @@ Policy fields:
 `$PWD`, `$HOME`, and `~` are supported path roots. Denies are emitted after
 allows, so deny wins in the compiled mount order.
 
+If a missing denied path sits beneath an overlapping read-only bind (for
+example, advisor launched with `$PWD=$HOME`), Linux lowering fails loud: the
+host could create that path after the check, while bubblewrap cannot install a
+new mask mountpoint below the RO destination. Use a narrower repository root.
+
 ## Run a boxed harness
 
 ```sh
@@ -108,6 +116,39 @@ nix run .#pagu-box -- --policy ./policy.json --explain
 The explanation is derived from the same compiler result used for launch. It
 contains environment names but not forwarded secret values.
 
+### Category profiles
+
+Six checked-in policy-v0 files under [`profiles/`](profiles/) provide stable
+role names:
+
+| Profile        | Home    | Repository | Direct network | Extra host surface                 |
+| -------------- | ------- | ---------- | -------------- | ---------------------------------- |
+| `advisor`      | tmpfs   | read-only  | yes            | none                               |
+| `worker`       | tmpfs   | read-write | yes            | Nix daemon                         |
+| `proof`        | tmpfs   | read-write | no             | Nix daemon (daemon-mediated cache) |
+| `web`          | tmpfs   | read-write | yes            | none                               |
+| `infra`        | host RW | read-write | yes            | Nix daemon + systemd journal read  |
+| `orchestrator` | tmpfs   | read-write | yes            | `agent-dispatch` runtime           |
+
+Every category refuses the complete checked-in secret floor and starts with a
+read-only session-auto seed for `/srv/share/projects/**`. `infra` is the only
+category exposing journal inputs. The orchestrator does not pass `HERDR_*` or
+mount `/run/user`/Herdr configuration; schema v0 does not claim a general
+executable allowlist, so “delegate through `agent-dispatch`” remains a launcher
+contract in addition to the filesystem/network boundary.
+
+Use a name anywhere an explicit schema policy is accepted:
+
+```sh
+nix run .#pagu-box -- --profile advisor -- codex
+nix run .#pagu-box -- --profile worker -- sh -lc 'touch built.txt'
+```
+
+Resolution is deliberately unambiguous: an explicit `--policy FILE` or one
+checked-in category `--profile NAME` selects schema policy; supplying both is an
+error. Category profiles cannot be combined with legacy mutation flags. The four
+compatibility names below still select the legacy launcher.
+
 ### Legacy profiles
 
 The imported launcher still supports its compatibility profiles and flags:
@@ -118,7 +159,7 @@ nix run .#pagu-box -- --profile=paranoid --no-net -- claude
 ```
 
 Run `pagu-box --help` for the complete compatibility surface. Legacy policy
-flags cannot be combined with `--policy`.
+flags cannot be combined with `--policy` or a category profile.
 
 ## Run a gate-owned Codex session
 
@@ -142,6 +183,12 @@ nix run .#pagu -- gate \
   --harness codex \
   --state-dir "$PAGU_STATE"
 ```
+
+Use `--profile worker` in place of `--policy "$PAGU_POLICY"` to start from a
+curated category. The checked-in profile remains the shared immutable base; the
+gate refreshes a private materialization of that base on every start, then
+composes a separate sparse read-only grant overlay. `persist` changes only the
+overlay, so new profile denies are not stranded behind an old snapshot.
 
 Keep the user policy and gate state outside every `fs.rw`/`fs.ro` root. Startup
 checks the effective mount topology and rejects a sandbox-visible state/socket
@@ -206,6 +253,22 @@ Use `--deny` instead of `--scope` to refuse. `resolution.json` is atomically
 published operator-side state and is never mounted into the box; the request
 socket remains the only inside surface.
 
+## Read gate telemetry
+
+Telemetry is a read-only projection over one or more canonical `events.md` logs.
+It does not require flow or a running gate:
+
+```sh
+nix run .#pagu -- telemetry "$PAGU_STATE" --older-than-days 30
+nix run .#pagu -- telemetry "$PAGU_STATE" --json
+```
+
+The human and JSON views report top denied/refused paths, approval rate per
+profile/subject, auto/operator/refuse decision counts, and old approved grants
+with no retained launch evidence. Those last rows are conservative prune
+candidates, not proof that a mounted path was never accessed: syscall-level use
+observation is explicitly deferred by ADR-0006.
+
 ## Programmatic API
 
 The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
@@ -217,6 +280,7 @@ The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 - Codex/Claude resume adapters and the gate-owned box lifecycle;
 - queue reads and resolve-only operator submission;
 - retained event-log and capability primitives.
+- category-profile names and the telemetry-v0 collector/projection/formatter.
 
 The public-export floor is checked by [`src/mod.test.ts`](src/mod.test.ts). This
 package is consumed from a checkout today; publication is not claimed.

@@ -28,6 +28,7 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "serializeLog", kind: "function" },
   { name: "eventStream", kind: "function" },
   { name: "EventStream", kind: "interface" },
+  { name: "GateSessionEntry", kind: "interface" },
   // Permission policy.
   { name: "parsePermission", kind: "function" },
   { name: "withinEnvelope", kind: "function" },
@@ -59,6 +60,9 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "PolicyCompileError", kind: "class" },
   { name: "UnsupportedPlatformError", kind: "class" },
   { name: "policyIdentity", kind: "function" },
+  { name: "isCategoryProfile", kind: "function" },
+  { name: "categoryProfileFilename", kind: "function" },
+  { name: "CategoryProfileName", kind: "typeAlias" },
   // Request gate.
   { name: "fileRequest", kind: "function" },
   { name: "serveGate", kind: "function" },
@@ -93,6 +97,17 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "OperatorBoundaryError", kind: "class" },
   { name: "ensurePrivateStateDirectory", kind: "function" },
   { name: "UnsafeStateDirectoryError", kind: "class" },
+  // Telemetry projection v0.
+  { name: "projectTelemetry", kind: "function" },
+  { name: "collectTelemetry", kind: "function" },
+  { name: "formatTelemetry", kind: "function" },
+  { name: "TelemetryLogV0", kind: "interface" },
+  { name: "TelemetryProjectionOptions", kind: "interface" },
+  { name: "TelemetryViewV0", kind: "interface" },
+  { name: "DeniedPathTelemetryV0", kind: "interface" },
+  { name: "ApprovalRateTelemetryV0", kind: "interface" },
+  { name: "DecisionTierTelemetryV0", kind: "interface" },
+  { name: "PruneCandidateTelemetryV0", kind: "interface" },
 ];
 
 interface DocSymbol {

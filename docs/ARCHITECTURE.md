@@ -15,6 +15,7 @@ flowchart TB
         G["src/request/gate.ts\nPA state + adjudication"]
         P["src/policy/\nschema · fold · compile"]
         BC["box/src/linux.nix\npagu-box"]
+        T["src/telemetry/\nread-only projection"]
     end
     subgraph sandbox["OS sandbox"]
         H["any harness"]
@@ -31,6 +32,7 @@ flowchart TB
     G -->|"validated grant"| R
     R -->|"stop + new complete policy"| BC
     G --> L[("log + projections")]
+    L --> T
 ```
 
 ## Entrypoints and packages
@@ -40,6 +42,7 @@ flowchart TB
 | `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.             |
 | `pagu gate`          | `src/gate/cli.ts`                          | Owns a resumed harness session, request listener, operator surfaces, and relaunch lifecycle. |
 | `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                       |
+| `pagu telemetry`     | `src/gate/cli.ts` + `src/telemetry/`       | Standalone human/JSON projection over one or many gate event logs.                            |
 | SDK                  | `src/mod.ts`                               | Stable front door for policy, request, event, and retained security primitives.              |
 | Root flake           | `flake.nix`                                | Builds `pagu-box`, `pagu`, formatter, and the Linux development shell.                       |
 | Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                           |
@@ -58,8 +61,10 @@ All policy core files are pure and exported through `src/policy/index.ts`.
 | `src/policy/compile.ts`     | Explicit-context policy lowering to Linux bubblewrap argv and scrubbed environment; exact explanation projection. |
 | `src/policy/identity.ts`    | Canonical SHA-256 identity binding grants to complete policy authority.                                           |
 | `src/policy/presets.ts`     | Schema representations of the four legacy profile baselines used for equivalence testing.                         |
+| `src/policy/profiles.ts`    | Stable curated category names, filenames, and the shared secret-floor assertion data.                            |
 | `src/policy/cli.ts`         | Effectful adapter: read JSON, assemble host context, explain or spawn bubblewrap.                                 |
 | `src/policy/policy.test.ts` | Schema, attenuation, canonicalization, legacy equivalence, explain, and real-adapter falsifiers.                  |
+| `src/policy/profiles.test.ts` | Cross-profile secret, write, journal, Herdr, and compiled-deny assertions.                                       |
 
 Dependency direction:
 
@@ -107,13 +112,16 @@ terminals, herdr, Codex argv, or process spawning.
 | `src/log/parse.ts`     | Markdown blocks → typed entries; unknown future kinds are skipped.                   |
 | `src/events.ts`        | Offset-addressed reads and live wakeups over an append-only entry array.             |
 | `src/events.test.ts`   | Wire-contract floor: every entry kind must round-trip.                               |
+| `src/telemetry/`       | Pure telemetry-v0 fold, filesystem collector, and human formatter over those entries. |
 
 The markdown log is retained history. Queue, resolution, and session-grant JSON
 are mutable gate projections outside all sandbox mounts. `launches/` retains
 complete applied policies and exact evidence emitted after the box adapter
 spawns bubblewrap. A prepared-launch transaction rolls the child back unless
 those durable updates complete; pending persist projections recover an
-interrupted standing-policy write.
+interrupted standing-policy write. Named categories additionally retain only a
+sparse persistent `fs.ro` overlay; each gate start composes it with the current
+checked-in profile rather than freezing a full profile snapshot.
 
 ## Box enforcement adapters
 
@@ -122,9 +130,12 @@ interrupted standing-policy write.
 | `box/src/linux.nix`            | Nix-built shell adapter, legacy bubblewrap profiles, and schema-policy handoff to the Deno compiler. |
 | `box/src/darwin.nix`           | Legacy seatbelt profiles and typed rejection of schema lowering until the Darwin compiler exists.    |
 | `box/src/profiles/`            | Static seatbelt profiles for default, strict, paranoid, and loose compatibility modes.               |
+| `profiles/`                    | Six immutable schema-v0 category policies resolved by name on both CLI surfaces.                     |
 | `box/modules/home-manager.nix` | Home Manager package/module integration.                                                             |
 
-With `--policy`, legacy policy flags are rejected. With `--gate`, the Linux
+An explicit `--policy` and a category `--profile` are mutually exclusive;
+category names resolve to the checked-in JSON while legacy names retain the
+compatibility launcher. With `--gate`, the Linux
 compiler bind-mounts the host socket at `/run/pagu/request.sock` and sets only
 the sandbox path in `PAGU_REQUEST_SOCKET`. `--evidence` writes the actual
 compiled argv after spawn; the gate never passes its operator resolution path.
@@ -166,6 +177,7 @@ authority path.
 | Request wire shape         | `src/request/schema.ts` + real channel tests             |
 | Adjudication tiers         | `src/request/adjudicate.ts`                              |
 | Gate persistence/evidence  | `src/request/gate.ts` + log/event codecs                 |
+| Telemetry queries/rendering | `src/telemetry/` + versioned gate event entries          |
 | Human approval surface     | adapter over `GateApprover`; do not fork adjudication    |
 | Resume syntax              | `src/gate/resume.ts` + live adapter test                 |
 | Grant application          | `src/request/gate.ts` + `src/gate/relaunch.ts`           |

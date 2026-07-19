@@ -106,6 +106,46 @@ export function parseLog(md: string): Entry[] {
         entries.push(re);
         break;
       }
+      case "gate-session": {
+        // Silently continuing would attribute following unversioned request
+        // events to the previous session. An old reader must fail loud.
+        if (a.version !== "0") {
+          throw new Error(
+            `unsupported gate-session version ${a.version ?? "missing"}`,
+          );
+        }
+        let metadata: {
+          at?: unknown;
+          session?: unknown;
+          profile?: unknown;
+          subjectAgent?: unknown;
+          subjectLabel?: unknown;
+        };
+        try {
+          metadata = JSON.parse(body);
+        } catch {
+          throw new Error("malformed gate-session metadata");
+        }
+        if (
+          !metadata || typeof metadata !== "object" ||
+          typeof metadata.at !== "string" ||
+          typeof metadata.session !== "string" ||
+          (metadata.profile !== null &&
+            typeof metadata.profile !== "string") ||
+          typeof metadata.subjectAgent !== "string" ||
+          typeof metadata.subjectLabel !== "string"
+        ) throw new Error("malformed gate-session metadata");
+        entries.push({
+          kind: "gate-session",
+          version: 0,
+          at: metadata.at,
+          session: metadata.session,
+          profile: metadata.profile,
+          subjectAgent: metadata.subjectAgent,
+          subjectLabel: metadata.subjectLabel,
+        });
+        break;
+      }
       case "request": {
         let detail: { need?: unknown; justification?: unknown } = {};
         try {
@@ -115,6 +155,7 @@ export function parseLog(md: string): Entry[] {
         }
         entries.push({
           kind: "request",
+          ...(a.at ? { at: a.at } : {}),
           id: a.id ?? "",
           need: typeof detail.need === "string" ? detail.need : "",
           justification: typeof detail.justification === "string"
@@ -131,6 +172,7 @@ export function parseLog(md: string): Entry[] {
           : null;
         entries.push({
           kind: "request-decision",
+          ...(a.at ? { at: a.at } : {}),
           request: a.request ?? "",
           verdict: a.verdict === "approve" ? "approve" : "deny",
           scope,
@@ -142,6 +184,7 @@ export function parseLog(md: string): Entry[] {
       case "policy-grant":
         entries.push({
           kind: "policy-grant",
+          ...(a.at ? { at: a.at } : {}),
           id: a.id ?? "",
           request: a.request ?? "",
           scope: a.scope === "once" || a.scope === "persist"
@@ -172,6 +215,7 @@ export function parseLog(md: string): Entry[] {
             : [];
         entries.push({
           kind: "policy-launch",
+          ...(a.at ? { at: a.at } : {}),
           id: a.id ?? "",
           grant: a.grant === "-" || a.grant === undefined ? null : a.grant,
           session: a.session ?? "",
@@ -186,6 +230,7 @@ export function parseLog(md: string): Entry[] {
       case "policy-launch-failed":
         entries.push({
           kind: "policy-launch-failed",
+          ...(a.at ? { at: a.at } : {}),
           grant: a.grant ?? "",
           session: a.session ?? "",
           reason: body,
@@ -194,6 +239,7 @@ export function parseLog(md: string): Entry[] {
       case "policy-grant-spent":
         entries.push({
           kind: "policy-grant-spent",
+          ...(a.at ? { at: a.at } : {}),
           grant: a.grant ?? "",
           session: a.session ?? "",
         });

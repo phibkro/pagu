@@ -9,11 +9,18 @@ import { resumeAdapter } from "./resume.ts";
 import { createGate, type GatePaths, serveGate } from "../request/index.ts";
 import { assertOperatorBoundary } from "./boundary.ts";
 import { ensurePrivateStateDirectory } from "./state.ts";
-import { parsePolicy } from "../policy/index.ts";
+import {
+  categoryProfileFilename,
+  type CategoryProfileName,
+  isCategoryProfile,
+  parsePolicy,
+} from "../policy/index.ts";
+import { collectTelemetry, formatTelemetry } from "../telemetry/index.ts";
 
 interface GateOptions {
   readonly command: "gate";
   readonly policy: string;
+  readonly profile: string | null;
   readonly socket: string;
   readonly stateDir: string;
   readonly session: string;
@@ -28,14 +35,23 @@ interface ResolveOptions {
   readonly scope: "once" | "session" | "persist" | "deny";
 }
 
-type Options = GateOptions | ResolveOptions;
+interface TelemetryOptions {
+  readonly command: "telemetry";
+  readonly stateDirs: readonly string[];
+  readonly json: boolean;
+  readonly olderThanDays: number;
+  readonly top: number;
+}
+
+type Options = GateOptions | ResolveOptions | TelemetryOptions;
 
 function usage(message?: string): never {
   if (message) console.error(`pagu: ${message}`);
   console.error(
     "usage:\n" +
-      "  pagu gate --policy FILE --session ID --harness codex [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
-      "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)",
+      "  pagu gate (--policy FILE | --profile NAME) --session ID --harness codex [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
+      "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
   );
   Deno.exit(message ? 64 : 0);
 }
@@ -47,10 +63,11 @@ function value(args: readonly string[], index: number, flag: string): string {
 function parseArgs(args: readonly string[]): Options {
   if (args[0] === "-h" || args[0] === "--help") usage();
   const command = args[0];
-  if (command !== "gate" && command !== "resolve") {
-    usage("expected the 'gate' or 'resolve' command");
+  if (command !== "gate" && command !== "resolve" && command !== "telemetry") {
+    usage("expected the 'gate', 'resolve', or 'telemetry' command");
   }
   let policy: string | undefined;
+  let profile: string | undefined;
   let socket: string | undefined;
   let stateDir: string | undefined;
   let session: string | undefined;
@@ -58,10 +75,15 @@ function parseArgs(args: readonly string[]): Options {
   let box = "pagu-box";
   let request: string | undefined;
   let scope: ResolveOptions["scope"] | undefined;
+  let json = false;
+  let olderThanDays = 30;
+  let top = 10;
+  const stateDirs: string[] = [];
 
   for (let index = 1; index < args.length; index++) {
     const arg = args[index];
     if (arg === "--policy") policy = value(args, index++, arg);
+    else if (arg === "--profile") profile = value(args, index++, arg);
     else if (arg === "--socket") socket = value(args, index++, arg);
     else if (arg === "--state-dir") stateDir = value(args, index++, arg);
     else if (arg === "--session") session = value(args, index++, arg);
@@ -76,17 +98,38 @@ function parseArgs(args: readonly string[]): Options {
       ) usage("--scope must be once, session, or persist");
       scope = candidate;
     } else if (arg === "--deny") scope = "deny";
-    else if (arg === "-h" || arg === "--help") usage();
-    else usage(`unknown option ${JSON.stringify(arg)}`);
+    else if (arg === "--json") json = true;
+    else if (arg === "--older-than-days") {
+      olderThanDays = Number(value(args, index++, arg));
+      if (!Number.isFinite(olderThanDays) || olderThanDays < 0) {
+        usage("--older-than-days must be a non-negative number");
+      }
+    } else if (arg === "--top") {
+      top = Number(value(args, index++, arg));
+      if (!Number.isSafeInteger(top) || top <= 0) {
+        usage("--top must be a positive integer");
+      }
+    } else if (arg === "-h" || arg === "--help") usage();
+    else if (command === "telemetry" && !arg.startsWith("-")) {
+      stateDirs.push(arg);
+    } else usage(`unknown option ${JSON.stringify(arg)}`);
   }
 
+  if (command === "telemetry") {
+    if (stateDirs.length === 0) usage("telemetry requires a state directory");
+    return { command, stateDirs, json, olderThanDays, top };
+  }
   if (command === "resolve") {
     if (!request) usage("resolve requires --request");
     if (!scope) usage("resolve requires --deny or --scope");
     if (!stateDir) usage("resolve requires --state-dir");
     return { command, stateDir, request, scope };
   }
-  if (!policy) usage("gate requires --policy");
+  if (policy && profile) usage("--policy and --profile are mutually exclusive");
+  if (!policy && !profile) usage("gate requires --policy or --profile");
+  if (profile && !isCategoryProfile(profile)) {
+    usage(`unknown category profile ${JSON.stringify(profile)}`);
+  }
   if (!session) usage("gate requires --session");
   if (!harness) usage("gate requires --harness");
   const runtime = Deno.env.get("XDG_RUNTIME_DIR");
@@ -94,9 +137,18 @@ function parseArgs(args: readonly string[]): Options {
     usage("gate requires --state-dir when XDG_RUNTIME_DIR is unset");
   }
   stateDir ??= `${runtime}/pagu/${encodeURIComponent(session)}`;
+  if (profile) {
+    const directory = Deno.env.get("PAGU_PROFILE_DIR") ?? decodeURIComponent(
+      new URL("../../profiles", import.meta.url).pathname,
+    );
+    policy = `${directory.replace(/\/+$/, "")}/${
+      categoryProfileFilename(profile as CategoryProfileName)
+    }`;
+  }
   return {
     command,
-    policy,
+    policy: policy!,
+    profile: profile ?? null,
     socket: socket ?? `${stateDir}/request.sock`,
     stateDir,
     session,
@@ -167,20 +219,44 @@ async function resolve(options: ResolveOptions): Promise<void> {
   );
 }
 
+async function materializeProfileBase(options: GateOptions): Promise<string> {
+  if (!options.profile) return options.policy;
+  // The source checkout may itself be the RW repository mount. Refresh the
+  // curated base into private state on every start; persistent growth remains
+  // a separate sparse overlay and therefore cannot freeze this snapshot.
+  const target = `${options.stateDir}/profile-${options.profile}-base.json`;
+  const temp = `${target}.tmp-${crypto.randomUUID()}`;
+  try {
+    await Deno.writeTextFile(temp, await Deno.readTextFile(options.policy), {
+      createNew: true,
+      mode: 0o600,
+    });
+    await Deno.rename(temp, target);
+  } catch (error) {
+    await Deno.remove(temp).catch(() => undefined);
+    throw error;
+  }
+  return target;
+}
+
 async function gate(options: GateOptions): Promise<void> {
   await ensurePrivateStateDirectory(options.stateDir);
+  const policy = await materializeProfileBase(options);
   const paths: GatePaths = {
     eventLog: `${options.stateDir}/events.md`,
     sessionGrants: `${options.stateDir}/session-grants.json`,
     queue: `${options.stateDir}/queue.json`,
-    userPolicy: options.policy,
+    userPolicy: policy,
+    profileOverlay: options.profile
+      ? `${options.stateDir}/profile-${options.profile}-overlay.json`
+      : undefined,
   };
   const operatorPaths = {
     queue: paths.queue,
     resolution: `${options.stateDir}/resolution.json`,
   };
   const boundaryPaths = {
-    policy: options.policy,
+    policy,
     stateDir: options.stateDir,
     requestSocket: options.socket,
   };
@@ -199,7 +275,7 @@ async function gate(options: GateOptions): Promise<void> {
   // Falsifier 1 includes mount topology, not merely the request protocol: the
   // policy, queue, resolution, grants, and evidence remain host-only.
   assertOperatorBoundary(
-    parsePolicy(JSON.parse(await Deno.readTextFile(options.policy))),
+    parsePolicy(JSON.parse(await Deno.readTextFile(policy))),
     boundaryPaths,
     boundaryContext,
   );
@@ -219,6 +295,7 @@ async function gate(options: GateOptions): Promise<void> {
   const core = await createGate({
     paths,
     session: options.session,
+    profile: options.profile,
     approver: createOperatorApprover({ paths: operatorPaths, terminal }),
     apply: (application) => {
       assertOperatorBoundary(
@@ -261,9 +338,22 @@ async function gate(options: GateOptions): Promise<void> {
   }
 }
 
+async function telemetry(options: TelemetryOptions): Promise<void> {
+  const view = await collectTelemetry(options.stateDirs, {
+    now: new Date(),
+    olderThanDays: options.olderThanDays,
+  });
+  console.log(
+    options.json
+      ? JSON.stringify(view, null, 2)
+      : formatTelemetry(view, options.top),
+  );
+}
+
 export async function main(args = Deno.args): Promise<void> {
   const options = parseArgs(args);
   if (options.command === "resolve") await resolve(options);
+  else if (options.command === "telemetry") await telemetry(options);
   else await gate(options);
 }
 

@@ -68,6 +68,7 @@ Enforcement:
 | schema             | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`. |
 | fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.       |
 | compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                         |
+| category profiles  | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts. |
 | retained primitive | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                       |
 
 Bound laws:
@@ -75,6 +76,10 @@ Bound laws:
 - [law: deny wins request equal deny never within]
 - [law: built-in denies refuse containment enforced]
 - [law: adding allows never revokes monotone]
+- [law: category profiles refuse complete secret floor]
+- [law: category compiled denies final concealment mounts]
+- [law: HOME repository cannot re-expose denied secrets]
+- [law: profile overlay re-composes persistent grants latest curated base]
 
 Review questions:
 
@@ -131,10 +136,11 @@ Enforcement:
 | Rung        | Enforcer                                                                                                    |
 | ----------- | ----------------------------------------------------------------------------------------------------------- |
 | compiler    | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                           |
-| event codec | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define the retained wire entries.       |
+| event codec | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define versioned session metadata and retained wire entries. |
 | stream      | `src/events.ts` addresses the append-only entry array by stable offset.                                     |
-| writer      | `src/request/gate.ts` serializes request, decision, projection, grant, launch, failure, and spend evidence. |
+| writer      | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence. |
 | launch      | `src/policy/cli.ts` writes evidence from the same `CompiledPolicy` value after spawning bubblewrap.         |
+| telemetry   | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store. |
 | API floor   | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                               |
 
 Bound laws:
@@ -153,6 +159,7 @@ Bound laws:
 - [law: operator state directory rejects replaceable ancestry symlinks]
 - [law: failed rollback keeps child tracked shutdown retry]
 - [law: retained persist grant rebuilds missing projection without ID reuse]
+- [law: telemetry projects denials approvals tiers stale unlaunched grants]
 
 Review questions:
 

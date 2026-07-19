@@ -1,0 +1,46 @@
+{
+  "version": 0,
+  "subject": { "agent": "category", "label": "advisor" },
+  "fs": {
+    "home": "tmpfs",
+    "rw": [],
+    "ro": ["$PWD"],
+    "deny": [
+      "~/.ssh",
+      "~/.gnupg",
+      "~/.aws",
+      "~/.azure",
+      "~/.config/sops",
+      "~/.config/age",
+      "~/.config/gh",
+      "~/.config/op",
+      "~/.config/gcloud",
+      "~/.password-store",
+      "~/.netrc",
+      "~/.bash_history",
+      "~/.zsh_history",
+      "~/.python_history"
+    ]
+  },
+  "net": true,
+  "env": { "pass": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"] },
+  "escalation": {
+    "auto": [{ "fs.ro": "/srv/share/projects/**", "scope": "session" }],
+    "refuse": [
+      "~/.ssh/**",
+      "~/.gnupg/**",
+      "~/.aws/**",
+      "~/.azure/**",
+      "~/.config/sops/**",
+      "~/.config/age/**",
+      "~/.config/gh/**",
+      "~/.config/op/**",
+      "~/.config/gcloud/**",
+      "~/.password-store/**",
+      "~/.netrc",
+      "~/.bash_history",
+      "~/.zsh_history",
+      "~/.python_history"
+    ]
+  }
+}

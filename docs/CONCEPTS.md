@@ -160,6 +160,7 @@ wider child stops. There is no live mount widening.
 
 The gate's markdown event log is retained history. Current gate event kinds:
 
+- `gate-session` — versioned profile/subject/session identity and start time;
 - `request` — identity, requested rule, need, justification;
 - `request-decision` — verdict, tier, scope, rationale;
 - `policy-grant` — derived grant identity, request, scope, exact rule.
@@ -173,6 +174,14 @@ The queue, operator resolution, and session-grants files can be replaced
 atomically because they are projections. They and the launch artifacts live
 outside every sandbox-visible policy root. They are useful for restart and UI,
 but they do not replace the append-only evidence record.
+
+Gate evidence written after the telemetry slice carries ISO timestamps.
+`projectTelemetry` folds one or many logs into one public version-0 view;
+`collectTelemetry` is only its filesystem adapter. Denial tables, approval
+rates, decision-tier counts, and unlaunched old-grant candidates are queries of
+that fold. They never decide or mutate policy. “Unused” currently means no
+retained launch evidence, not no observed syscall—the latter requires the
+deferred interception substrate.
 
 `eventStream` gives entries stable offsets equal to their log-array index. A UI
 can read backlog and then subscribe without becoming a writer.
@@ -203,6 +212,7 @@ The public functions live behind `src/mod.ts`:
 - apply a bound grant through `GrantApplier` and `ResumeAdapter` ports;
 - read a pending queue and submit an ID-bound operator resolution;
 - read retained events.
+- collect and query retained gate events through telemetry v0.
 
 Human surfaces are adapters:
 
@@ -210,6 +220,7 @@ Human surfaces are adapters:
 - `pagu gate` owns the box and races the Approver port between its TTY and the
   host-only resolution projection;
 - `pagu resolve` lets a herdr pane resolve that same port.
+- `pagu telemetry` renders the read-only event projection as a table or JSON.
 
 An adapter may choose presentation. It may not duplicate policy meaning or
 invent authority.

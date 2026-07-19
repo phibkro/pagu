@@ -1,5 +1,6 @@
 // pure: legacy box profiles generated as schema-v0 policy values.
 import { BUILTIN_SECRET_DENY, type PolicyV0 } from "./schema.ts";
+import { CATEGORY_SECRET_FLOOR } from "./profiles.ts";
 
 export type LegacyPolicyProfile =
   | "default"
@@ -13,22 +14,7 @@ const COMMON_ENV = [
   "GEMINI_API_KEY",
 ] as const;
 
-const DEFAULT_DENY = [
-  "~/.ssh",
-  "~/.gnupg",
-  "~/.aws",
-  "~/.azure",
-  "~/.config/sops",
-  "~/.config/age",
-  "~/.config/gh",
-  "~/.config/op",
-  "~/.config/gcloud",
-  "~/.password-store",
-  "~/.netrc",
-  "~/.bash_history",
-  "~/.zsh_history",
-  "~/.python_history",
-] as const;
+const DEFAULT_DENY = CATEGORY_SECRET_FLOOR;
 
 function preset(
   name: LegacyPolicyProfile,

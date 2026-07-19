@@ -10,6 +10,14 @@
 # The bwrap FLAGS assembled here are the security boundary, not this script.
 
 let
+  categoryProfileNames = map (pkgs.lib.removeSuffix ".json") (
+    builtins.filter (pkgs.lib.hasSuffix ".json") (builtins.attrNames (builtins.readDir ../../profiles))
+  );
+  categoryProfilePattern = pkgs.lib.concatStringsSep "|" categoryProfileNames;
+  categoryProfiles = builtins.path {
+    path = ../../profiles;
+    name = "pagu-category-profiles-v0";
+  };
   policySdk = builtins.path {
     path = ../../src/policy;
     name = "pagu-policy-sdk-v0";
@@ -26,6 +34,7 @@ pkgs.writeShellApplication {
     set -euo pipefail
 
     PROFILE="default"
+    PROFILE_EXPLICIT=0
     EXTRA_ALLOW=()
     EXTRA_RO_ALLOW=()
     EXTRA_DENY=()
@@ -50,8 +59,8 @@ pkgs.writeShellApplication {
         --evidence)     LAUNCH_EVIDENCE="$2"; shift 2 ;;
         --supervisor-pid) SUPERVISOR_PID="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
-        --profile=*)    PROFILE="''${1#--profile=}"; LEGACY_OPTIONS=1; shift ;;
-        --profile)      PROFILE="$2"; LEGACY_OPTIONS=1; shift 2 ;;
+        --profile=*)    PROFILE="''${1#--profile=}"; PROFILE_EXPLICIT=1; shift ;;
+        --profile)      PROFILE="$2"; PROFILE_EXPLICIT=1; shift 2 ;;
         --allow)        EXTRA_ALLOW+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
         --ro-allow)     EXTRA_RO_ALLOW+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
         --deny)         EXTRA_DENY+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
@@ -76,7 +85,8 @@ pkgs.writeShellApplication {
     pagu-box [OPTIONS] -- COMMAND [ARGS...]
     pagu-box [OPTIONS] COMMAND [ARGS...]
 
-      --profile=NAME    default | strict | paranoid | loose  (default: default)
+      --profile=NAME    advisor | worker | proof | web | infra | orchestrator,
+                        or legacy default | strict | paranoid | loose
       --policy FILE     compile and enforce a schema-v0 JSON policy via the SDK
       --gate SOCKET     mount the gate's append-and-await request socket; requires --policy
       --evidence FILE   write the exact spawned policy argv as operator-side launch evidence
@@ -122,9 +132,27 @@ pkgs.writeShellApplication {
       esac
     done
 
+    if [ "$PROFILE_EXPLICIT" -eq 1 ] && [ -n "$POLICY_FILE" ]; then
+      echo "pagu-box: --profile and --policy are mutually exclusive" >&2
+      exit 64
+    fi
+    if [ "$PROFILE_EXPLICIT" -eq 1 ]; then
+      case "$PROFILE" in
+        ${categoryProfilePattern})
+          POLICY_FILE="${categoryProfiles}/$PROFILE.json"
+          ;;
+        default|strict|paranoid|loose)
+          ;;
+        *)
+          echo "pagu-box: unknown profile '$PROFILE'" >&2
+          exit 64
+          ;;
+      esac
+    fi
+
     if [ -n "$POLICY_FILE" ]; then
       [ "$LEGACY_OPTIONS" -eq 0 ] || {
-        echo "pagu-box: --policy cannot be combined with legacy policy options" >&2
+        echo "pagu-box: schema policy profiles cannot be combined with legacy policy options" >&2
         exit 64
       }
       adapter_args=( --policy "$POLICY_FILE" )
