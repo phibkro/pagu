@@ -7,8 +7,9 @@
 
 Three attempts at "powerful agents, safe by construction" now coexist, each
 solving one plane of the problem (full analysis:
-`/srv/share/projects/pagu-box/docs/notes/composition-split-analysis.md` and
-`escalation-alignment-analysis.md`, committed 2026-07-19):
+`box/docs/notes/composition-split-analysis.md` and
+`box/docs/notes/escalation-alignment-analysis.md`, committed 2026-07-19, in-repo
+since the ADR-0004 subtree merge):
 
 | Attempt          | Solved                                                                       | Fatal gap                                                                                                                             |
 | ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |

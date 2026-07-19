@@ -35,12 +35,11 @@ starts:
 ADR-0004 makes pagu = box (PEP: enforce, never decide) + gate (PA: decide, never
 enforce). The hard-to-reverse decisions are (a) the shape of the policy artifact
 both sides share, and (b) which side owns which behavior. Prior-art constraints
-adopted from the analysis docs (pagu-box repo,
-`docs/notes/composition-split-analysis.md` P1–P12): escalations must compile
-into rules; enforcement must be fail-secure; empty policy means deny-all;
-project-level policy from an untrusted repo may only narrow (ADR-0003's
-analysis, generalized); approval is scoped and expiring, not a durable widening
-by default.
+adopted from the analysis docs (`box/docs/notes/composition-split-analysis.md`
+P1–P12): escalations must compile into rules; enforcement must be fail-secure;
+empty policy means deny-all; project-level policy from an untrusted repo may
+only narrow (ADR-0003's analysis, generalized); approval is scoped and expiring,
+not a durable widening by default.
 
 ## Decision
 
