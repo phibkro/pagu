@@ -165,8 +165,13 @@ flags cannot be combined with `--policy` or a category profile.
 
 The relaunch lifecycle requires the gate to own the boxed child. Supply an
 existing Codex session UUID; the verified adapter runs `codex resume UUID` for
-the initial box and every approved relaunch. The policy is the user policy;
-`persist` decisions update this file only.
+the initial box and every approved relaunch. Immediately before launch, the gate
+composes Codex's read-write `~/.codex` state over the standing policy. This
+launch overlay appears in the compiled explanation and evidence and does not
+alter the policy or its final secret denies. The Claude adapter declares only
+`~/.claude` and `~/.claude.json` as its future state mapping, but still fails
+typed before launch because its resume command is not verified. `persist`
+decisions update only the user policy or named-profile grant overlay.
 
 ```sh
 SESSION="<codex-session-uuid>"

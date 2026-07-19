@@ -80,6 +80,7 @@ Bound laws:
 - [law: category compiled denies final concealment mounts]
 - [law: HOME repository cannot re-expose denied secrets]
 - [law: profile overlay re-composes persistent grants latest curated base]
+- [law: harness state is scoped and deny remains final]
 
 Review questions:
 

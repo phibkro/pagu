@@ -33,6 +33,7 @@ import {
 import {
   claudeResumeAdapter,
   codexResumeAdapter,
+  composeHarnessState,
   ResumeAdapterNotVerifiedError,
 } from "./resume.ts";
 
@@ -71,6 +72,7 @@ async function fixture(): Promise<{ root: string; paths: GatePaths }> {
 }
 
 const evidence = (application: GrantApplication): GrantLaunchEvidence => ({
+  policy: application.policy,
   pid: 123,
   argv: ["--ro-bind", application.canonicalFsRo, application.canonicalFsRo],
   environment: ["HOME", "PATH"],
@@ -170,10 +172,16 @@ Deno.test("operator state directory rejects replaceable ancestry and symlinks", 
 });
 
 Deno.test("resume adapters: Codex is exact and Claude fails typed", () => {
-  assertEquals(codexResumeAdapter().command("session-1"), [
+  const codex = codexResumeAdapter();
+  assertEquals(codex.command("session-1"), [
     "codex",
     "resume",
     "session-1",
+  ]);
+  assertEquals(codex.stateRw, ["$HOME/.codex"]);
+  assertEquals(claudeResumeAdapter().stateRw, [
+    "$HOME/.claude",
+    "$HOME/.claude.json",
   ]);
   let error: unknown;
   try {
@@ -182,6 +190,96 @@ Deno.test("resume adapters: Codex is exact and Claude fails typed", () => {
     error = caught;
   }
   assertEquals(error instanceof ResumeAdapterNotVerifiedError, true);
+});
+
+Deno.test("law: harness state is scoped and deny remains final", () => {
+  const home = "/home/operator";
+  const base: PolicyV0 = {
+    ...policy(),
+    fs: {
+      ...policy().fs,
+      home: "rw",
+      deny: ["$HOME/.ssh", "$HOME/.gnupg"],
+    },
+  };
+  const codex = composeHarnessState(base, codexResumeAdapter());
+  const claude = composeHarnessState(base, claudeResumeAdapter());
+  assertEquals(codex.fs.rw, ["$HOME/.codex"]);
+  assertEquals(claude.fs.rw, ["$HOME/.claude", "$HOME/.claude.json"]);
+  assertEquals(codex.fs.deny, base.fs.deny);
+  assertEquals(claude.fs.deny, base.fs.deny);
+
+  const ctx: BwrapCompileContext = {
+    platform: "linux",
+    home,
+    pwd: "/work",
+    user: "tester",
+    path: "/bin",
+    term: "xterm",
+    lang: "C.UTF-8",
+    sslCertFile: "/etc/ssl/certs/ca-certificates.crt",
+    environment: {},
+    pathKind: (path) => path.endsWith(".json") ? "file" : "directory",
+    environmentMode: "process",
+  };
+  const argv = explain(codex, ctx).argv;
+  assertEquals(argv.includes(`${home}/.codex`), true);
+  assertEquals(argv.includes(`${home}/.claude`), false);
+  assertEquals(
+    argv.lastIndexOf(`${home}/.ssh`) > argv.lastIndexOf(`${home}/.codex`),
+    true,
+  );
+});
+
+Deno.test("gate launcher keeps harness state on approved relaunch", async () => {
+  if (Deno.build.os === "windows") return;
+  const root = await Deno.makeTempDir();
+  const socket = `${root}/gate.sock`;
+  const listener = Deno.listen({ transport: "unix", path: socket });
+  try {
+    const granted = `${root}/granted`;
+    await Deno.mkdir(granted);
+    const launched: PolicyV0[] = [];
+    const running: RunningBox = { stop: () => Promise.resolve() };
+    const launcher = createBoxLauncher({
+      box: "pagu-box",
+      gateSocket: socket,
+      stateDir: root,
+      session: "session-a",
+      resume: codexResumeAdapter(),
+      spawn: (input) => {
+        launched.push(input.policy);
+        return Promise.resolve({
+          running,
+          evidence: {
+            pid: 1,
+            argv: [],
+            environment: [],
+            resume: [...input.resume],
+          },
+        });
+      },
+    });
+    await launcher.start(policy());
+    await launcher.apply({
+      id: "pg1",
+      request: "r1",
+      scope: "session",
+      session: "session-a",
+      authority: "sha256:a",
+      decidedPolicy: "sha256:a",
+      requestedFsRo: granted,
+      canonicalFsRo: granted,
+      policy: policy([granted]),
+    });
+    assertEquals(launched.map((item) => item.fs.rw), [
+      ["$HOME/.codex"],
+      ["$HOME/.codex"],
+    ]);
+  } finally {
+    listener.close();
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("operator file surface resolves the same Approver port", async () => {

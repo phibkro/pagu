@@ -16,7 +16,11 @@ import {
   RequestValidationError,
   serveGate,
 } from "./index.ts";
-import { type BwrapCompileContext, compilePolicy } from "../policy/index.ts";
+import {
+  type BwrapCompileContext,
+  compilePolicy,
+  policyIdentity,
+} from "../policy/index.ts";
 import { parseLog } from "../log/index.ts";
 
 function policy(overrides: {
@@ -54,6 +58,7 @@ const identityContext = { canonicalize: (path: string) => path };
 const apply = (application: GrantApplication): Promise<PreparedGrantLaunch> =>
   Promise.resolve({
     evidence: {
+      policy: application.policy,
       pid: 99,
       argv: [
         "--ro-bind",
@@ -107,7 +112,12 @@ Deno.test("gate session metadata is versioned and retained before initial launch
       profile: "worker",
       now: () => new Date("2026-07-19T12:00:00.000Z"),
     });
+    const launchPolicy = {
+      ...policy(),
+      fs: { ...policy().fs, rw: ["$HOME/.codex"] },
+    };
     await gate.recordInitialLaunch({
+      policy: launchPolicy,
       pid: 42,
       argv: ["--unshare-all"],
       environment: ["HOME"],
@@ -127,6 +137,7 @@ Deno.test("gate session metadata is versioned and retained before initial launch
     assertEquals(launch.kind, "policy-launch");
     if (launch.kind === "policy-launch") {
       assertEquals(launch.at, "2026-07-19T12:00:00.000Z");
+      assertEquals(launch.policy, await policyIdentity(launchPolicy));
     }
   } finally {
     await Deno.remove(root, { recursive: true });

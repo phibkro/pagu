@@ -6,7 +6,7 @@ import type {
   PreparedGrantLaunch,
 } from "../request/gate.ts";
 import { canonicalizeGrantPath } from "../request/gate.ts";
-import type { ResumeAdapter } from "./resume.ts";
+import { composeHarnessState, type ResumeAdapter } from "./resume.ts";
 
 export interface RunningBox {
   stop(): Promise<void>;
@@ -24,7 +24,10 @@ export interface SpawnBoxInput {
 export type SpawnBox = (
   input: SpawnBoxInput,
 ) => Promise<
-  { readonly running: RunningBox; readonly evidence: GrantLaunchEvidence }
+  {
+    readonly running: RunningBox;
+    readonly evidence: Omit<GrantLaunchEvidence, "policy">;
+  }
 >;
 
 export interface BoxLauncher {
@@ -60,7 +63,7 @@ async function writeAtomic(path: string, value: string): Promise<void> {
   await Deno.rename(temp, path);
 }
 
-function evidenceAt(value: unknown): GrantLaunchEvidence {
+function evidenceAt(value: unknown): Omit<GrantLaunchEvidence, "policy"> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("box returned malformed launch evidence");
   }
@@ -141,7 +144,7 @@ const realSpawn: SpawnBox = async (input) => {
   };
 
   try {
-    let evidence: GrantLaunchEvidence | undefined;
+    let evidence: Omit<GrantLaunchEvidence, "policy"> | undefined;
     for (let attempt = 0; attempt < 100; attempt++) {
       try {
         evidence = evidenceAt(
@@ -203,17 +206,18 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
     const previous = current;
     if (previous) await previous.stop();
     current = undefined;
-    options.validatePolicy?.(policy);
+    const launchPolicy = composeHarnessState(policy, options.resume);
+    options.validatePolicy?.(launchPolicy);
     const started = await spawn({
       box: options.box,
       gateSocket: options.gateSocket,
       stateDir: options.stateDir,
       launch,
-      policy,
+      policy: launchPolicy,
       resume,
     });
     current = started.running;
-    return started.evidence;
+    return { ...started.evidence, policy: launchPolicy };
   };
 
   const apply = async (
@@ -224,9 +228,13 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
     const previous = current;
     if (previous) await previous.stop();
     current = undefined;
+    const launchPolicy = composeHarnessState(
+      application.policy,
+      options.resume,
+    );
     let started: Awaited<ReturnType<SpawnBox>>;
     try {
-      options.validatePolicy?.(application.policy);
+      options.validatePolicy?.(launchPolicy);
       const enforcementTarget = (options.canonicalize ?? canonicalizeGrantPath)(
         application.requestedFsRo,
       );
@@ -240,7 +248,7 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
         gateSocket: options.gateSocket,
         stateDir: options.stateDir,
         launch: application.id,
-        policy: application.policy,
+        policy: launchPolicy,
         resume,
       });
     } catch (error) {
@@ -254,7 +262,7 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
     current = started.running;
     let settled = false;
     return {
-      evidence: started.evidence,
+      evidence: { ...started.evidence, policy: launchPolicy },
       commit() {
         settled = true;
       },

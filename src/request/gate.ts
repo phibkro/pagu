@@ -56,6 +56,8 @@ export interface GrantApplication {
 
 /** Evidence emitted from the box process that performed the launch. */
 export interface GrantLaunchEvidence {
+  /** Exact policy that produced argv; trusted launcher composition included. */
+  readonly policy: PolicyV0;
   readonly pid: number;
   readonly argv: readonly string[];
   readonly environment: readonly string[];
@@ -512,7 +514,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
       }
       prepared = await options.apply(application);
       const evidence = prepared.evidence;
-      const appliedIdentity = await policyIdentity(application.policy);
+      const appliedIdentity = await policyIdentity(evidence.policy);
       await append({
         kind: "policy-launch",
         at: at(),
@@ -805,7 +807,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
           id: `l${nextLaunch++}`,
           grant: null,
           session: options.session,
-          policy: await policyIdentity(effectivePolicy),
+          policy: await policyIdentity(evidence.policy),
           pid: evidence.pid,
           resume: [...evidence.resume],
           argv: [...evidence.argv],

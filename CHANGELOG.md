@@ -31,6 +31,10 @@ only forward work.
 
 - Made the gate own the boxed child and apply approvals only by stopping it,
   compiling a complete policy, and resuming the same Codex session.
+- Composed `~/.codex` RW state into every gate-owned Codex launch and relaunch,
+  retaining final secret denies and exact compiled evidence. Declared the scoped
+  Claude state mapping while keeping its unverified resume path fail-loud before
+  launch.
 - Added a typed resume-adapter port: verified Codex argv and fail-loud,
   not-yet-verified Claude behavior in `src/gate/resume.ts`.
 - Bound grants to the exact session and authoritative/decision policy hashes;

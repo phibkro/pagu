@@ -203,7 +203,12 @@ canonical path, not the mutable alias.
 
 [`src/gate/relaunch.ts`](src/gate/relaunch.ts) owns the active child. It
 verifies the request gate is reachable, stops the narrower box, and starts
-`pagu-box` with the complete derived policy.
+`pagu-box` with the complete derived policy. Immediately before each initial or
+approved Codex launch it adds only `~/.codex` as RW state. This trusted launch
+overlay leaves the standing/profile policy immutable, passes through the same
+boundary validation and exact compiler/evidence path, and retains final secret
+denies. Claude declares the scoped `~/.claude` plus `~/.claude.json` mapping,
+but its unverified resume adapter still fails typed before any launch.
 [`src/gate/resume.ts`](src/gate/resume.ts) is the harness port: Codex uses
 `codex resume SESSION_ID`; Claude fails with a typed not-yet-verified error.
 

@@ -24,7 +24,19 @@ remaining work.
 | docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                    | ✓ shipped    |
 | 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped    |
 | 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped    |
+| 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped    |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next         |
+
+## Slice 7 shipped boundary
+
+- Gate-owned Codex launches bind `~/.codex`; Claude declares only `~/.claude`
+  and `~/.claude.json` as its state mapping but remains fail-loud before launch
+  until its resume command is verified.
+- The trusted harness overlay composes after profile/grant policy growth and
+  before boundary validation and compilation, so initial and resumed boxes use
+  the same authenticated state.
+- Checked-in profiles remain immutable, final secret denies remain intact, and
+  launch evidence reflects the effective bind.
 
 ## Slice 6 shipped boundary
 
