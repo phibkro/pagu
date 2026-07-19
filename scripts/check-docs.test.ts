@@ -1,10 +1,20 @@
 import { assertEquals } from "@std/assert";
 import {
+  checksLivePaths,
   headings,
   parseTestNames,
   refResolves,
   repoPathRefs,
 } from "./check-docs.ts";
+
+Deno.test("path checks: ADRs are historical and live docs are checked", () => {
+  assertEquals(
+    checksLivePaths("docs/decisions/0004-box-agent-composition.md"),
+    false,
+  );
+  assertEquals(checksLivePaths("docs/ARCHITECTURE.md"), true);
+  assertEquals(checksLivePaths("README.md"), true);
+});
 
 Deno.test("repoPathRefs: extracts real repo paths, skips placeholders + runtime paths", () => {
   const md = [

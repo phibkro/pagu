@@ -1,138 +1,116 @@
 ---
-summary: "The agentic software-development lifecycle — how a fresh (amnesiac) agent onboards, builds, verifies, and hands off. The visual map; ADR-0001 is the why."
+summary: "How a fresh contributor moves a pagu change from evidence to a reviewed commit."
 tags: [how-we-work, workflow, reference]
 ---
 
-# pagu — agentic development lifecycle
+# Development workflow
 
-How work gets done here. The governing model is **the amnesiac team**: every
-session is a fresh teammate onboarded from zero, who does excellent work, then
-leaves — taking all tacit context with it. The _why_ behind this (the
-asymmetries, the practice filter) is
-[`docs/decisions/0001`](decisions/0001-agentic-workflow-practices.md); this file
-is the operational picture.
+pagu is developed by short-lived contributors who cannot rely on shared tacit
+knowledge. A change is complete only when its design claims, implementation,
+tests, and documentation agree.
 
-## The session loop — a teammate's shift
+## Start with the smallest useful reading set
+
+1. Read `AGENTS.md`, `CONTEXT.md`, and `ROADMAP.md`.
+2. Use `docs/ARCHITECTURE.md` to locate the relevant module.
+3. Read `docs/CONCEPTS.md` and `docs/INVARIANTS.md` when the change touches a
+   security boundary or a named law.
+4. Consult `docs/decisions/` before reopening a settled trade-off. ADRs record
+   the system at decision time; current behavior lives in the non-ADR docs.
+5. Treat `docs/specs/` and `docs/diagrams/` as pre-pivot design history unless a
+   current document links to a specific file.
+
+Orient before editing:
+
+```sh
+git status --short
+git log --oneline -5
+deno task test
+```
+
+Preserve unrelated working-tree changes. Pick the next bounded slice from
+`ROADMAP.md`, and state the behavior that will prove it is done.
+
+## Build from the policy boundary outward
+
+The dependency direction is deliberate:
 
 ```mermaid
-flowchart TD
-    fresh(["Fresh agent · zero context"]) --> onboard
-    subgraph onboard["1 · ONBOARD (the amnesiac teammate)"]
-        a["AGENTS.md — docs-map · how-we-work · Definition of Done"] --> r["ROADMAP.md — pick a slice, navigate by concern tag"]
-        r --> why["CONTEXT · CONCEPTS · INVARIANTS · decisions/ADRs — the WHY, on demand"]
-    end
-    why --> mode{"conceptual or mechanical?"}
-    mode -->|"conceptual / ambiguous"| grill["grill-with-docs — design vs. code + docs, harden the plan"]
-    mode -->|"mechanical"| tdd
-    grill --> tdd["tdd — red → green → refactor (pure core by law, shell vs. the real thing)"]
-    tdd --> dod
-    subgraph dod["3 · DEFINITION OF DONE (verified, not asserted)"]
-        ci["deno task ci — fmt·lint·check·check-layers·check-docs·test"] --> live["live run vs. Ollama — for security/capability-path work"]
-        live --> rev["independent-context review — fresh agent · /code-review · cage · advisor"]
-    end
-    dod --> wrap
-    subgraph wrap["4 · WRAP"]
-        wf["wrap-feature — update docs · record an ADR · log deferred"] --> commit["Conventional Commit — bind work to immutable history"]
-        commit --> ws["wrap-session — push · refresh memory · write the handoff"]
-    end
-    wrap --> next(["Next fresh agent reads the handoff"])
-    next -.->|"amnesiac loop"| fresh
+flowchart LR
+    schema["schema + policy algebra"] --> compiler["platform compiler"]
+    schema --> request["request protocol"]
+    request --> gate["gate adjudication"]
+    compiler --> box["pagu-box adapter"]
+    gate --> box
 ```
 
-## Why it's shaped this way — three asymmetries
+For policy or capability work:
 
-| Human team                        | Agent team                                             | Consequence for the lifecycle                                                    |
-| --------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| Knowledge accrues in people       | **Extreme bus factor** — everyone quits at session end | Docs are the _primary transmission medium_, not insurance                        |
-| Time is the scarce resource       | **Context** is scarce, not time                        | Cheap to _write_ ceremony, paid again at _read_ time → optimize for navigability |
-| People hedge ("I think it works") | Agents **confabulate** "done" confidently              | Bind every claim to _verifiable evidence_                                        |
+1. Write the falsifier first: the test that would expose widening, deny loss,
+   path escape, protocol confusion, or false evidence.
+2. Put pure rules in `src/policy/` or `src/request/`; keep OS, socket, terminal,
+   and filesystem effects in their adapters.
+3. Compile policy to the platform's native enforcement mechanism. Application
+   checks may improve errors, but they are not the security boundary.
+4. Keep a sandbox request informational. Only the outside gate may decide or
+   grant it.
+5. Record evidence at the point where the trusted side observes the event.
 
-→ The filter: **adopt a practice iff it externalizes knowledge or verifies a
-claim; skip it if its value was coordinating persistent humans.**
+Use the public surface in `src/mod.ts` deliberately. Before launch, improve an
+incorrect public shape and update its floor test; after launch, preserve frozen
+exports.
 
-## Progressive disclosure — the doc tiers
+## Verify claims at the right layer
 
-| Tier              | Artifact                                                           | Holds                                                     | Read when                        |
-| ----------------- | ------------------------------------------------------------------ | --------------------------------------------------------- | -------------------------------- |
-| **0 entrypoint**  | `AGENTS.md` (injected)                                             | docs-map · how-we-work · Definition of Done               | always, first                    |
-| **1 what / why**  | `CONTEXT.md` · `ROADMAP.md`                                        | durable design · forward plan (concern-tagged)            | starting any task                |
-| **2 reference**   | `CONCEPTS.md` · `INVARIANTS.md` · `ARCHITECTURE.md` · `decisions/` | glossary · load-bearing claims · where-things-live · ADRs | on demand / before re-litigating |
-| **3 drill-down**  | `docs/specs/`                                                      | deep per-feature designs                                  | implementing that feature        |
-| **cross-session** | the agent's memory (Obsidian-shaped)                               | what's-next · feedback · pointers                         | session start (auto-recalled)    |
+Run the narrowest relevant test during development, then the full gate:
 
-Each tier-1/2 doc opens with a `summary` + `tags` frontmatter, so its header is
-scannable without loading the body.
-
-## The enforcement ladder — claims bound to evidence
-
-A convention that lives only in prose is one refactor from silent breakage. Push
-each up the ladder to the strongest rung the toolchain supports:
-
-```
-prose  →  comment  →  test  →  type / lint / CI rule
-(weakest, drifts)                  (strongest, can't drift)
+```sh
+deno test --allow-all path/to/relevant_test.ts
+deno task check:docs
+deno task ci
 ```
 
-| Convention                                      | Rung it reached                               |
-| ----------------------------------------------- | --------------------------------------------- |
-| hexagonal boundary (`// pure:` / `// effects:`) | CI — `scripts/check-layers.ts`                |
-| no-exec invariant #1                            | test — `agent.test.ts` asserts `respondFlags` |
-| gate-never-widen                                | type — `readonly PermissionSet`               |
-| doc refs / invariants / laws resolve            | CI — `scripts/check-docs.ts` Edges 1–3        |
-| "done" claims point at real files               | CI — `scripts/check-docs.ts` Edge 4           |
-| public API surface                              | test — `mod.test.ts` floor                    |
+For box behavior, also build and exercise the real Nix package:
 
-## Team practice → agentic form
+```sh
+nix build .#pagu-box
+./result/bin/pagu-box --help
+```
 
-| Practice                              | Agentic form in pagu                                    | Transfers?                           |
-| ------------------------------------- | ------------------------------------------------------- | ------------------------------------ |
-| Onboarding doc                        | `AGENTS.md` docs-map + progressive disclosure           | ✅ strong                            |
-| ADRs / decision log                   | `docs/decisions/` (check-docs-scanned)                  | ✅ strong                            |
-| Glossary / ubiquitous language        | `docs/CONCEPTS.md`                                      | ✅                                   |
-| Chesterton's Fence                    | `// invariant #1`, `// effects:` markers                | ✅ (guards against amnesiac cleanup) |
-| Conventional Commits                  | work → immutable, dated history                         | ✅                                   |
-| Definition of Done                    | CI + live-run + deferred-logged, _as a check_           | ✅ strong                            |
-| Code review                           | a **different-context** reviewer agent / cage / advisor | ✅ (the key one)                     |
-| Least privilege / staged access       | the capability ladder + scoped Deno perms               | ✅ (it _is_ the product)             |
-| Standup                               | the `wrap-session` handoff (a standup to the future)    | ◐ only this                          |
-| Sprints · estimation · tickets · RACI | —                                                       | ✗ coordinate persistent humans       |
+For gate behavior, exercise the real socket and evidence path with `pagu gate`
+and `pagu-box --gate`. A model stub is not a substitute for an end-to-end run
+when the changed seam depends on live process behavior.
 
-## The dogfood: test the SDLC by running it (and it reviews the _design_)
+Security-boundary work should receive an independent-context review. The
+reviewer should try to falsify the claim, not merely restate the diff.
 
-The truest test of this lifecycle is to **spawn a fresh agent into an isolated
-worktree with only a task + the repo**, have it onboard cold and ship the
-feature, and keep a **friction log** of everything unclear. Each run's friction
-feeds back into the docs, so the next cold agent inherits the fix — an
-externalized, compounding version of "the team gets better at onboarding."
+## Keep the documentation tiers honest
 
-Measured over four runs (2026-05-30), orientation fell **~15 → ~10 → ~5 → ~5
-min** and friction strictly decreased as fixes landed — evidence the loop
-compounds, not just exists.
+| Information                         | Canonical home         |
+| ----------------------------------- | ---------------------- |
+| Durable design and trust boundaries | `CONTEXT.md`           |
+| Forward work and explicit deferrals | `ROADMAP.md`           |
+| Shipped history                     | `CHANGELOG.md`         |
+| Current module locations            | `docs/ARCHITECTURE.md` |
+| Vocabulary and composition laws     | `docs/CONCEPTS.md`     |
+| Load-bearing claims and evidence    | `docs/INVARIANTS.md`   |
+| Hard-to-reverse decision            | `docs/decisions/`      |
 
-The non-obvious finding: a cold-agent dogfood is **not only an onboarding/docs
-test — it is a _design_ review.** Two distinct things it surfaces:
+Update the tier touched by the change. Do not leave a deferred requirement in a
+commit message alone; put it in `ROADMAP.md`. `scripts/check-docs.ts` verifies
+live path references and law/test bindings. ADR path references are exempt
+because ADR bodies are immutable point-in-time records.
 
-- **Docs gaps** (the obvious one): stale paths, missing definitions, the
-  installed-binary-vs-worktree trap — each fixed and re-tested by the next run.
-- **Design flaws** (the deep one): handing an agent a _recorded design_ (an ADR)
-  to **implement** makes the design _executable_, and executable design exposes
-  holes that prose review — even a careful grill — misses. The proof: the
-  per-project-config dogfood faithfully implemented ADR-0003, and reviewing that
-  implementation revealed the ADR had mis-classified `baseURL` (the egress
-  destination) as "non-security" — a real exfil hole that the grill _and_ the
-  reviewer had both missed. Making it run is what made the flaw visible.
+## Wrap the slice
 
-So the dogfood doubles as the **independent-context review** the Definition of
-Done calls for (a different context can't share the author's blind spots) — and
-applies it at the _design_ level, not just the code. Reach for it on
-security/capability-path work especially. (See `docs/decisions/0001` for the
-governing model.)
+Before committing:
 
-## The throughline
+- inspect `git diff` and `git status --short`;
+- run `deno task ci` from a cleanly understood tree;
+- record which real journey was exercised and what it proved;
+- document any claim that could not be verified;
+- leave user-owned or brief files uncommitted unless explicitly requested.
 
-**pagu's security model and its development-process model are the same idea** —
-least privilege, bounded blast radius, claims bound to evidence, transparency by
-construction. What makes a _compromised model_ safe is what makes an _amnesiac
-teammate_ predictable. (Proven, not asserted: four fresh agents onboarded cold
-off these docs and shipped real features — including one whose ADR the dogfood
-caught a security flaw in. The loop above, walked by literal new teammates.)
+Commit with a Conventional Commit subject and the repository's required
+co-author trailer. The handoff should name the commit, tests, live evidence,
+open questions, and the next roadmap slice. Do not push unless asked.

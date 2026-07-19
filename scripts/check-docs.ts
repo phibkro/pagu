@@ -1,11 +1,8 @@
 #!/usr/bin/env -S deno run --allow-read
 // pure: parse + resolve (the check logic); effects: read docs, scan test files.
 //
-// Enforces the three *checkable* documentation edges (the un-checkable kind —
-// the meaning itself — is what INVARIANTS.md tags [judgment]). Temporarily
-// excluded from `ci` while ADR-0004 archives the harness ahead of the dedicated
-// docs-rewrite slice; `deno task check:docs` remains available and deliberately
-// reports the stale harness laws/paths until that slice restores the gate.
+// Enforces the four *checkable* documentation edges (the un-checkable kind —
+// the meaning itself — is what INVARIANTS.md tags [judgment]).
 // Exits non-zero on any broken edge, printing every failure (not just the first).
 //
 // Edge 1 — doc→doc references:  `docs/FILE.md` → Section Name
@@ -148,6 +145,13 @@ export function repoPathRefs(md: string): string[] {
   return [...out];
 }
 
+/** ADR bodies are immutable point-in-time records, so only live docs are held
+ * to the current repository path layout. ADR refs, invariants, and law tags are
+ * still checked by the other edges. */
+export function checksLivePaths(docName: string): boolean {
+  return !docName.startsWith("docs/decisions/");
+}
+
 /** Test names declared in a source file: `Deno.test("X"`, `Deno.test('X'`,
  *  `Deno.test({ name: "X" }`, and the multiline call form. */
 export function parseTestNames(src: string): string[] {
@@ -169,8 +173,9 @@ async function readDocs(): Promise<Map<string, string>> {
     }
   }
   // Also scan the ADR log (append-only, grows over time). Keyed by relpath to
-  // avoid a basename collision with the root README.md; ADRs are ref/path
-  // SOURCES (their refs + repo-paths get validated), never ref targets.
+  // avoid a basename collision with the root README.md. ADRs remain sources for
+  // refs, invariant citations, and laws, but their historical paths are exempt
+  // from Edge 4 below.
   try {
     for (const e of Deno.readDirSync(REPO + "docs/decisions")) {
       if (e.isFile && e.name.endsWith(".md")) {
@@ -274,6 +279,9 @@ async function main(): Promise<void> {
   // file/dir as evidence must point at one that exists; catches stale paths
   // from renames/deletes that prose-rung "Shipped (src/x)" claims would hide).
   for (const [name, md] of docs) {
+    // ADRs are immutable point-in-time records; rewriting their historical
+    // implementation paths would destroy rather than improve their evidence.
+    if (!checksLivePaths(name)) continue;
     for (const p of repoPathRefs(md)) {
       try {
         Deno.statSync(REPO + p.replace(/\/$/, ""));

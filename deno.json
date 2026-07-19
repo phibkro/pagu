@@ -9,7 +9,7 @@
     "fmt": "deno fmt src scripts deno.json README.md",
     "check:docs": "deno run --allow-read scripts/check-docs.ts",
     "check:layers": "deno run --allow-read=src scripts/check-layers.ts",
-    "ci": "deno fmt src scripts deno.json README.md && deno lint src scripts && deno check src && deno run --allow-read=src scripts/check-layers.ts && deno task test"
+    "ci": "deno fmt src scripts deno.json README.md && deno lint src scripts && deno check src && deno run --allow-read=src scripts/check-layers.ts && deno task check:docs && deno task test"
   },
   "fmt": { "lineWidth": 80 },
   "lint": { "rules": { "tags": ["recommended"] } },
