@@ -49,7 +49,7 @@ function usage(message?: string): never {
   if (message) console.error(`pagu: ${message}`);
   console.error(
     "usage:\n" +
-      "  pagu gate (--policy FILE | --profile NAME) --session ID --harness codex [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu gate (--policy FILE | --profile NAME) --session ID --harness codex|claude [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
       "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
   );

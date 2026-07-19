@@ -199,6 +199,7 @@ export function parseLog(md: string): Entry[] {
         break;
       case "policy-launch": {
         let detail: {
+          cwd?: unknown;
           resume?: unknown;
           argv?: unknown;
           environment?: unknown;
@@ -220,6 +221,7 @@ export function parseLog(md: string): Entry[] {
           grant: a.grant === undefined ? null : a.grant,
           session: a.session ?? "",
           policy: a.policy ?? "",
+          cwd: typeof detail.cwd === "string" ? detail.cwd : "",
           pid: Number(a.pid ?? "0"),
           resume: strings(detail.resume),
           argv: strings(detail.argv),

@@ -25,13 +25,23 @@ remaining work.
 | 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped    |
 | 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped    |
 | 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped    |
+| 8 — Claude resume       | Verify cwd-anchored `claude --continue` through the shared relaunch lifecycle.                                   | ✓ shipped    |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next         |
+
+## Slice 8 shipped boundary
+
+- Claude initial launches and approved relaunches use `claude --continue`,
+  never the unreliable UUID resume flag.
+- The launcher captures one repository cwd and reuses it with the Claude state
+  bind for every box. A competing external Claude session in the same cwd is an
+  explicit operator exclusion.
+- Session/grant binding, TOCTOU checks, and once consumption remain in the
+  harness-agnostic gate lifecycle.
 
 ## Slice 7 shipped boundary
 
-- Gate-owned Codex launches bind `~/.codex`; Claude declares only `~/.claude`
-  and `~/.claude.json` as its state mapping but remains fail-loud before launch
-  until its resume command is verified.
+- Gate-owned Codex launches bind `~/.codex`; Claude binds only `~/.claude` and
+  `~/.claude.json`.
 - The trusted harness overlay composes after profile/grant policy growth and
   before boundary validation and compilation, so initial and resumed boxes use
   the same authenticated state.
@@ -61,8 +71,7 @@ Slice 5 turns a recorded approval into a new launch as one security lifecycle.
 
 - Stop the denied attempt without widening the live mount namespace.
 - Compile a complete derived grant into a new box launch.
-- Resume through a typed adapter. Codex is verified; Claude fails typed until
-  its live adapter is verified.
+- Resume through a typed adapter: Codex is ID-bound; Claude is cwd-bound.
 - Record launch linkage and the exact compiled enforcement material.
 - Fail secure when resume is unavailable: retain the grant and require an
   explicit fresh launch.
@@ -115,7 +124,6 @@ These items follow the complete Slice 5 lifecycle:
 - reviewed overlay-to-profile promotion and unused-allow pruning tooling;
 - fresh-session creation/discovery so Codex need not start from an existing
   session UUID;
-- live verification and implementation of the Claude resume adapter;
 - reconciliation UX for a once grant conservatively spent by a process crash;
 - schema-v0 lowering for macOS seatbelt;
 - a unified `pagu box` command while retaining the compatibility executable;

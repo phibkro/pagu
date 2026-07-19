@@ -136,6 +136,7 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
     grant: null,
     session: "",
     policy: "",
+    cwd: "",
     pid: 0,
     resume: [],
     argv: [],

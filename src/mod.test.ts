@@ -87,6 +87,7 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "resumeAdapter", kind: "function" },
   { name: "ResumeAdapter", kind: "interface" },
   { name: "ResumeAdapterNotVerifiedError", kind: "class" },
+  { name: "parseBoxLaunchEvidence", kind: "function" },
   { name: "createBoxLauncher", kind: "function" },
   { name: "BoxLauncher", kind: "interface" },
   { name: "readPendingQueue", kind: "function" },

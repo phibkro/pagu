@@ -204,13 +204,17 @@ canonical path, not the mutable alias.
 [`src/gate/relaunch.ts`](src/gate/relaunch.ts) owns the active child. It
 verifies the request gate is reachable, stops the narrower box, and starts
 `pagu-box` with the complete derived policy. Immediately before each initial or
-approved Codex launch it adds only `~/.codex` as RW state. This trusted launch
-overlay leaves the standing/profile policy immutable, passes through the same
-boundary validation and exact compiler/evidence path, and retains final secret
-denies. Claude declares the scoped `~/.claude` plus `~/.claude.json` mapping,
-but its unverified resume adapter still fails typed before any launch.
+approved launch it adds only that harness's RW state: `~/.codex`, or
+`~/.claude` plus `~/.claude.json`. This trusted launch overlay leaves the
+standing/profile policy immutable, passes through the same boundary validation
+and exact compiler/evidence path, and retains final secret denies. The launcher
+captures one cwd for its lifetime. Codex uses `codex resume SESSION_ID`; Claude
+uses cwd-anchored `claude --continue` because its UUID resume flag is unreliable.
+Versioned box launch evidence v1 and the `policy-launch` event bind compiled
+argv, cwd, and resume command together.
+Claude continuity therefore requires no competing Claude session in that cwd.
 [`src/gate/resume.ts`](src/gate/resume.ts) is the harness port: Codex uses
-`codex resume SESSION_ID`; Claude fails with a typed not-yet-verified error.
+an ID and Claude uses the launcher's stable cwd.
 
 ## Gate state and evidence
 

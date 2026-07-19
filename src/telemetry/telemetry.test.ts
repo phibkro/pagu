@@ -101,6 +101,7 @@ function events(): Entry[] {
       grant: "pg2",
       session: "s1",
       policy: "next",
+      cwd: "/work",
       pid: 1,
       resume: [],
       argv: [],

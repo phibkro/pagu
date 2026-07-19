@@ -22,6 +22,7 @@ import {
 } from "./state.ts";
 import {
   createBoxLauncher,
+  parseBoxLaunchEvidence,
   type RunningBox,
   type SpawnBox,
 } from "./relaunch.ts";
@@ -34,6 +35,7 @@ import {
   claudeResumeAdapter,
   codexResumeAdapter,
   composeHarnessState,
+  resumeAdapter,
   ResumeAdapterNotVerifiedError,
 } from "./resume.ts";
 
@@ -73,6 +75,7 @@ async function fixture(): Promise<{ root: string; paths: GatePaths }> {
 
 const evidence = (application: GrantApplication): GrantLaunchEvidence => ({
   policy: application.policy,
+  cwd: "/work",
   pid: 123,
   argv: ["--ro-bind", application.canonicalFsRo, application.canonicalFsRo],
   environment: ["HOME", "PATH"],
@@ -171,7 +174,7 @@ Deno.test("operator state directory rejects replaceable ancestry and symlinks", 
   }
 });
 
-Deno.test("resume adapters: Codex is exact and Claude fails typed", () => {
+Deno.test("resume adapters: Codex is ID-bound and Claude is cwd-bound", () => {
   const codex = codexResumeAdapter();
   assertEquals(codex.command("session-1"), [
     "codex",
@@ -183,13 +186,47 @@ Deno.test("resume adapters: Codex is exact and Claude fails typed", () => {
     "$HOME/.claude",
     "$HOME/.claude.json",
   ]);
-  let error: unknown;
-  try {
-    claudeResumeAdapter().command("session-1");
-  } catch (caught) {
-    error = caught;
-  }
-  assertEquals(error instanceof ResumeAdapterNotVerifiedError, true);
+  assertEquals(claudeResumeAdapter().command("ignored-session-id"), [
+    "claude",
+    "--continue",
+  ]);
+  assertEquals(
+    claudeResumeAdapter().command("ignored-session-id").includes("--resume"),
+    false,
+  );
+  assertThrows(
+    () => resumeAdapter("unverified"),
+    ResumeAdapterNotVerifiedError,
+  );
+});
+
+Deno.test("box launch evidence v1 rejects old or unknown shapes", () => {
+  const evidence = {
+    version: 1,
+    platform: "linux",
+    cwd: "/work/project",
+    pid: 1,
+    argv: [],
+    environment: [],
+    command: ["claude", "--continue"],
+  };
+  assertEquals(parseBoxLaunchEvidence(evidence), {
+    cwd: "/work/project",
+    pid: 1,
+    argv: [],
+    environment: [],
+    resume: ["claude", "--continue"],
+  });
+  assertThrows(
+    () => parseBoxLaunchEvidence({ ...evidence, version: 0 }),
+    Error,
+    "unsupported version",
+  );
+  assertThrows(
+    () => parseBoxLaunchEvidence({ ...evidence, extra: true }),
+    Error,
+    "invalid fields",
+  );
 });
 
 Deno.test("law: harness state is scoped and deny remains final", () => {
@@ -229,6 +266,101 @@ Deno.test("law: harness state is scoped and deny remains final", () => {
     argv.lastIndexOf(`${home}/.ssh`) > argv.lastIndexOf(`${home}/.codex`),
     true,
   );
+  const claudeArgv = explain(claude, ctx).argv;
+  assertEquals(claudeArgv.includes(`${home}/.claude`), true);
+  assertEquals(claudeArgv.includes(`${home}/.claude.json`), true);
+  assertEquals(claudeArgv.includes(`${home}/.codex`), false);
+});
+
+Deno.test("law: Claude relaunch keeps cwd continue argv and state", async () => {
+  if (Deno.build.os === "windows") return;
+  const { root, paths } = await fixture();
+  const socket = `${root}/gate.sock`;
+  const listener = Deno.listen({ transport: "unix", path: socket });
+  let launcher: ReturnType<typeof createBoxLauncher> | undefined;
+  let gate: Awaited<ReturnType<typeof createGate>> | undefined;
+  try {
+    const granted = `${root}/granted`;
+    await Deno.mkdir(granted);
+    const launched: {
+      cwd: string;
+      resume: readonly string[];
+      policy: PolicyV0;
+    }[] = [];
+    let stops = 0;
+    const running: RunningBox = {
+      stop() {
+        stops++;
+        return Promise.resolve();
+      },
+    };
+    launcher = createBoxLauncher({
+      box: "pagu-box",
+      gateSocket: socket,
+      stateDir: root,
+      session: "session-a",
+      cwd: "/work/project",
+      resume: claudeResumeAdapter(),
+      spawn: (input) => {
+        launched.push({
+          cwd: input.cwd,
+          resume: input.resume,
+          policy: input.policy,
+        });
+        return Promise.resolve({
+          running,
+          evidence: {
+            cwd: input.cwd,
+            pid: 1,
+            argv: [],
+            environment: [],
+            resume: [...input.resume],
+          },
+        });
+      },
+    });
+    gate = await createGate({
+      paths,
+      session: "session-a",
+      approver: () => Promise.resolve({ verdict: "approve", scope: "once" }),
+      apply: launcher.apply,
+    });
+    await gate.recordInitialLaunch(
+      await launcher.start(gate.effectivePolicy()),
+    );
+    await gate.handle(request(granted));
+    assertEquals(launched.map((item) => item.cwd), [
+      "/work/project",
+      "/work/project",
+    ]);
+    assertEquals(launched.map((item) => item.resume), [
+      ["claude", "--continue"],
+      ["claude", "--continue"],
+    ]);
+    assertEquals(launched.map((item) => item.policy.fs.rw), [
+      ["$HOME/.claude", "$HOME/.claude.json"],
+      ["$HOME/.claude", "$HOME/.claude.json"],
+    ]);
+    assertEquals(stops, 1);
+    assertEquals(gate.sessionGrants()[0].state, "spent");
+    await assertRejects(() => gate!.applyGrant("pg1"), Error, "already spent");
+    const launches = parseLog(await Deno.readTextFile(paths.eventLog)).filter(
+      (entry) => entry.kind === "policy-launch",
+    );
+    assertEquals(launches.map((entry) => entry.cwd), [
+      "/work/project",
+      "/work/project",
+    ]);
+    assertEquals(launches.map((entry) => entry.resume), [
+      ["claude", "--continue"],
+      ["claude", "--continue"],
+    ]);
+  } finally {
+    gate?.close();
+    await launcher?.close();
+    listener.close();
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("gate launcher keeps harness state on approved relaunch", async () => {
@@ -252,6 +384,7 @@ Deno.test("gate launcher keeps harness state on approved relaunch", async () => 
         return Promise.resolve({
           running,
           evidence: {
+            cwd: input.cwd,
             pid: 1,
             argv: [],
             environment: [],
@@ -802,6 +935,7 @@ Deno.test("fail secure: unavailable gate leaves the narrower box running", async
       return Promise.resolve({
         running,
         evidence: {
+          cwd: "/work",
           pid: 1,
           argv: [],
           environment: [],

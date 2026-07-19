@@ -32,16 +32,17 @@ only forward work.
 - Made the gate own the boxed child and apply approvals only by stopping it,
   compiling a complete policy, and resuming the same Codex session.
 - Composed `~/.codex` RW state into every gate-owned Codex launch and relaunch,
-  retaining final secret denies and exact compiled evidence. Declared the scoped
-  Claude state mapping while keeping its unverified resume path fail-loud before
-  launch.
-- Added a typed resume-adapter port: verified Codex argv and fail-loud,
-  not-yet-verified Claude behavior in `src/gate/resume.ts`.
+  retaining final secret denies and exact compiled evidence. Claude receives
+  only `~/.claude` and `~/.claude.json`.
+- Added typed resume adapters: Codex is ID-bound; Claude uses `--continue` with
+  one repository cwd held stable across initial and approved launches. Other
+  harness names fail loud.
 - Bound grants to the exact session and authoritative/decision policy hashes;
   re-canonicalized paths at application; made once grants non-replayable.
 - Added TTY plus host-only queue/resolution adapters over one Approver port in
   `src/gate/operator.ts`. The sandbox request protocol remains append-only.
 - Added retained launch/failure/spend events and exact post-spawn box evidence.
+- Versioned box launch evidence as v1 when cwd became part of the exact launch.
 - Enforced that gate state/socket stay outside sandbox mounts and the standing
   policy stays non-writable; the same proof reruns after the old sandbox stops.
 - Required private, owned, non-replaceable operator state and made persist

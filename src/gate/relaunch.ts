@@ -14,6 +14,8 @@ export interface RunningBox {
 
 export interface SpawnBoxInput {
   readonly box: string;
+  /** Stable repository cwd; Claude `--continue` binds its session to this. */
+  readonly cwd: string;
   readonly gateSocket: string;
   readonly stateDir: string;
   readonly launch: string;
@@ -40,6 +42,8 @@ export interface BoxLauncher {
 
 export interface BoxLauncherOptions {
   readonly box: string;
+  /** Captured once for every initial and approved launch. */
+  readonly cwd?: string;
   readonly gateSocket: string;
   readonly stateDir: string;
   readonly session: string;
@@ -63,11 +67,36 @@ async function writeAtomic(path: string, value: string): Promise<void> {
   await Deno.rename(temp, path);
 }
 
-function evidenceAt(value: unknown): Omit<GrantLaunchEvidence, "policy"> {
+/** Decode the versioned evidence written by the box after spawning bwrap. */
+export function parseBoxLaunchEvidence(
+  value: unknown,
+): Omit<GrantLaunchEvidence, "policy"> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("box returned malformed launch evidence");
   }
   const item = value as Record<string, unknown>;
+  const expected = [
+    "version",
+    "platform",
+    "cwd",
+    "pid",
+    "argv",
+    "environment",
+    "command",
+  ];
+  if (
+    Object.keys(item).some((key) => !expected.includes(key)) ||
+    !expected.every((key) => key in item)
+  ) throw new Error("box launch evidence has invalid fields");
+  if (item.version !== 1) {
+    throw new Error("box launch evidence has unsupported version");
+  }
+  if (item.platform !== "linux") {
+    throw new Error("box launch evidence has invalid platform");
+  }
+  if (typeof item.cwd !== "string") {
+    throw new Error("box launch evidence has invalid cwd");
+  }
   const strings = (field: string): string[] => {
     const candidate = item[field];
     if (
@@ -80,6 +109,7 @@ function evidenceAt(value: unknown): Omit<GrantLaunchEvidence, "policy"> {
     throw new Error("box launch evidence has invalid pid");
   }
   return {
+    cwd: item.cwd,
     pid: item.pid,
     argv: strings("argv"),
     environment: strings("environment"),
@@ -98,6 +128,7 @@ const realSpawn: SpawnBox = async (input) => {
     if (!(error instanceof Deno.errors.NotFound)) throw error;
   });
   const child = new Deno.Command(input.box, {
+    cwd: input.cwd,
     args: [
       "--policy",
       policyPath,
@@ -147,7 +178,7 @@ const realSpawn: SpawnBox = async (input) => {
     let evidence: Omit<GrantLaunchEvidence, "policy"> | undefined;
     for (let attempt = 0; attempt < 100; attempt++) {
       try {
-        evidence = evidenceAt(
+        evidence = parseBoxLaunchEvidence(
           JSON.parse(await Deno.readTextFile(evidencePath)),
         );
         break;
@@ -169,6 +200,9 @@ const realSpawn: SpawnBox = async (input) => {
     }
     if (!evidence) {
       throw new Error("timed out waiting for pagu-box launch evidence");
+    }
+    if (evidence.cwd !== input.cwd) {
+      throw new Error("box launch evidence has unexpected cwd");
     }
 
     return { running: { stop }, evidence };
@@ -194,6 +228,7 @@ async function requireActiveGate(socket: string): Promise<void> {
  * box. No in-place mount mutation or wider fallback exists. */
 export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
   const spawn = options.spawn ?? realSpawn;
+  const cwd = options.cwd ?? Deno.cwd();
   let current: RunningBox | undefined;
   let sequence = 1;
 
@@ -210,6 +245,7 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
     options.validatePolicy?.(launchPolicy);
     const started = await spawn({
       box: options.box,
+      cwd,
       gateSocket: options.gateSocket,
       stateDir: options.stateDir,
       launch,
@@ -245,6 +281,7 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
       }
       started = await spawn({
         box: options.box,
+        cwd,
         gateSocket: options.gateSocket,
         stateDir: options.stateDir,
         launch: application.id,

@@ -580,6 +580,8 @@ Deno.test("falsifier 5: adapter enforces explained argv without logging env valu
       `SECRET:${secret}`,
     ]);
     const evidence = JSON.parse(await Deno.readTextFile(evidenceFile));
+    assertEquals(evidence.version, 1);
+    assertEquals(evidence.cwd, Deno.cwd());
     assertEquals(evidence.argv, explained.argv);
     assertEquals(evidence.environment, explained.environment);
     assertEquals(evidence.command, ["ignored-command"]);

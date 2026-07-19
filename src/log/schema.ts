@@ -82,6 +82,7 @@ export interface PolicyLaunchEntry {
   grant: string | null;
   session: string;
   policy: string;
+  cwd: string;
   pid: number;
   resume: string[];
   argv: string[];

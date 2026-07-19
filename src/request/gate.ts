@@ -58,6 +58,8 @@ export interface GrantApplication {
 export interface GrantLaunchEvidence {
   /** Exact policy that produced argv; trusted launcher composition included. */
   readonly policy: PolicyV0;
+  /** Exact box cwd; Claude `--continue` uses this as its session selector. */
+  readonly cwd: string;
   readonly pid: number;
   readonly argv: readonly string[];
   readonly environment: readonly string[];
@@ -522,6 +524,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
         grant: application.id,
         session: options.session,
         policy: appliedIdentity,
+        cwd: evidence.cwd,
         pid: evidence.pid,
         resume: [...evidence.resume],
         argv: [...evidence.argv],
@@ -808,6 +811,7 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
           grant: null,
           session: options.session,
           policy: await policyIdentity(evidence.policy),
+          cwd: evidence.cwd,
           pid: evidence.pid,
           resume: [...evidence.resume],
           argv: [...evidence.argv],

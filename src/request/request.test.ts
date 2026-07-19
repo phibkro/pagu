@@ -59,6 +59,7 @@ const apply = (application: GrantApplication): Promise<PreparedGrantLaunch> =>
   Promise.resolve({
     evidence: {
       policy: application.policy,
+      cwd: "/work",
       pid: 99,
       argv: [
         "--ro-bind",
@@ -118,6 +119,7 @@ Deno.test("gate session metadata is versioned and retained before initial launch
     };
     await gate.recordInitialLaunch({
       policy: launchPolicy,
+      cwd: "/work",
       pid: 42,
       argv: ["--unshare-all"],
       environment: ["HOME"],

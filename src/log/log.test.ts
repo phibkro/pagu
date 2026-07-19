@@ -240,6 +240,7 @@ const entryG: fc.Arbitrary<Entry> = fc.oneof(
     grant: fc.option(attrG, { nil: null }),
     session: attrG,
     policy: attrG,
+    cwd: attrG,
     pid: fc.integer(),
     resume: elemsG,
     argv: elemsG,

@@ -153,8 +153,9 @@ async function main(): Promise<number> {
     await Deno.writeTextFile(
       options.evidence,
       JSON.stringify({
-        version: 0,
+        version: 1,
         platform: "linux",
+        cwd: ctx.pwd,
         pid: child.pid,
         argv: [...compiled.argv],
         environment: Object.keys(compiled.environment),

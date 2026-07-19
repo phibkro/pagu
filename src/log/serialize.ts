@@ -131,6 +131,7 @@ export function serializeEntry(e: Entry): string {
         ...(e.at ? { at: e.at } : {}),
       });
       body = JSON.stringify({
+        cwd: e.cwd,
         resume: e.resume,
         argv: e.argv,
         environment: e.environment,

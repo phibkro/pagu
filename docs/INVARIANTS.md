@@ -81,6 +81,7 @@ Bound laws:
 - [law: HOME repository cannot re-expose denied secrets]
 - [law: profile overlay re-composes persistent grants latest curated base]
 - [law: harness state is scoped and deny remains final]
+- [law: Claude relaunch keeps cwd continue argv and state]
 
 Review questions:
 

@@ -41,15 +41,13 @@ export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
   };
 }
 
-/** The seam is present, but live Claude resume behavior is deliberately not
- * claimed until its adapter has been exercised end-to-end. */
-export function claudeResumeAdapter(): ResumeAdapter {
+/** Claude's UUID resume flag is not reliable. `--continue` resumes the latest
+ * session in the launch cwd, which the gate holds stable across relaunches. */
+export function claudeResumeAdapter(executable = "claude"): ResumeAdapter {
   return {
     harness: "claude",
     stateRw: ["$HOME/.claude", "$HOME/.claude.json"],
-    command() {
-      throw new ResumeAdapterNotVerifiedError("claude");
-    },
+    command: () => [executable, "--continue"],
   };
 }
 
