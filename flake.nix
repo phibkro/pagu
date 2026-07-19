@@ -6,13 +6,42 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
-      system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
+      forEachSystem =
+        f: nixpkgs.lib.genAttrs systems (system: f system nixpkgs.legacyPackages.${system});
+      devSystem = "x86_64-linux";
+      devPkgs = nixpkgs.legacyPackages.${devSystem};
     in
     {
-      devShells.${system}.default = pkgs.mkShell {
+      packages = forEachSystem (
+        system: pkgs:
+        let
+          paguBox =
+            if pkgs.stdenv.isLinux then
+              import ./box/src/linux.nix { inherit pkgs; }
+            else if pkgs.stdenv.isDarwin then
+              import ./box/src/darwin.nix { inherit pkgs; }
+            else
+              throw "pagu-box: unsupported system ${system}";
+        in
+        {
+          default = paguBox;
+          pagu-box = paguBox;
+        }
+      );
+
+      homeManagerModules.default = import ./box/modules/home-manager.nix self;
+
+      formatter = forEachSystem (_: pkgs: pkgs.nixfmt-rfc-style);
+
+      devShells.${devSystem}.default = devPkgs.mkShell {
         # deno — the runtime + task runner (deno.json tasks). git-cliff —
         # CHANGELOG generation (cliff.toml). git — VCS. bubblewrap is included
         # because pagu's RUNNER spawns bwrap to build its OS-sandbox tier
@@ -26,7 +55,7 @@
         # test` in an outer bwrap would nest user namespaces and break the
         # runner's OWN bwrap. pagu's isolation is its runtime design, not a
         # dev-command wrapper.
-        packages = with pkgs; [
+        packages = with devPkgs; [
           deno
           git-cliff
           bubblewrap
