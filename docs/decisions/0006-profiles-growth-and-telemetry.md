@@ -23,17 +23,30 @@ deny-wins asymmetry (narrowing is always safe; widening is adjudicated).
 
 ### 1. Request triggers — three tiers, named honestly
 
-| Tier         | Trigger                                                                                                  | Status                                               | Use                                                                         |
-| ------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------- |
-| cooperative  | agent calls `pagu request` on a denied op (via CLAUDE.md/skill or Codex escalation)                      | available now                                        | collecting data with a willing agent                                        |
-| observation  | box supervisor logs every denied access (fanotify on the mount); no request, no block-then-ask           | **this ADR's slice**                                 | build profiles from real denial telemetry without changing session behavior |
-| auto-request | the denial itself files the request (seccomp-notify / fanotify) — a captured agent cannot decline to ask | next slice (this is D1 from the escalation analysis) | the airtight endpoint                                                       |
+| Tier              | Trigger                                                                                            | Substrate                                              | Status                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| cooperative       | agent calls `pagu request` on a denied op (via CLAUDE.md/skill or Codex escalation)                | none — an explicit call                                | available now                              |
+| transcript-mining | parse the boxed session's own output for denial patterns (the method the escalation analysis used) | none — reads existing output                           | available now                              |
+| observation       | box logs every denied access, no block-then-ask                                                    | **syscall interception** (seccomp-notify / LD_PRELOAD) | needs the substrate spike (shared w/ next) |
+| auto-request      | the denial itself files the request — a captured agent cannot decline to ask                       | **same substrate** + block/await                       | the airtight endpoint (D1)                 |
 
-The enforcement layer's own denial is the eventual trigger; until tier 3, a
-request is an explicit call and denial-observation is pure telemetry. **We do
-not pretend tier-3 containment exists before it is built** (deny-wins still
-holds structurally — the wall blocks regardless; what is missing is the
-automatic ASK, not the enforcement).
+**Correction to first-cut framing (2026-07-19):** observation is NOT near-free.
+A hidden path (tmpfs-overlaid or `/dev/null`-bound) fails _before_ touching any
+watchable inode, so inotify/fanotify cannot see the denied access; unprivileged
+fanotify (kernel ≥5.13) additionally forbids mount-marks and permission events.
+Honest denial observation therefore needs syscall interception — the **same
+substrate as tier-3 auto-request**. Observation is cheaper than auto-request
+only in that it logs instead of block-then-asks, not in the mechanism. So the
+immediately-free dogfood path is **cooperative + transcript-mining**;
+observation and auto-request share one substrate spike (evaluate seccomp
+user-notif first — bwrap already sets `NO_NEW_PRIVS`, so a filter installs
+unprivileged — with an LD_PRELOAD `open`/`stat` shim as the portable fallback,
+honestly noting its gaps: static binaries, raw syscalls).
+
+The enforcement layer's own denial is the eventual trigger; until the substrate
+lands, a request is an explicit call. **We do not pretend tier-3 containment
+exists before it is built** (deny-wins still holds structurally — the wall
+blocks regardless; what is missing is the automatic ASK, not the enforcement).
 
 ### 2. Category profiles
 
@@ -108,9 +121,10 @@ projection over it, not a parallel system:
   (§3 asymmetry + §4 tests).
 - The telemetry loop makes prompts _decrease_ (promotion) and reach _shrink_
   (pruning) over time — the RFC 9315 dual loop, realised.
-- Dogfooding can start at tier-2 observation immediately, with zero change to a
-  running session's behavior; the data it yields is what seeds §2's
-  `escalation.auto` and §3's promotions.
+- Dogfooding starts at cooperative + transcript-mining immediately (zero new
+  kernel mechanism, no change to a running session's behavior); that data seeds
+  §2's `escalation.auto` and §3's promotions. Observation/auto-request follow
+  once the shared interception substrate is spiked.
 - The event schema becoming public API is a stated cost (versioning + floor-test
   discipline), accepted because the telemetry is a projection of the one log,
   not a second pipeline (single source of truth).
@@ -125,9 +139,10 @@ projection over it, not a parallel system:
 - **Only-accrete profiles (no pruning)** — rejected: RFC 9315's loop is
   bidirectional; an unused allow is drift, and silent accretion is how a
   least-privilege profile rots into a broad one.
-- **Wait for tier-3 auto-request before dogfooding** — rejected: tier-2
-  observation yields the profile-shaping data now, honestly labelled as
-  telemetry (not containment), at near-zero cost.
+- **Wait for tier-3 auto-request before dogfooding** — rejected: cooperative +
+  transcript-mining yields profile-shaping data now (honestly labelled
+  telemetry, not containment) with no new kernel mechanism; the interception
+  substrate is a parallel spike, not a blocker.
 
 ## Revisit conditions
 
