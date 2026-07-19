@@ -1,8 +1,8 @@
 # ADR-0005: the grant schema and the box/gate boundary
 
-- Status: Accepted (design; implementation follows the ADR-0004 merge).
-  Amended 2026-07-19: interface hierarchy (below) — SDK is the primary
-  surface for agents; CLI/TUI are human-operator UX over the same core.
+- Status: Accepted (design; implementation follows the ADR-0004 merge). Amended
+  2026-07-19: interface hierarchy (below) — SDK is the primary surface for
+  agents; CLI/TUI are human-operator UX over the same core.
 - Date: 2026-07-19
 
 ## Amendment (2026-07-19): interface hierarchy — SDK for agents, CLI/TUI for humans
@@ -11,20 +11,20 @@ Operator ruling: programmatic APIs are the main interface for coding agents;
 CLIs/TUIs/GUIs serve human UX. Consequences, in force before implementation
 starts:
 
-1. **One core, typed** — every capability (policy load/compile/`explain`,
-   grant derivation + attenuation checks, request filing, queue
-   read/resolution, decision persistence, evidence log) exists first as a
-   function of the SDK (`src/mod.ts`, the existing API-stable front door with
-   its floor-test discipline). Nothing ships CLI-only.
-2. **Agent surface = SDK + skill.** Agents author small scripts against the
-   SDK (pagu's founding idiom applied to its own tooling) instead of chaining
-   CLI calls. A `pagu` SKILL — herdr-style: the skill teaches, the installed
-   module is the authority on current signatures — ships in-repo and is the
-   agent onboarding path. The in-sandbox request client is an SDK module too.
+1. **One core, typed** — every capability (policy load/compile/`explain`, grant
+   derivation + attenuation checks, request filing, queue read/resolution,
+   decision persistence, evidence log) exists first as a function of the SDK
+   (`src/mod.ts`, the existing API-stable front door with its floor-test
+   discipline). Nothing ships CLI-only.
+2. **Agent surface = SDK + skill.** Agents author small scripts against the SDK
+   (pagu's founding idiom applied to its own tooling) instead of chaining CLI
+   calls. A `pagu` SKILL — herdr-style: the skill teaches, the installed module
+   is the authority on current signatures — ships in-repo and is the agent
+   onboarding path. The in-sandbox request client is an SDK module too.
 3. **Human surface = thin adapters.** `pagu-box <cmd>` stays a CLI because
-   wrapping a process is irreducibly argv-shaped; operator conveniences
-   (queue review, grants list/revoke) are CLI/TUI/herdr renderings that call
-   the SDK — never a parallel implementation.
+   wrapping a process is irreducibly argv-shaped; operator conveniences (queue
+   review, grants list/revoke) are CLI/TUI/herdr renderings that call the SDK —
+   never a parallel implementation.
 4. **Boundary intact**: the resolve-only property of the request channel
    (falsifier 1) binds the SDK exactly as it binds any CLI — the inside-the-
    sandbox module physically lacks the resolution capability, not merely the
@@ -32,24 +32,24 @@ starts:
 
 ## Context
 
-ADR-0004 makes pagu = box (PEP: enforce, never decide) + gate (PA: decide,
-never enforce). The hard-to-reverse decisions are (a) the shape of the policy
-artifact both sides share, and (b) which side owns which behavior. Prior-art
-constraints adopted from the analysis docs (pagu-box repo,
+ADR-0004 makes pagu = box (PEP: enforce, never decide) + gate (PA: decide, never
+enforce). The hard-to-reverse decisions are (a) the shape of the policy artifact
+both sides share, and (b) which side owns which behavior. Prior-art constraints
+adopted from the analysis docs (pagu-box repo,
 `docs/notes/composition-split-analysis.md` P1–P12): escalations must compile
 into rules; enforcement must be fail-secure; empty policy means deny-all;
 project-level policy from an untrusted repo may only narrow (ADR-0003's
-analysis, generalized); approval is scoped and expiring, not a durable
-widening by default.
+analysis, generalized); approval is scoped and expiring, not a durable widening
+by default.
 
 ## Decision
 
 ### 1. Two artifacts, one schema family
 
-| Artifact | Lives | Written by | Trust |
-| --- | --- | --- | --- |
-| **policy** (standing) | `~/.config/pagu/policy.json` (user) · `.pagu/policy.json` (project, tracked) | operator / repo authors | user policy is authoritative; **project policy may only narrow it** — any widening key in a repo file is ignored with a loud warning (ADR-0003 rule, generalized) |
-| **grant** (attempt-scoped) | derived at launch; recorded in the gate's log | the gate (compiled), or a parent grant (attenuated) | never hand-written; carries `parent` ref — the derivation chain is the audit trail and the revocation tree |
+| Artifact                   | Lives                                                                        | Written by                                          | Trust                                                                                                                                                             |
+| -------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **policy** (standing)      | `~/.config/pagu/policy.json` (user) · `.pagu/policy.json` (project, tracked) | operator / repo authors                             | user policy is authoritative; **project policy may only narrow it** — any widening key in a repo file is ignored with a loud warning (ADR-0003 rule, generalized) |
+| **grant** (attempt-scoped) | derived at launch; recorded in the gate's log                                | the gate (compiled), or a parent grant (attenuated) | never hand-written; carries `parent` ref — the derivation chain is the audit trail and the revocation tree                                                        |
 
 Schema v0 (JSON; versioned; unknown keys are an error — fail loud):
 
@@ -75,28 +75,28 @@ Schema v0 (JSON; versioned; unknown keys are an error — fail loud):
 ```
 
 Deny semantics: `deny` ⊃ built-in secret list; `refuse` ⊂ `deny`. The four
-legacy profiles become named presets expressed *in* this schema (generated,
-not parallel).
+legacy profiles become named presets expressed _in_ this schema (generated, not
+parallel).
 
 ### 2. The boundary
 
-| Behavior | box (PEP) | gate (PA) |
-| --- | --- | --- |
-| compile policy/grant → bwrap/seatbelt argv | ✓ (pure function; `--explain` prints it) | — |
-| enforce; audit denials (structured log line per block) | ✓ | — |
-| receive `pagu request`; queue; adjudicate (auto / refuse / escalate) | — | ✓ |
-| operator surface (herdr notification, TTY fallback) | — | ✓ |
-| persist decisions (session grants file; `persist` → user policy edit) | — | ✓ |
-| relaunch box with widened grant + harness `--resume` | — | ✓ |
-| evidence log (every request, decision, launch, revocation — event-sourced) | — | ✓ |
+| Behavior                                                                   | box (PEP)                                | gate (PA) |
+| -------------------------------------------------------------------------- | ---------------------------------------- | --------- |
+| compile policy/grant → bwrap/seatbelt argv                                 | ✓ (pure function; `--explain` prints it) | —         |
+| enforce; audit denials (structured log line per block)                     | ✓                                        | —         |
+| receive `pagu request`; queue; adjudicate (auto / refuse / escalate)       | —                                        | ✓         |
+| operator surface (herdr notification, TTY fallback)                        | —                                        | ✓         |
+| persist decisions (session grants file; `persist` → user policy edit)      | —                                        | ✓         |
+| relaunch box with widened grant + harness `--resume`                       | —                                        | ✓         |
+| evidence log (every request, decision, launch, revocation — event-sourced) | —                                        | ✓         |
 
-The request channel is a unix socket bind-mounted into the sandbox that
-accepts **append-request only**; resolution requires the gate's end. The herdr
-control socket is never mounted (agent-dispatch's rule, kept).
+The request channel is a unix socket bind-mounted into the sandbox that accepts
+**append-request only**; resolution requires the gate's end. The herdr control
+socket is never mounted (agent-dispatch's rule, kept).
 
 Box runs without gate (static, today's behavior + audit). Gate without flow is
-the normal case; flow, when present, supplies/receives grants and evidence
-above the gate.
+the normal case; flow, when present, supplies/receives grants and evidence above
+the gate.
 
 ### 3. Falsifiers (define done; written before code)
 
@@ -110,29 +110,28 @@ above the gate.
 
 ## Consequences
 
-- The schema is public API from v0 (box, gate, homelab, later flow all
-  consume it): versioned, with a floor test à la `src/mod.ts`.
-- agent-dispatch's hardcoded strict-descent becomes a grant it *receives*;
-  its monotone-narrowing check moves into grant attenuation (child fs/net ⊆
-  parent), where it is schema-checkable rather than bash-encoded.
-- The dispatcher's `--disable-userns` sed-patch is retired once the
-  derivation record lives in the gate's log instead of PID-1 environ —
-  restoring nested harness sandboxes for children (C5 resolution).
-- v0 scope cuts, stated: no network domain granularity, no macaroon-style
-  crypto (the `parent`/`expires` fields keep the discharge *shape* so a
-  cryptographic realization is a later swap, not a redesign), no live mount
-  widening (relaunch+resume only until the fd-passing spike earns its way in).
+- The schema is public API from v0 (box, gate, homelab, later flow all consume
+  it): versioned, with a floor test à la `src/mod.ts`.
+- agent-dispatch's hardcoded strict-descent becomes a grant it _receives_; its
+  monotone-narrowing check moves into grant attenuation (child fs/net ⊆ parent),
+  where it is schema-checkable rather than bash-encoded.
+- The dispatcher's `--disable-userns` sed-patch is retired once the derivation
+  record lives in the gate's log instead of PID-1 environ — restoring nested
+  harness sandboxes for children (C5 resolution).
+- v0 scope cuts, stated: no network domain granularity, no macaroon-style crypto
+  (the `parent`/`expires` fields keep the discharge _shape_ so a cryptographic
+  realization is a later swap, not a redesign), no live mount widening
+  (relaunch+resume only until the fd-passing spike earns its way in).
 
 ## Rejected alternatives
 
-- **TOML policy files** — the surviving codebase (Deno, `config.json`,
-  ADR-0003 folding) is JSON-native; two config syntaxes in one product is
-  self-inflicted C1.
-- **seccomp-notify interception in v0** — the agent already observes the
-  denial (EACCES) and can articulate need + justification; a CLI request is
-  20 lines where a syscall supervisor is a TCB. Revisit for non-cooperating
-  binaries.
-- **Widening grants stored repo-side** — a repo that carries its own
-  widenings is ADR-0003's hostile-repo self-grant, restated.
+- **TOML policy files** — the surviving codebase (Deno, `config.json`, ADR-0003
+  folding) is JSON-native; two config syntaxes in one product is self-inflicted
+  C1.
+- **seccomp-notify interception in v0** — the agent already observes the denial
+  (EACCES) and can articulate need + justification; a CLI request is 20 lines
+  where a syscall supervisor is a TCB. Revisit for non-cooperating binaries.
+- **Widening grants stored repo-side** — a repo that carries its own widenings
+  is ADR-0003's hostile-repo self-grant, restated.
 - **Gate inside the box** — the adjudicator must be outside the boundary it
   adjudicates; anything else is self-approval.
