@@ -188,6 +188,39 @@ const entryG: fc.Arbitrary<Entry> = fc.oneof(
     kind: fc.constant("revoke" as const),
     grant: attrG,
   }),
+  fc.record({
+    kind: fc.constant("request" as const),
+    id: attrG,
+    need: bodyG,
+    justification: bodyG,
+    fsRo: attrG,
+  }),
+  fc.record({
+    kind: fc.constant("request-decision" as const),
+    request: attrG,
+    verdict: fc.constantFrom("approve" as const, "deny" as const),
+    scope: fc.option(
+      fc.constantFrom("once" as const, "session" as const, "persist" as const),
+      { nil: null },
+    ),
+    tier: fc.constantFrom(
+      "refuse" as const,
+      "auto" as const,
+      "operator" as const,
+    ),
+    rationale: bodyG,
+  }),
+  fc.record({
+    kind: fc.constant("policy-grant" as const),
+    id: attrG,
+    request: attrG,
+    scope: fc.constantFrom(
+      "once" as const,
+      "session" as const,
+      "persist" as const,
+    ),
+    fsRo: attrG,
+  }),
 );
 
 Deno.test("log round-trips for any entry sequence (property)", () => {

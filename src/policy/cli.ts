@@ -13,6 +13,7 @@ interface Options {
   readonly policyFile: string;
   readonly explainOnly: boolean;
   readonly bwrap?: string;
+  readonly gate?: string;
   readonly command: readonly string[];
 }
 
@@ -25,6 +26,7 @@ function parseArgs(args: readonly string[]): Options {
   let policyFile: string | undefined;
   let explainOnly = false;
   let bwrap: string | undefined;
+  let gate: string | undefined;
   let index = 0;
   for (; index < args.length; index++) {
     const arg = args[index];
@@ -38,6 +40,8 @@ function parseArgs(args: readonly string[]): Options {
       explainOnly = true;
     } else if (arg === "--bwrap") {
       bwrap = args[++index] ?? usageError("--bwrap requires an executable");
+    } else if (arg === "--gate") {
+      gate = args[++index] ?? usageError("--gate requires a socket");
     } else {
       usageError(`internal policy adapter received unknown option '${arg}'`);
     }
@@ -49,7 +53,7 @@ function parseArgs(args: readonly string[]): Options {
   }
   if (!explainOnly && command.length === 0) usageError("no command given");
   if (!explainOnly && !bwrap) usageError("internal --bwrap is required");
-  return { policyFile, explainOnly, bwrap, command };
+  return { policyFile, explainOnly, bwrap, gate, command };
 }
 
 function pathKind(path: string): "directory" | "file" | "missing" {
@@ -62,7 +66,7 @@ function pathKind(path: string): "directory" | "file" | "missing" {
   }
 }
 
-function context(): BwrapCompileContext {
+function context(gate?: string): BwrapCompileContext {
   const environment = Deno.env.toObject();
   const home = environment.HOME;
   if (!home) throw new PolicyCompileError("HOME is not set");
@@ -81,6 +85,12 @@ function context(): BwrapCompileContext {
     environment,
     pathKind,
     environmentMode: "process",
+    requestSocket: gate
+      ? {
+        hostPath: Deno.realPathSync(gate),
+        sandboxPath: "/run/pagu/request.sock",
+      }
+      : undefined,
   };
 }
 
@@ -89,7 +99,7 @@ async function main(): Promise<number> {
   const source = await Deno.readTextFile(options.policyFile);
   const loaded = loadPolicy({ user: JSON.parse(source) });
   for (const warning of loaded.warnings) console.error(`pagu-box: ${warning}`);
-  const ctx = context();
+  const ctx = context(options.gate);
   if (options.explainOnly) {
     console.log(JSON.stringify(explain(loaded.policy, ctx)));
     return 0;

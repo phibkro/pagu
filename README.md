@@ -8,6 +8,41 @@ and at tag `harness-final`; it has been removed from `main`.
 
 See [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) for the pivot.
 
+## Sandbox + gate MVP
+
+Build the two post-pivot executables with Nix:
+
+```sh
+nix build .#pagu .#pagu-box
+```
+
+Start the approval authority outside the sandbox, then opt a policy launch into
+its request channel:
+
+```sh
+nix run .#pagu -- gate --policy "$HOME/.config/pagu/policy.json" \
+  --socket "$PWD/.pagu/gate.sock"
+
+nix run .#pagu-box -- --policy "$HOME/.config/pagu/policy.json" \
+  --gate "$PWD/.pagu/gate.sock" -- AGENT_COMMAND
+```
+
+Inside that launch, the SDK's
+`fileRequest({ need, justification,
+suggested_rule: { "fs.ro": path } })` sends
+one typed request and awaits its tied decision. Refused and in-scope auto
+requests never prompt; other requests appear on the gate's own TTY and in its
+queue projection. Once/session grants, the queue, and the append-only event log
+live under `.pagu/gate` by default; persist updates only the user policy passed
+to `pagu gate`.
+
+The channel is optional: without `--gate`, no socket or SDK environment variable
+is mounted and the standing policy behaves exactly as before. This slice records
+grants but deliberately does not relaunch the sandbox with them.
+
+The remainder of this README describes the archived integrated harness while its
+post-pivot documentation is being replaced.
+
 ## How it works
 
 You **chat** with pagu. It answers normally and reads allowlisted files (via a

@@ -23,6 +23,20 @@
       packages = forEachSystem (
         system: pkgs:
         let
+          paguSource = builtins.path {
+            path = ./src;
+            name = "pagu-source";
+            filter = path: _type: !(nixpkgs.lib.hasSuffix ".test.ts" path);
+          };
+          pagu = pkgs.writeShellApplication {
+            name = "pagu";
+            runtimeInputs = [ pkgs.deno ];
+            text = ''
+              exec deno run --quiet --no-prompt \
+                --allow-read --allow-write --allow-env --allow-net \
+                ${paguSource}/gate/cli.ts "$@"
+            '';
+          };
           paguBox =
             if pkgs.stdenv.isLinux then
               import ./box/src/linux.nix { inherit pkgs; }
@@ -33,6 +47,7 @@
         in
         {
           default = paguBox;
+          inherit pagu;
           pagu-box = paguBox;
         }
       );

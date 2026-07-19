@@ -13,6 +13,13 @@ human-readable digest. Extracted from `ROADMAP.md` (2026-05-30).
 
 ## Shipped since the original draft
 
+- **Gate v1 request/adjudication MVP** — the in-sandbox `fileRequest` SDK sends
+  one strict request over a bind-mounted Unix socket and awaits its tied
+  decision; the outside `pagu gate` daemon applies refuse/auto/operator tiers,
+  projects once/session grants across restarts, persists only to user policy,
+  and appends request/decision/grant evidence. The request protocol exposes no
+  resolution operation. Relaunch/resume is intentionally deferred.
+
 - **The chat-or-act loop** — a single `respond` phase that converses and only
   authors a script when an effect is needed (replaced separate Observe/Author).
 - **Permission discovery via the cage** — the self-test runs with no net and

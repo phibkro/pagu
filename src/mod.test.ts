@@ -58,6 +58,18 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "PolicyValidationError", kind: "class" },
   { name: "PolicyCompileError", kind: "class" },
   { name: "UnsupportedPlatformError", kind: "class" },
+  // Request gate.
+  { name: "fileRequest", kind: "function" },
+  { name: "serveGate", kind: "function" },
+  { name: "createGate", kind: "function" },
+  { name: "adjudicateRequest", kind: "function" },
+  { name: "parseRequestInput", kind: "function" },
+  { name: "RequestValidationError", kind: "class" },
+  { name: "FileRequestInput", kind: "interface" },
+  { name: "GateDecision", kind: "interface" },
+  { name: "GateApprover", kind: "typeAlias" },
+  { name: "Gate", kind: "interface" },
+  { name: "GatePaths", kind: "interface" },
 ];
 
 interface DocSymbol {

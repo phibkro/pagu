@@ -91,6 +91,28 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
   result: { kind: "result", script: "", exit: 0, ranWith: [], output: "" },
   grant: { kind: "grant", id: "", perms: [], expires: "" },
   revoke: { kind: "revoke", grant: "" },
+  request: {
+    kind: "request",
+    id: "",
+    need: "",
+    justification: "",
+    fsRo: "",
+  },
+  "request-decision": {
+    kind: "request-decision",
+    request: "",
+    verdict: "deny",
+    scope: null,
+    tier: "operator",
+    rationale: "",
+  },
+  "policy-grant": {
+    kind: "policy-grant",
+    id: "",
+    request: "",
+    scope: "session",
+    fsRo: "",
+  },
 };
 
 Deno.test("event wire schema: every entry kind round-trips (public-API floor)", () => {

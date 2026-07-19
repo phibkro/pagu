@@ -20,6 +20,12 @@ export interface BwrapCompileContext {
    * empty policy cannot reach the host Nix daemon. */
   readonly nixDaemonSocket?: string;
   readonly nixRemote?: string;
+  /** Optional append-and-await request channel. The sandbox receives only the
+   * client socket; decision state and persistence remain gate-side. */
+  readonly requestSocket?: {
+    readonly hostPath: string;
+    readonly sandboxPath: string;
+  };
   /** `argv` reproduces the historical launcher exactly. New policy launches
    * use `process`, keeping credential values out of argv and explain output. */
   readonly environmentMode: "argv" | "process";
@@ -121,6 +127,11 @@ function expandPath(path: string, ctx: BwrapCompileContext): string {
 
 const dedupe = (values: readonly string[]): string[] => [...new Set(values)];
 
+function dirname(path: string): string {
+  const end = path.lastIndexOf("/");
+  return end <= 0 ? "/" : path.slice(0, end);
+}
+
 function contains(parent: string, child: string): boolean {
   const p = parent.length > 1 ? parent.replace(/\/+$/, "") : parent;
   const c = child.length > 1 ? child.replace(/\/+$/, "") : child;
@@ -140,6 +151,14 @@ function compile(
     args.push("--bind", ctx.nixDaemonSocket, ctx.nixDaemonSocket);
   }
   args.push(...BASE_ARGS_SUFFIX);
+  if (ctx.requestSocket) {
+    args.push("--dir", dirname(ctx.requestSocket.sandboxPath));
+    args.push(
+      "--bind",
+      ctx.requestSocket.hostPath,
+      ctx.requestSocket.sandboxPath,
+    );
+  }
   if (ctx.environmentMode === "argv") args.push("--clearenv");
   if (policy.fs.home === "rw") args.push("--bind", ctx.home, ctx.home);
   else args.push("--tmpfs", ctx.home);
@@ -185,6 +204,9 @@ function compile(
     LANG: ctx.lang,
   });
   if (ctx.nixRemote) environment.NIX_REMOTE = ctx.nixRemote;
+  if (ctx.requestSocket) {
+    environment.PAGU_REQUEST_SOCKET = ctx.requestSocket.sandboxPath;
+  }
   environment.SSL_CERT_FILE = ctx.sslCertFile;
 
   if (ctx.environmentMode === "argv") {

@@ -37,12 +37,14 @@ pkgs.writeShellApplication {
                           # use this to keep a tree read-only without rewriting the bind set
     NEEDS_JOURNAL=0       # opt in to read-only journalctl access (journal dirs + machine-id)
     POLICY_FILE=""
+    GATE_SOCKET=""
     EXPLAIN=0
     LEGACY_OPTIONS=0
 
     while [ $# -gt 0 ]; do
       case "$1" in
         --policy)       POLICY_FILE="$2"; shift 2 ;;
+        --gate)         GATE_SOCKET="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
         --profile=*)    PROFILE="''${1#--profile=}"; LEGACY_OPTIONS=1; shift ;;
         --profile)      PROFILE="$2"; LEGACY_OPTIONS=1; shift 2 ;;
@@ -72,6 +74,7 @@ pkgs.writeShellApplication {
 
       --profile=NAME    default | strict | paranoid | loose  (default: default)
       --policy FILE     compile and enforce a schema-v0 JSON policy via the SDK
+      --gate SOCKET     mount the gate's append-and-await request socket; requires --policy
       --explain         print the policy's compiled bwrap argv as JSON; requires --policy
       --allow PATH      extra read-write bind mount (repeatable)
       --ro-allow PATH   extra read-only bind mount (repeatable)
@@ -118,6 +121,7 @@ pkgs.writeShellApplication {
         exit 64
       }
       adapter_args=( --policy "$POLICY_FILE" )
+      [ -z "$GATE_SOCKET" ] || adapter_args+=( --gate "$GATE_SOCKET" )
       if [ "$EXPLAIN" -eq 1 ]; then
         [ $# -eq 0 ] || { echo "pagu-box: --explain does not accept a command" >&2; exit 64; }
         adapter_args+=( --explain )
@@ -129,6 +133,10 @@ pkgs.writeShellApplication {
         --allow-read --allow-env --allow-run=${pkgs.bubblewrap}/bin/bwrap \
         ${policySdk}/cli.ts "''${adapter_args[@]}"
     fi
+    [ -z "$GATE_SOCKET" ] || {
+      echo "pagu-box: --gate requires --policy" >&2
+      exit 64
+    }
     [ "$EXPLAIN" -eq 0 ] || {
       echo "pagu-box: --explain requires --policy" >&2
       exit 64

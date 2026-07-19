@@ -119,6 +119,29 @@ no-real-write rehearsal; real-effect execution stays human-gated.
 
 ## System map
 
+### Post-pivot sandbox/gate request boundary
+
+The standalone sandbox can optionally receive a Unix-domain request socket.
+The mounted endpoint implements one strict request frame per connection:
+`fileRequest` writes a typed, exact `fs.ro` request, waits for the tied
+decision, and the connection closes. There is deliberately no resolve frame or
+resolution API on the sandbox side. Resolution, queue ownership, grant
+derivation, user-policy persistence, and evidence append all remain in the
+outside-sandbox gate process. A resolution-shaped frame is rejected before it
+can create an event.
+
+One-request-per-connection was chosen over general bidirectional RPC because
+the protocol shape is the capability boundary: accepting only `request` makes
+the sandbox endpoint append-and-await, while still returning the decision the
+caller needs. The gate serializes mutations as the event log's single writer.
+Its queue and session-grants files are restartable projections; `persist`
+modifies only the explicitly supplied user policy. With no socket mount, the
+sandbox gains no request capability and its compiled standing policy is
+unchanged. Applying a recorded widening by relaunch is a separate lifecycle
+step, not part of gate adjudication. The gate canonicalizes existing paths
+before auto-escalation to reject symlink escapes; the relaunch/resume step must
+repeat that check at enforcement time to close the later TOCTOU window.
+
 Who holds which capability. The agent process (`respond`) only ever has read +
 net-to-the-model; **write and run live only in the human-gated runner**, itself
 wrapped by the OS sandbox where available.

@@ -75,6 +75,30 @@ export function serializeEntry(e: Entry): string {
       body = e.output;
       break;
     }
+    case "request":
+      open = head("request", { id: e.id, "fs-ro": e.fsRo });
+      body = JSON.stringify({ need: e.need, justification: e.justification });
+      break;
+    case "request-decision": {
+      const decisionAttrs: Record<string, string> = {
+        request: e.request,
+        verdict: e.verdict,
+        tier: e.tier,
+      };
+      if (e.scope !== null) decisionAttrs.scope = e.scope;
+      open = head("request-decision", decisionAttrs);
+      body = e.rationale;
+      break;
+    }
+    case "policy-grant":
+      open = head("policy-grant", {
+        id: e.id,
+        request: e.request,
+        scope: e.scope,
+        "fs-ro": e.fsRo,
+      });
+      body = "";
+      break;
   }
   // Use a fence longer than any `~` run in the body, so a body line of tildes
   // (e.g. a markdown `~~~` fence in model output) can't be read as the close.

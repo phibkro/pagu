@@ -49,3 +49,6 @@ export type { SandboxKind, SandboxScope } from "./runner/sandbox.ts";
 
 // Versioned standing policy / grant schema and pure policy compiler.
 export * from "./policy/index.ts";
+
+// Sandbox request SDK and outside-sandbox gate ports.
+export * from "./request/index.ts";

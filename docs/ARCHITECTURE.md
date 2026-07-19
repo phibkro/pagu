@@ -37,6 +37,15 @@ Unit-tested — change with care, tests first. Imports nothing outward.
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `src/log/`         | `pagu:*` block parse/serialize — the event-store format.                                                                                                                                                                                                                                                                                                                                                                             |
 | `src/permissions/` | `envelope.ts`: `covers`/`within`/`withinEnvelope` (pure containment). `gitignore.ts`: VCS source (`git ls-files`). `concealment.ts`: pure multi-source hide policy (`buildConcealment` → `conceals` + `maskPaths`, `reveal` subtraction); `concealment-fs.ts`: its **effectful** glob source (`enumerateConcealed`). `policy.ts`: `buildEnvelope` (grants + concealment write-denies) + `shouldAutoApprove` (the auto-approve gate). |
+| `src/policy/`      | Strict schema-v0 standing-policy/grant decoder, layered attenuation, and pure policy-to-bubblewrap compiler. The compiler optionally bind-mounts the gate request socket and publishes only its sandbox path.                                                                                                                                                |
+| `src/request/`     | Strict file-request/frame schema; pure refuse/auto/operator adjudication; `fileRequest` append-and-await Unix client; and the gate's single-writer retained evidence, queue, session-grant, and user-policy projections. The protocol has no sandbox-side resolution operation.                                                                            |
+
+## Post-pivot driving adapter
+
+| module            | what's in it                                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/gate/cli.ts` | `pagu gate`: outside-sandbox daemon and TTY `GateApprover`; owns the Unix listener and gate state. It never launches or resumes the sandbox.             |
+| `box/src/*.nix`   | `pagu-box`; `--policy` invokes the schema compiler and optional `--gate` mounts the narrow request channel. No gate leaves policy enforcement unchanged. |
 
 ## Application — capabilities
 

@@ -6,6 +6,7 @@ import {
 } from "@std/assert";
 import {
   type BwrapCompileContext,
+  compilePolicy,
   compileToBwrapArgs,
   EMPTY_POLICY,
   explain,
@@ -457,6 +458,31 @@ Deno.test("falsifier 5: explain argv is exactly the compiled argv", () => {
     assertEquals(explained.argv, compiled);
     assertEquals(JSON.parse(JSON.stringify(explained)).argv, compiled);
   }
+});
+
+Deno.test("request socket is mounted and named only when supplied", () => {
+  const absent = compilePolicy(EMPTY_POLICY, CTX);
+  assertEquals(absent.environment.PAGU_REQUEST_SOCKET, undefined);
+  assertEquals(absent.argv.includes("/run/pagu/request.sock"), false);
+
+  const socketContext: BwrapCompileContext = {
+    ...CTX,
+    environmentMode: "process",
+    requestSocket: {
+      hostPath: "/host/gate.sock",
+      sandboxPath: "/run/pagu/request.sock",
+    },
+  };
+  const present = compilePolicy(EMPTY_POLICY, socketContext);
+  assertEquals(
+    present.environment.PAGU_REQUEST_SOCKET,
+    "/run/pagu/request.sock",
+  );
+  const bind = present.argv.findIndex((arg, index) =>
+    arg === "--bind" && present.argv[index + 1] === "/host/gate.sock"
+  );
+  assert(bind >= 0);
+  assertEquals(present.argv[bind + 2], "/run/pagu/request.sock");
 });
 
 Deno.test("legacy profiles: schema presets compile to current Linux argv", () => {

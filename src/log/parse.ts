@@ -106,6 +106,50 @@ export function parseLog(md: string): Entry[] {
         entries.push(re);
         break;
       }
+      case "request": {
+        let detail: { need?: unknown; justification?: unknown } = {};
+        try {
+          detail = JSON.parse(body);
+        } catch {
+          // Malformed historical blocks remain readable as empty evidence.
+        }
+        entries.push({
+          kind: "request",
+          id: a.id ?? "",
+          need: typeof detail.need === "string" ? detail.need : "",
+          justification: typeof detail.justification === "string"
+            ? detail.justification
+            : "",
+          fsRo: a["fs-ro"] ?? "",
+        });
+        break;
+      }
+      case "request-decision": {
+        const scope = a.scope === "once" || a.scope === "session" ||
+            a.scope === "persist"
+          ? a.scope
+          : null;
+        entries.push({
+          kind: "request-decision",
+          request: a.request ?? "",
+          verdict: a.verdict === "approve" ? "approve" : "deny",
+          scope,
+          tier: a.tier === "refuse" || a.tier === "auto" ? a.tier : "operator",
+          rationale: body,
+        });
+        break;
+      }
+      case "policy-grant":
+        entries.push({
+          kind: "policy-grant",
+          id: a.id ?? "",
+          request: a.request ?? "",
+          scope: a.scope === "once" || a.scope === "persist"
+            ? a.scope
+            : "session",
+          fsRo: a["fs-ro"] ?? "",
+        });
+        break;
         // Unknown pagu kinds are skipped (forward-compatibility).
     }
   }

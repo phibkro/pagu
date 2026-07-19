@@ -71,6 +71,11 @@ The historical "what shipped" log moved to **[`CHANGELOG.md`](./CHANGELOG.md)**
 
 ## Open
 
+- `[security]` `[frontend]` **Gate relaunch/resume lifecycle (next slice).**
+  Consume approved once/session grants by relaunching the box; consume `once`
+  exactly once, bind projections to the intended gate session/policy, and
+  re-canonicalize every granted path immediately before compilation so a
+  post-decision symlink change cannot escape the approved scope.
 - `[security]` **Verify the macOS `sandbox-exec` profile on a Mac** —
   implemented but not yet exercised on real hardware (developed/tested on
   Linux).

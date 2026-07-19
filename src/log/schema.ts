@@ -16,7 +16,38 @@ export type Entry =
   | Decision
   | ResultEntry
   | GrantEntry
-  | RevokeEntry;
+  | RevokeEntry
+  | FileRequestEntry
+  | RequestDecisionEntry
+  | PolicyGrantEntry;
+
+/** A sandbox-originated request. The gate allocates `id` before append. */
+export interface FileRequestEntry {
+  kind: "request";
+  id: string;
+  need: string;
+  justification: string;
+  fsRo: string;
+}
+
+/** The gate's tiered decision for an addressable request. */
+export interface RequestDecisionEntry {
+  kind: "request-decision";
+  request: string;
+  verdict: "approve" | "deny";
+  scope: "once" | "session" | "persist" | null;
+  tier: "refuse" | "auto" | "operator";
+  rationale: string;
+}
+
+/** Evidence that an approved request produced a gate-owned policy grant. */
+export interface PolicyGrantEntry {
+  kind: "policy-grant";
+  id: string;
+  request: string;
+  scope: "once" | "session" | "persist";
+  fsRo: string;
+}
 
 /** A conversational turn (the user's task, or the model's prose). */
 export interface Message {
