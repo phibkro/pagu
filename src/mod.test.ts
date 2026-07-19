@@ -1,33 +1,45 @@
 import { assertEquals } from "@std/assert";
 import { fromFileUrl } from "@std/path";
 
-// The frozen public surface (see the stable-programmatic-API design spec).
-// EXPECTED ⊆ the actual exports of src/mod.ts: removing/renaming a frozen
-// export, or changing its kind, drops it from `actual` and fails CI — that's a
-// backwards-incompatible change you must confront. ADDING an export is
-// non-breaking (the test still passes); add a line here to document it.
+// ADR-0004 sanctions a pre-1.0 breaking pivot. This floor replaces the former
+// harness API floor and guards the surviving security-organ surface.
 const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
-  // Core loop & ports
-  { name: "runTask", kind: "function" },
-  { name: "scheduledRun", kind: "function" }, // the #16 trigger-provenance seam
-  { name: "AgentContext", kind: "interface" },
-  { name: "UI", kind: "interface" },
-  { name: "Budget", kind: "interface" }, // #16 slice 2: the firing's resource ceiling
+  // Approval and grants.
+  { name: "pendingProposal", kind: "function" },
+  { name: "makeGrant", kind: "function" },
+  { name: "activeGrants", kind: "function" },
+  { name: "activeGrantEntries", kind: "function" },
+  { name: "isExpired", kind: "function" },
+  { name: "submitDecision", kind: "function" },
+  { name: "deferApproval", kind: "function" },
   { name: "Approver", kind: "typeAlias" },
-  // Loop combinators
-  { name: "loop", kind: "function" },
-  { name: "andThen", kind: "function" },
-  { name: "pipeline", kind: "function" },
-  { name: "fanOut", kind: "function" },
-  { name: "Step", kind: "typeAlias" },
-  { name: "Flow", kind: "typeAlias" },
-  // Construction
-  { name: "createContext", kind: "function" },
-  // Extension point + reference types
-  { name: "HandlerPlugin", kind: "interface" },
-  { name: "Capability", kind: "interface" },
+  { name: "ApprovalOutcome", kind: "typeAlias" },
+  { name: "PendingProposal", kind: "interface" },
+  // Capability and configuration.
+  { name: "validateCeiling", kind: "function" },
+  { name: "mergeLayer", kind: "function" },
+  { name: "composeLayers", kind: "function" },
+  { name: "toLayer", kind: "function" },
+  { name: "sanitizeProjectLayer", kind: "function" },
+  { name: "ConfigLayer", kind: "interface" },
+  // Event log.
   { name: "Entry", kind: "typeAlias" },
-  { name: "ScriptEntry", kind: "typeAlias" },
+  { name: "parseLog", kind: "function" },
+  { name: "serializeLog", kind: "function" },
+  { name: "eventStream", kind: "function" },
+  { name: "EventStream", kind: "interface" },
+  // Permission policy.
+  { name: "parsePermission", kind: "function" },
+  { name: "withinEnvelope", kind: "function" },
+  { name: "buildEnvelope", kind: "function" },
+  { name: "shouldAutoApprove", kind: "function" },
+  { name: "Envelope", kind: "interface" },
+  { name: "Permission", kind: "typeAlias" },
+  // Sandbox.
+  { name: "detectSandbox", kind: "function" },
+  { name: "wrapForSandbox", kind: "function" },
+  { name: "SandboxKind", kind: "typeAlias" },
+  { name: "SandboxScope", kind: "interface" },
 ];
 
 interface DocSymbol {
@@ -35,36 +47,37 @@ interface DocSymbol {
   declarations?: { kind: string }[];
 }
 
-/** The actual `name:kind` export set of src/mod.ts, via `deno doc --json`
- * (captures type-only exports a runtime import would miss). */
+/** Actual `name:kind` exports of src/mod.ts, including type-only exports. */
 async function actualPublicApi(): Promise<Set<string>> {
   const modPath = fromFileUrl(new URL("./mod.ts", import.meta.url));
-  const r = await new Deno.Command(Deno.execPath(), {
+  const result = await new Deno.Command(Deno.execPath(), {
     args: ["doc", "--json", modPath],
     stdout: "piped",
     stderr: "null",
   }).output();
-  const doc = JSON.parse(new TextDecoder().decode(r.stdout)) as {
+  const doc = JSON.parse(new TextDecoder().decode(result.stdout)) as {
     nodes: Record<string, { symbols?: DocSymbol[] }>;
   };
-  const symbols = Object.values(doc.nodes).flatMap((f) => f.symbols ?? []);
+  const symbols = Object.values(doc.nodes).flatMap((file) =>
+    file.symbols ?? []
+  );
   return new Set(
-    symbols.flatMap((s) =>
-      (s.declarations ?? []).map((d) => `${s.name}:${d.kind}`)
+    symbols.flatMap((symbol) =>
+      (symbol.declarations ?? []).map((declaration) =>
+        `${symbol.name}:${declaration.kind}`
+      )
     ),
   );
 }
 
-Deno.test("public API floor: every frozen export still exists in src/mod.ts", async () => {
+Deno.test("public API floor: surviving security-organ exports remain", async () => {
   const actual = await actualPublicApi();
   const missing = EXPECTED_PUBLIC_API
-    .map((e) => `${e.name}:${e.kind}`)
-    .filter((sig) => !actual.has(sig));
+    .map((entry) => `${entry.name}:${entry.kind}`)
+    .filter((signature) => !actual.has(signature));
   assertEquals(
     missing,
     [],
-    `frozen public exports missing from src/mod.ts (backwards-incompatible change): ${
-      missing.join(", ")
-    }`,
+    `security-organ exports missing from src/mod.ts: ${missing.join(", ")}`,
   );
 });

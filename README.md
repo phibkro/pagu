@@ -1,14 +1,12 @@
 # pagu
 
-A local, cross-platform agent you use like a terminal — but **the model can
-never execute anything**. It reads context and _authors_ a script into an
-auditable conversation log; you approve it; a separate sandboxed process runs
-it. Named for _Paguroidea_ (hermit crabs): soft and untrusted inside, operating
-only through a hard, borrowed, disposable shell.
+pagu is now the sandbox + gate pair around any agent harness: `pagu box` is the
+policy-enforcement shell, and `pagu gate` is its approval authority.
 
-See [`CONTEXT.md`](./CONTEXT.md) for the rationale, threat model, and design
-(the source of truth for _design_), and [`ROADMAP.md`](./ROADMAP.md) for the
-forward plan, idea backlog, and milestones (organized by concern).
+The former integrated harness is preserved locally on branch `archive/harness`
+and at tag `harness-final`; it has been removed from `main`.
+
+See [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) for the pivot.
 
 ## How it works
 

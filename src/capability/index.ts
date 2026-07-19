@@ -1,401 +1,49 @@
-// effects: shared execution substrate for all capability pipelines.
-// The security-critical cage→autoApprove→run path is centralized here;
-// per-capability gates stay in their own modules.
-//
-// Two audience layers (one concept: "a tool the agent can invoke"):
-//   Public (consumers — registry, agent.ts, respond.ts):
-//     Capability<Data>, AnyCapability
-//   Author-facing (implementers — write/execute.ts, skills/execute.ts, etc.):
-//     Exec, cageOnce, cageWithinCeiling, performRun, autoApprove, run
+// pure: fail-closed validation of requested permissions against a ceiling.
 import {
   absolutizePerm,
-  buildConcealment,
   parsePermission,
+  type Permission,
   withinEnvelope,
 } from "../permissions/index.ts";
-import { classifyRun, type RunClass, runScript } from "../runner/index.ts";
-import type { AgentContext } from "../context.ts";
-import type { Entry } from "../log/index.ts";
-import type { ToolDef } from "../providers/index.ts";
-import type { Flow, Step } from "../loop.ts";
 
-export type { RunClass };
-
-// ── Capability<Data>: the public registry interface ──────────────────────────
-
-/** One tool the agent can invoke — declared once, used by both processes.
- * Use `satisfies Capability<Data>` (not a type annotation) on declarations
- * so the literal entryKind type is preserved for registry derivation. */
-export interface Capability<Data> {
-  /** Log entry kind produced — the executor dispatch key. */
-  entryKind: string;
-  /** The model tool name this capability advertises. */
-  toolName: string;
-  /** Id prefix for log entries, e.g. "sk", "ci", "s". */
-  idPrefix: string;
-  /** Serializable data for the respond subprocess (the discover step).
-   *  Called by the orchestrator each turn; result goes into phase input. */
-  data(ctx: AgentContext): Data;
-  /** Availability law: legal ∩ environment-present. */
-  isAvailable(data: Data): boolean;
-  /** Build the tool schema from this turn's data. Pure — respond subprocess only. */
-  toolDef(data: Data): ToolDef;
-  /** Parse a model tool-call into a typed log entry. Pure — respond subprocess only. */
-  toEntry(args: Record<string, unknown>, id: string): Entry;
-  /** Execute the log entry. Effectful — orchestrator only. Never called in the
-   *  respond subprocess even though the module is imported there. */
-  execute(entry: Entry, ctx: AgentContext): Promise<"stop" | "loop">;
-}
-
-/** Type-erased form for the registry (heterogeneous array of capabilities). */
-export type AnyCapability = Capability<unknown>;
-
-// ── Pluggable handlers ───────────────────────────────────────────────────────
-
-/** Serializable view of Exec that crosses the handler subprocess boundary. */
-export interface ExecView {
-  id: string;
-  body: string;
-  perms: readonly string[];
-  title: string;
-}
-
-/** JSON sent to a handler-phase subprocess over stdin. */
-export interface HandlerPhaseInput {
-  handlerPath: string;
-  exec: ExecView;
-}
-
-/** JSON the handler-phase subprocess writes to stdout. */
-export interface HandlerPhaseOutput {
-  decision: "continue" | "done";
-  rationale?: string;
-}
-
-/**
- * A loaded before-approve handler. `fn` is called in-process when permissions
- * is empty; the subprocess path is taken when permissions contains extras.
- */
-export interface HandlerPlugin {
-  name: string;
-  description: string;
-  /** Absolute path to the handler file — used for subprocess invocation. */
-  path: string;
-  /** Declared permission ceiling. Empty = in-process; non-empty = subprocess. */
-  permissions: string[];
-  /** The handler function — type-safe gate-never-widen via ReadonlyExec. */
-  fn: Step<ReadonlyExec>;
-}
-
-// ── Exec: the carrier threaded through a capability pipeline ─────────────────
-
-/** Pure data; per-capability gates fill body and perms, the shared run
- * handler performs the execution. write uses its own Proposal carrier and
- * calls performRun directly. */
-export interface Exec {
-  ctx: AgentContext;
-  id: string;
-  title: string;
-  body: string;
-  perms: string[];
-  rationale: string;
-  scriptArgs?: string[];
-  /** Explicit run cwd. When absent, performRun falls back to ctx.repo ?? scratch. */
-  cwd?: string;
-  outcome: "stop" | "loop";
-}
-
-/**
- * Read-only view of Exec for terminal handlers (autoApprove, run). The
- * gate-never-widen law: handlers may read body/perms but not replace them.
- * `Exec ⊆ ReadonlyExec` (mutable fields satisfy readonly), so
- * `Step<ReadonlyExec> ⊆ Step<Exec>` via contravariance — terminal handlers
- * declared as Step<ReadonlyExec> slot into Step<Exec> pipelines without casts.
- */
-export type ReadonlyExec = Omit<Exec, "body" | "perms"> & {
-  readonly body: string;
-  readonly perms: readonly string[];
-};
-
-// ── Cage mechanics ───────────────────────────────────────────────────────────
-
-/**
- * The directory a cage/run executes a script in: an explicit `cwd`, else the
- * repo (repo mode), else the invocation dir (`ctx.cwd`) — NEVER the throwaway
- * script scratch. **This is the single source for the run cwd AND the base that
- * discovered perms are absolutized against** — they MUST be the same dir, or the
- * cage discovers a relative-path write against one directory while the run
- * resolves it against another (the cage-pass-but-NotCapable / wrong-perm bug).
- * Every absolutize-base in the write/skill cage path goes through here.
- */
-export const cageCwd = (ctx: AgentContext, cwd?: string): string =>
-  cwd ?? ctx.repo ?? ctx.cwd;
-
-/**
- * Run a script body in the cage (read-allowlist + scratch-write, no net) and
- * return the RunClass. Ceiling enforcement and fix loops are per-capability
- * concerns. cwd = {@link cageCwd} — the SAME real dir the runner uses, so a
- * relative-path write is denied (and thus discovered) here exactly as at run.
- */
-export async function cageOnce(params: {
-  body: string;
-  id: string;
-  ctx: AgentContext;
-  extraPerms?: string[];
-  cwd?: string;
-}): Promise<RunClass> {
-  const { body, id, ctx, extraPerms = [], cwd: cwdParam } = params;
-  const scratch = await Deno.makeTempDir({ prefix: "pagu-cage-" });
-  const file = `${scratch}/${id}.ts`;
-  await Deno.writeTextFile(file, body);
-  const r = await runScript({
-    scriptPath: file,
-    perms: [
-      ...ctx.readPaths.map((p) => `allow-read=${p}`),
-      `allow-write=${scratch}`,
-      ...extraPerms,
-      ...ctx.denyFlags,
-    ],
-    cwd: cageCwd(ctx, cwdParam),
-    sandbox: ctx.sandboxKind,
-    readMask: buildConcealment(ctx.conceal).maskPaths(),
-  });
-  await Deno.remove(scratch, { recursive: true });
-  return classifyRun(r.exit, r.stderr);
-}
-
-/**
- * Cage a body against a declared ceiling. Returns absolutized discovered
- * perms (including readPaths) on success, null if the ceiling is exceeded
- * or the cage hit a bug. Shared by the skill gate and task-with-ceiling gate.
- */
-export async function cageWithinCeiling(params: {
-  body: string;
-  id: string;
-  ctx: AgentContext;
-  declared: string[];
-  cwd?: string;
-  onExceed?: (msg: string) => void;
-  onBug?: (msg: string) => void;
-}): Promise<string[] | null> {
-  const { body, id, ctx, declared, cwd, onExceed, onBug } = params;
-  // base == the dir cageOnce ran the script under — never diverge (see cageCwd).
-  const base = cageCwd(ctx, cwd);
-  const cls = await cageOnce({
-    body,
-    id,
-    ctx,
-    extraPerms: declared,
-    cwd: base,
-  });
-
-  if (cls.kind === "ok") {
-    return ctx.readPaths.map((p) => `allow-read=${p}`);
+/** `parsePermission` preserves a legacy tolerance for `allow-all=<scope>` by
+ * dropping the meaningless scope. A ceiling must be stricter: accepting that
+ * typo would turn an apparently scoped declaration into universal authority. */
+function parseCeilingPermission(permission: string): Permission {
+  const normalized = permission.replace(/^--/, "").trim();
+  if (/^allow-all=/.test(normalized)) {
+    throw new Error("allow-all cannot be scoped");
   }
-  if (cls.kind === "needs-perms") {
-    const discovered = cls.perms.map((s) =>
-      parsePermission(absolutizePerm(s, base))
+  return parsePermission(permission);
+}
+
+/**
+ * Validate a discovered permission set against a declared ceiling.
+ *
+ * Path permissions on both sides are resolved against `base` before the
+ * comparison. On success the normalized requested flags are returned for
+ * persistence or enforcement. A malformed permission or an exceeded ceiling
+ * returns `null`: invalid input can only narrow authority.
+ */
+export function validateCeiling(
+  requested: readonly string[],
+  declared: readonly string[],
+  base: string,
+): string[] | null {
+  try {
+    const normalizedRequested = requested.map((permission) =>
+      absolutizePerm(permission, base)
     );
-    const ceiling = declared.flatMap((p) => {
-      try {
-        return [parsePermission(p)];
-      } catch {
-        return [];
-      }
-    });
-    if (!withinEnvelope(discovered, { allow: ceiling })) {
-      onExceed?.("discovered perms exceed declared ceiling");
-      return null;
-    }
-    return [
-      ...ctx.readPaths.map((p) => `allow-read=${p}`),
-      ...cls.perms.map((s) => absolutizePerm(s, base)),
-    ];
-  }
-  // bug
-  onBug?.(cls.error);
-  return null;
-}
-
-// ── Shared run logic ─────────────────────────────────────────────────────────
-
-/**
- * Execute an approved script: write body to scratch, run with granted perms,
- * log the result entry, apply the net-output gate, return "stop" or "loop".
- * cwd defaults to ctx.repo ?? ctx.cwd — the dir the user launched pagu from, so
- * relative paths land where they expect (matching the cage). Every effect is
- * still bounded by the granted perms; cwd only sets relative-path resolution.
- */
-export async function performRun(params: {
-  ctx: AgentContext;
-  id: string;
-  body: string;
-  perms: readonly string[];
-  scriptArgs?: string[];
-  cwd?: string;
-}): Promise<"stop" | "loop"> {
-  const { ctx, id, body, perms, scriptArgs, cwd: cwdParam } = params;
-  const scratch = await Deno.makeTempDir({ prefix: "pagu-run-" });
-  const file = `${scratch}/${id}.ts`;
-  await Deno.writeTextFile(file, body);
-
-  // Stream stdout live when the frontend supports it (TUI/ACP). The batch
-  // result still goes to the log regardless; only the display changes.
-  const streaming = !!ctx.ui.stream;
-  const result = await runScript({
-    scriptPath: file,
-    perms: [...perms, ...ctx.denyFlags],
-    cwd: cageCwd(ctx, cwdParam),
-    sandbox: ctx.sandboxKind,
-    scriptArgs,
-    onStdout: streaming ? (chunk) => ctx.ui.stream!(chunk) : undefined,
-    readMask: buildConcealment(ctx.conceal).maskPaths(),
-  });
-  await Deno.remove(scratch, { recursive: true });
-
-  const output = result.stdout || result.stderr;
-  const resultEntry = {
-    kind: "result" as const,
-    script: id,
-    exit: result.exit,
-    ranWith: result.ranWith,
-    output,
-    sandbox: result.sandbox,
-  };
-  ctx.log.push(resultEntry);
-  ctx.persist();
-  ctx.ui.entries?.([resultEntry]);
-
-  // When streaming, stdout was shown live — show only the exit-status header
-  // to avoid reprinting it. Non-streaming (CLI) shows header + full output.
-  if (streaming && result.stdout) {
-    ctx.ui.show(`\n--- result (exit ${result.exit}) ---`);
-  } else {
-    ctx.ui.show(`\n--- result (exit ${result.exit}) ---\n${output}`);
-  }
-
-  if (result.ranWith.some((f) => /--allow-(net|all)\b/.test(f))) {
-    ctx.ui.show(
-      "\n[net was granted — output would NOT auto-return to the agent]",
+    const normalizedDeclared = declared.map((permission) =>
+      absolutizePerm(permission, base)
     );
-    return "stop";
+    const requestedSet = normalizedRequested.map(parseCeilingPermission);
+    const ceiling = normalizedDeclared.map(parseCeilingPermission);
+
+    return withinEnvelope(requestedSet, { allow: ceiling })
+      ? normalizedRequested
+      : null;
+  } catch {
+    return null;
   }
-  return "loop";
-}
-
-// ── Shared Step<ReadonlyExec> terminal handlers ──────────────────────────────
-// Typed as Step<ReadonlyExec> so the compiler enforces gate-never-widen:
-// handlers can read body/perms but cannot replace them. Step<ReadonlyExec>
-// satisfies Step<Exec> via contravariance (Exec ⊆ ReadonlyExec) so these slot
-// into Step<Exec> pipelines without casts.
-
-/** Log the approve decision + set running status; always continues. Shared
- * by skill/task/command (write keeps its own approve with the human gate). */
-export const autoApprove: Step<ReadonlyExec> = (exec) => {
-  exec.ctx.ui.status(`running: ${exec.title}…`);
-  exec.ctx.log.push({
-    kind: "decision",
-    script: exec.id,
-    verdict: "approve",
-    rationale: exec.rationale,
-  });
-  exec.ctx.persist();
-  return Promise.resolve("continue");
-};
-
-/** Terminal run handler: call performRun, set outcome, always halt. */
-export const run: Step<ReadonlyExec> = async (exec) => {
-  exec.outcome = await performRun({
-    ctx: exec.ctx,
-    id: exec.id,
-    body: exec.body,
-    perms: exec.perms,
-    scriptArgs: exec.scriptArgs,
-    cwd: exec.cwd,
-  });
-  return "done";
-};
-
-// ── Handler hybrid dispatch ───────────────────────────────────────────────────
-
-/** The orchestrator's own permission flags (no net by default). Handlers
- *  declaring only these run in-process; any extra flag triggers a subprocess. */
-const ORCHESTRATOR_FLAGS = new Set(["read", "write", "run", "env"]);
-
-/**
- * True if the handler's declared permissions include flags the orchestrator
- * doesn't hold — meaning an isolated subprocess is required.
- */
-export function needsSubprocess(permissions: string[]): boolean {
-  return permissions.some((p) => {
-    const flag = p.replace(/^(?:--)?allow-/, "").split("=")[0];
-    return !ORCHESTRATOR_FLAGS.has(flag);
-  });
-}
-
-/**
- * Wrap a HandlerPlugin as a Step<Exec>. In-process when needsSubprocess is
- * false; subprocess (spawnHandlerPhase) when extra permissions are declared.
- * The ctx parameter is used only for the subprocess path.
- */
-export function runHandlerStep(
-  h: HandlerPlugin,
-  ctx: AgentContext,
-): Step<Exec> {
-  return (exec: Exec): Promise<Flow> => {
-    if (!needsSubprocess(h.permissions)) {
-      return h.fn(exec);
-    }
-    return spawnHandlerPhase(h, exec, ctx);
-  };
-}
-
-/** Spawn an isolated handler-phase subprocess with the declared ceiling.
- *  Uses raw JSON I/O (not the respond-phase Entry[] protocol). */
-async function spawnHandlerPhase(
-  h: HandlerPlugin,
-  exec: Exec,
-  ctx: AgentContext,
-): Promise<Flow> {
-  const { join } = await import("@std/path");
-  const view: ExecView = {
-    id: exec.id,
-    body: exec.body,
-    perms: exec.perms,
-    title: exec.title,
-  };
-  const input = JSON.stringify(
-    { handlerPath: h.path, exec: view } satisfies HandlerPhaseInput,
-  );
-  const child = new Deno.Command("deno", {
-    args: [
-      "run",
-      "--no-prompt",
-      ...ctx.readPaths.map((p) => `--allow-read=${p}`),
-      ...h.permissions,
-      join(ctx.phaseDir, "handler.ts"),
-    ],
-    stdin: "piped",
-    stdout: "piped",
-    stderr: "piped",
-  }).spawn();
-  const writer = child.stdin.getWriter();
-  await writer.write(new TextEncoder().encode(input));
-  await writer.close();
-  let stdout = "";
-  const drainOut = async () => {
-    for await (const c of child.stdout.pipeThrough(new TextDecoderStream())) {
-      stdout += c;
-    }
-  };
-  const drainErr = async () => {
-    for await (const c of child.stderr.pipeThrough(new TextDecoderStream())) {
-      ctx.ui.stream?.(c);
-    }
-  };
-  await Promise.all([drainOut(), drainErr()]);
-  const { code } = await child.status;
-  if (code !== 0) throw new Error(`handler ${h.name} exited ${code}`);
-  const out = JSON.parse(stdout) as HandlerPhaseOutput;
-  return out.decision;
 }

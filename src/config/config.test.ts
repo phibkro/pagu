@@ -11,35 +11,6 @@ import {
   resolveProvider,
   toLayer,
 } from "./config.ts";
-import { createContext } from "../mod.ts";
-
-Deno.test("usage: recordUsage accumulates a session total (incl. cache)", async () => {
-  const ctx = await createContext({
-    provider: "ollama",
-    ui: { status() {}, show() {} },
-    approver: () => Promise.resolve("reject"),
-  });
-  assertEquals(ctx.usageTotal(), { inputTokens: 0, outputTokens: 0 });
-  ctx.recordUsage({ inputTokens: 100, outputTokens: 20, cacheReadTokens: 80 });
-  ctx.recordUsage({ inputTokens: 50, outputTokens: 10 });
-  assertEquals(ctx.usageTotal(), {
-    inputTokens: 150,
-    outputTokens: 30,
-    cacheReadTokens: 80,
-  });
-});
-
-Deno.test("resolution: maxTokens flows from config into ctx.provider", async () => {
-  const ctx = await createContext({
-    provider: "anthropic",
-    model: "claude-opus-4-8",
-    maxTokens: 8192,
-    ui: { status() {}, show() {} },
-    approver: () => Promise.resolve("reject"),
-  });
-  assertEquals(ctx.provider.maxTokens, 8192); // run-state → ProviderConfig wiring
-});
-
 Deno.test("mergeLayer: hide/reveal union, hide* toggles right-bias", () => {
   const a: ConfigLayer = { hide: ["*.pem"], hideSecrets: true };
   const b: ConfigLayer = {

@@ -13,21 +13,14 @@
  *        not import from any application or adapter module within src/.
  *        (They may import from each other and from stdlib.)
  *
- *   R2 — Loop substrate is pure
- *        src/loop.ts contains only composable combinators (no I/O). It must
- *        not import from any src/ module.
+ *   R2 — Capability validation stays in the security core
+ *        src/capability/index.ts may import only the permission core.
  *
- *   R3 — Respond subprocess has no exec path (invariant #1)
- *        src/phases/respond.ts runs with --allow-net + --allow-read only.
- *        It must not directly import src/runner/ (which contains runScript /
- *        spawnPhase) — that would hand the agent an exec capability.
- *
- *   R4 — Pure-header claim is verified
+ *   R3 — Pure-header claim is verified
  *        Files whose first line starts with "// pure" (and does not also
  *        declare mixed concerns with "; effect" or "// pure-ish") claim to
- *        contain no I/O. They must not make value imports from src/runner/,
- *        src/phases/, or src/providers/. Type-only imports (`import type`)
- *        are exempt — they carry no runtime side effects.
+ *        contain no I/O. They must not make value imports from src/runner/.
+ *        Type-only imports (`import type`) are exempt.
  *
  * Add further rules below as new implicit conventions need enforcement.
  */
@@ -102,27 +95,18 @@ const RULES: Rule[] = [
   },
   {
     name: "R2",
-    description:
-      "src/loop.ts must not import from any src/ module (pure substrate)",
-    subject: (f) => f === join(SRC, "loop.ts"),
-    forbidden: (t) => t.startsWith(SRC + "/"),
+    description: "src/capability/index.ts may import only the permission core",
+    subject: (f) => f === join(SRC, "capability", "index.ts"),
+    forbidden: (t) => t.startsWith(SRC + "/") && !under(t, "permissions"),
   },
   {
     name: "R3",
-    description: "src/phases/respond.ts must not directly import src/runner/ " +
-      "(invariant #1: respond subprocess has no exec path)",
-    subject: (f) => f === join(SRC, "phases", "respond.ts"),
-    forbidden: (t) => under(t, "runner"),
-  },
-  {
-    name: "R4",
     description:
       'Files with an unqualified "// pure" header must not make value imports ' +
-      "from src/runner/, src/phases/, or src/providers/ — the claim is verified, " +
+      "from src/runner/ — the claim is verified, " +
       "not just documented. (`import type` is exempt: no runtime side effects.)",
     subject: (_f, source) => claimsPure(source),
-    forbidden: (t) =>
-      under(t, "runner") || under(t, "phases") || under(t, "providers"),
+    forbidden: (t) => under(t, "runner"),
     valueOnly: true,
   },
 ];

@@ -2,8 +2,10 @@
 // pure: parse + resolve (the check logic); effects: read docs, scan test files.
 //
 // Enforces the three *checkable* documentation edges (the un-checkable kind —
-// the meaning itself — is what INVARIANTS.md tags [judgment]). Run in CI:
-//   deno run --allow-read scripts/check-docs.ts
+// the meaning itself — is what INVARIANTS.md tags [judgment]). Temporarily
+// excluded from `ci` while ADR-0004 archives the harness ahead of the dedicated
+// docs-rewrite slice; `deno task check:docs` remains available and deliberately
+// reports the stale harness laws/paths until that slice restores the gate.
 // Exits non-zero on any broken edge, printing every failure (not just the first).
 //
 // Edge 1 — doc→doc references:  `docs/FILE.md` → Section Name

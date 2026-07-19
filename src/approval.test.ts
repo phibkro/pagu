@@ -2,12 +2,14 @@ import { assertEquals } from "@std/assert";
 import type { Entry } from "./log/schema.ts";
 import {
   activeGrants,
+  deferApproval,
   isExpired,
   makeGrant,
   pendingProposal,
+  submitDecision,
 } from "./approval.ts";
 
-const script = (id: string): Entry => ({
+const script = (id: string): Extract<Entry, { kind: "script" }> => ({
   kind: "script",
   id,
   lang: "ts",
@@ -57,6 +59,10 @@ Deno.test("pendingProposal: a script that never reached the gate (no perms) is n
 
 Deno.test("pendingProposal: no proposal at all → null", () => {
   assertEquals(pendingProposal([msg("hi"), msg("there")]), null);
+});
+
+Deno.test("deferApproval: detached gate leaves the proposal pending", async () => {
+  assertEquals(await deferApproval(script("s1"), []), "defer");
 });
 
 Deno.test("isExpired: only past a positive TTL (0/negative disables expiry)", () => {
@@ -113,4 +119,33 @@ Deno.test("makeGrant: mints the next id, stamps absolute expiry, carries perms",
 
 Deno.test("makeGrant: the first grant is g1", () => {
   assertEquals(makeGrant([], [], T0, 1000).id, "g1");
+});
+
+Deno.test("submitDecision: resolves only the matching pending proposal", () => {
+  const log = [script("s1"), perms("s1", ["allow-read=/repo"])];
+  assertEquals(submitDecision(log, "s1", "approve"), {
+    status: "resolved",
+    decision: {
+      kind: "decision",
+      script: "s1",
+      verdict: "approve",
+      rationale: "approved with: allow-read=/repo",
+    },
+  });
+  assertEquals(submitDecision(log, "wrong", "approve"), {
+    status: "id-mismatch",
+  });
+});
+
+Deno.test("submitDecision: stale and repeated submissions are no-ops", () => {
+  assertEquals(submitDecision([], "s1", "reject"), {
+    status: "not-pending",
+  });
+
+  const log = [script("s1"), perms("s1", [])];
+  const first = submitDecision(log, "s1", "reject");
+  if (first.status === "resolved") log.push(first.decision);
+  assertEquals(submitDecision(log, "s1", "reject"), {
+    status: "not-pending",
+  });
 });
