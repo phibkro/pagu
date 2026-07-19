@@ -10,9 +10,15 @@
 
 let
   profilesDir = ./profiles;
+  policySdk = builtins.path {
+    path = ../../src/policy;
+    name = "pagu-policy-sdk-v0";
+    filter = path: _type: baseNameOf path != "policy.test.ts";
+  };
 in
 pkgs.writeShellApplication {
   name = "pagu-box";
+  runtimeInputs = [ pkgs.deno ];
   text = ''
     set -euo pipefail
 
@@ -22,17 +28,22 @@ pkgs.writeShellApplication {
     EXTRA_DENY=()
     PASS_ENV_USER=()
     NO_NET=0
+    POLICY_FILE=""
+    EXPLAIN=0
+    LEGACY_OPTIONS=0
 
     while [ $# -gt 0 ]; do
       case "$1" in
-        --profile=*)    PROFILE="''${1#--profile=}"; shift ;;
-        --profile)      PROFILE="$2"; shift 2 ;;
-        --allow)        EXTRA_ALLOW+=("$2"); shift 2 ;;
-        --ro-allow)     EXTRA_RO_ALLOW+=("$2"); shift 2 ;;
-        --deny)         EXTRA_DENY+=("$2"); shift 2 ;;
-        --env)          PASS_ENV_USER+=("''${2%%=*}"); shift 2 ;;
-        --no-net)       NO_NET=1; shift ;;
-        --journal)      shift ;;  # no-op on darwin — `log show` uses its own auth model
+        --policy)       POLICY_FILE="$2"; shift 2 ;;
+        --explain)      EXPLAIN=1; shift ;;
+        --profile=*)    PROFILE="''${1#--profile=}"; LEGACY_OPTIONS=1; shift ;;
+        --profile)      PROFILE="$2"; LEGACY_OPTIONS=1; shift 2 ;;
+        --allow)        EXTRA_ALLOW+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
+        --ro-allow)     EXTRA_RO_ALLOW+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
+        --deny)         EXTRA_DENY+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
+        --env)          PASS_ENV_USER+=("''${2%%=*}"); LEGACY_OPTIONS=1; shift 2 ;;
+        --no-net)       NO_NET=1; LEGACY_OPTIONS=1; shift ;;
+        --journal)      LEGACY_OPTIONS=1; shift ;;  # no-op on darwin
         --)             shift; break ;;
         -h|--help)
           cat <<'USAGE'
@@ -40,6 +51,8 @@ pkgs.writeShellApplication {
     pagu-box [OPTIONS] COMMAND [ARGS...]
 
       --profile=NAME  default | strict | paranoid | loose  (default: default)
+      --policy FILE   validate a schema-v0 JSON policy via the SDK (Linux compile only in v0)
+      --explain       print compiled argv JSON; requires --policy (typed unsupported error on Darwin)
       --allow PATH    extra RW allow — appends (allow file-read*/write*) (deny-by-default
                       profiles only — no-op for default/loose since they allow by default)
       --ro-allow PATH extra RO allow — appends (allow file-read*) only (deny-by-default
@@ -61,6 +74,27 @@ pkgs.writeShellApplication {
         *)              break ;;
       esac
     done
+
+    if [ -n "$POLICY_FILE" ]; then
+      [ "$LEGACY_OPTIONS" -eq 0 ] || {
+        echo "pagu-box: --policy cannot be combined with legacy policy options" >&2
+        exit 64
+      }
+      adapter_args=( --policy "$POLICY_FILE" )
+      [ "$EXPLAIN" -eq 0 ] || adapter_args+=( --explain )
+      if [ "$EXPLAIN" -eq 0 ]; then
+        [ $# -gt 0 ] || { echo "pagu-box: no command given" >&2; exit 64; }
+        adapter_args+=( --bwrap /usr/bin/false -- "$@" )
+      else
+        [ $# -eq 0 ] || { echo "pagu-box: --explain does not accept a command" >&2; exit 64; }
+      fi
+      exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
+        --allow-read --allow-env ${policySdk}/cli.ts "''${adapter_args[@]}"
+    fi
+    [ "$EXPLAIN" -eq 0 ] || {
+      echo "pagu-box: --explain requires --policy" >&2
+      exit 64
+    }
     [ $# -eq 0 ] && { echo "pagu-box: no command given" >&2; exit 64; }
 
     case "$PROFILE" in

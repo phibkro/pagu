@@ -9,9 +9,19 @@
 #
 # The bwrap FLAGS assembled here are the security boundary, not this script.
 
+let
+  policySdk = builtins.path {
+    path = ../../src/policy;
+    name = "pagu-policy-sdk-v0";
+    filter = path: _type: baseNameOf path != "policy.test.ts";
+  };
+in
 pkgs.writeShellApplication {
   name = "pagu-box";
-  runtimeInputs = [ pkgs.bubblewrap ];
+  runtimeInputs = [
+    pkgs.bubblewrap
+    pkgs.deno
+  ];
   text = ''
     set -euo pipefail
 
@@ -26,29 +36,34 @@ pkgs.writeShellApplication {
     PWD_RO=0              # downgrade $PWD bind from RW to RO; per-deployment wrappers
                           # use this to keep a tree read-only without rewriting the bind set
     NEEDS_JOURNAL=0       # opt in to read-only journalctl access (journal dirs + machine-id)
+    POLICY_FILE=""
+    EXPLAIN=0
+    LEGACY_OPTIONS=0
 
     while [ $# -gt 0 ]; do
       case "$1" in
-        --profile=*)    PROFILE="''${1#--profile=}"; shift ;;
-        --profile)      PROFILE="$2"; shift 2 ;;
-        --allow)        EXTRA_ALLOW+=("$2"); shift 2 ;;
-        --ro-allow)     EXTRA_RO_ALLOW+=("$2"); shift 2 ;;
-        --deny)         EXTRA_DENY+=("$2"); shift 2 ;;
-        --env)          PASS_ENV_USER+=("''${2%%=*}"); shift 2 ;;
-        --no-net)       NO_NET=1; shift ;;
+        --policy)       POLICY_FILE="$2"; shift 2 ;;
+        --explain)      EXPLAIN=1; shift ;;
+        --profile=*)    PROFILE="''${1#--profile=}"; LEGACY_OPTIONS=1; shift ;;
+        --profile)      PROFILE="$2"; LEGACY_OPTIONS=1; shift 2 ;;
+        --allow)        EXTRA_ALLOW+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
+        --ro-allow)     EXTRA_RO_ALLOW+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
+        --deny)         EXTRA_DENY+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
+        --env)          PASS_ENV_USER+=("''${2%%=*}"); LEGACY_OPTIONS=1; shift 2 ;;
+        --no-net)       NO_NET=1; LEGACY_OPTIONS=1; shift ;;
         # Agent presets — add the state binds the named agent CLI needs
         # to function. Repeatable. Stackable with the auto-inference
         # below (sandbox a multi-agent pipeline by passing more than one).
-        --claude)       AGENT_PRESETS+=(claude); shift ;;
-        --opencode)     AGENT_PRESETS+=(opencode); shift ;;
-        --codex)        AGENT_PRESETS+=(codex); shift ;;
-        --aider)        AGENT_PRESETS+=(aider); shift ;;
-        --pi)           AGENT_PRESETS+=(pi); shift ;;
-        --hermes)       AGENT_PRESETS+=(hermes); shift ;;
-        --agent)        AGENT_PRESETS+=("$2"); shift 2 ;;
-        --no-auto-agent) AUTO_AGENT=0; shift ;;
-        --pwd-ro)       PWD_RO=1; shift ;;
-        --journal)      NEEDS_JOURNAL=1; shift ;;
+        --claude)       AGENT_PRESETS+=(claude); LEGACY_OPTIONS=1; shift ;;
+        --opencode)     AGENT_PRESETS+=(opencode); LEGACY_OPTIONS=1; shift ;;
+        --codex)        AGENT_PRESETS+=(codex); LEGACY_OPTIONS=1; shift ;;
+        --aider)        AGENT_PRESETS+=(aider); LEGACY_OPTIONS=1; shift ;;
+        --pi)           AGENT_PRESETS+=(pi); LEGACY_OPTIONS=1; shift ;;
+        --hermes)       AGENT_PRESETS+=(hermes); LEGACY_OPTIONS=1; shift ;;
+        --agent)        AGENT_PRESETS+=("$2"); LEGACY_OPTIONS=1; shift 2 ;;
+        --no-auto-agent) AUTO_AGENT=0; LEGACY_OPTIONS=1; shift ;;
+        --pwd-ro)       PWD_RO=1; LEGACY_OPTIONS=1; shift ;;
+        --journal)      NEEDS_JOURNAL=1; LEGACY_OPTIONS=1; shift ;;
         --)             shift; break ;;
         -h|--help)
           cat <<'USAGE'
@@ -56,6 +71,8 @@ pkgs.writeShellApplication {
     pagu-box [OPTIONS] COMMAND [ARGS...]
 
       --profile=NAME    default | strict | paranoid | loose  (default: default)
+      --policy FILE     compile and enforce a schema-v0 JSON policy via the SDK
+      --explain         print the policy's compiled bwrap argv as JSON; requires --policy
       --allow PATH      extra read-write bind mount (repeatable)
       --ro-allow PATH   extra read-only bind mount (repeatable)
       --deny PATH       extra deny — tmpfs over dir or /dev/null over file (repeatable)
@@ -94,6 +111,28 @@ pkgs.writeShellApplication {
         *)              break ;;
       esac
     done
+
+    if [ -n "$POLICY_FILE" ]; then
+      [ "$LEGACY_OPTIONS" -eq 0 ] || {
+        echo "pagu-box: --policy cannot be combined with legacy policy options" >&2
+        exit 64
+      }
+      adapter_args=( --policy "$POLICY_FILE" )
+      if [ "$EXPLAIN" -eq 1 ]; then
+        [ $# -eq 0 ] || { echo "pagu-box: --explain does not accept a command" >&2; exit 64; }
+        adapter_args+=( --explain )
+      else
+        [ $# -gt 0 ] || { echo "pagu-box: no command given" >&2; exit 64; }
+        adapter_args+=( --bwrap ${pkgs.bubblewrap}/bin/bwrap -- "$@" )
+      fi
+      exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
+        --allow-read --allow-env --allow-run=${pkgs.bubblewrap}/bin/bwrap \
+        ${policySdk}/cli.ts "''${adapter_args[@]}"
+    fi
+    [ "$EXPLAIN" -eq 0 ] || {
+      echo "pagu-box: --explain requires --policy" >&2
+      exit 64
+    }
     [ $# -eq 0 ] && { echo "pagu-box: no command given" >&2; exit 64; }
 
     # Auto-infer agent from command name unless suppressed. Matches the
