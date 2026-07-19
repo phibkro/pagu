@@ -34,9 +34,14 @@ only forward work.
 - Composed `~/.codex` RW state into every gate-owned Codex launch and relaunch,
   retaining final secret denies and exact compiled evidence. Claude receives
   only `~/.claude` and `~/.claude.json`.
-- Added typed resume adapters: Codex is ID-bound; Claude uses `--continue` with
-  one repository cwd held stable across initial and approved launches. Other
-  harness names fail loud.
+- Added typed UUID resume adapters for Codex and Claude. Codex's inner approval
+  and sandbox layers stand down because the outer box is the boundary; other
+  explicit harness names fail loud.
+- Made `--harness` optional by requiring exactly one matching Codex or Claude
+  session store, retaining the result in gate-session v1 evidence. Explicit
+  selection skips discovery; ambiguous and missing sessions fail typed.
+- Restored legacy parity by compiling `NIX_REMOTE=daemon` exactly when a schema
+  policy binds the Nix daemon socket, including the explanation projection.
 - Bound grants to the exact session and authoritative/decision policy hashes;
   re-canonicalized paths at application; made once grants non-replayable.
 - Added TTY plus host-only queue/resolution adapters over one Approver port in

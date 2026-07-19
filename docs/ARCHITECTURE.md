@@ -93,7 +93,8 @@ Gate-side adapters export through `src/gate/index.ts`:
 
 | Module                  | Responsibility                                                                   |
 | ----------------------- | -------------------------------------------------------------------------------- |
-| `src/gate/resume.ts`    | `ResumeAdapter` port; verified Codex argv; typed-unverified Claude adapter.      |
+| `src/gate/harness.ts`   | Fail-loud Codex/Claude session-store discovery for optional harness selection.  |
+| `src/gate/resume.ts`    | `ResumeAdapter` port; verified UUID-bound Codex and Claude argv.                 |
 | `src/gate/relaunch.ts`  | Gate-owned child replacement, active-gate check, policy artifacts, box evidence. |
 | `src/gate/operator.ts`  | Queue read, ID-bound resolution submission, TTY/file Approver composition.       |
 | `src/gate/boundary.ts`  | Proves operator state/socket stay hidden and user policy stays non-writable.     |

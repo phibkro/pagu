@@ -32,12 +32,21 @@ export function composeHarnessState(
   };
 }
 
-/** Verified against `codex-cli 0.144.4`: `codex resume SESSION_ID`. */
+/** The outer pagu box is the enforced boundary, so the inner Codex sandbox and
+ * approval gate stand down rather than double-gating the resumed session. */
 export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
   return {
     harness: "codex",
     stateRw: ["$HOME/.codex"],
-    command: (session) => [executable, "resume", session],
+    command: (session) => [
+      executable,
+      "resume",
+      session,
+      "-c",
+      "approval_policy=never",
+      "-c",
+      "sandbox_mode=danger-full-access",
+    ],
   };
 }
 

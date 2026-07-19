@@ -485,6 +485,27 @@ Deno.test("request socket is mounted and named only when supplied", () => {
   assertEquals(present.argv[bind + 2], "/run/pagu/request.sock");
 });
 
+Deno.test("law: daemon socket bind sets NIX_REMOTE compile explain", () => {
+  const boundPolicy = parsePolicy(completePolicy({
+    fs: { rw: ["/nix/var/nix/daemon-socket"] },
+  }));
+  const boundContext: BwrapCompileContext = {
+    ...CTX,
+    pathKind: (path) =>
+      path === "/nix/var/nix/daemon-socket" ? "directory" : CTX.pathKind(path),
+  };
+  const bound = compilePolicy(boundPolicy, boundContext);
+  assertEquals(bound.environment.NIX_REMOTE, "daemon");
+  assert(explain(boundPolicy, boundContext).environment.includes("NIX_REMOTE"));
+
+  const unbound = compilePolicy(EMPTY_POLICY, CTX);
+  assertEquals(unbound.environment.NIX_REMOTE, undefined);
+  assertEquals(
+    explain(EMPTY_POLICY, CTX).environment.includes("NIX_REMOTE"),
+    false,
+  );
+});
+
 Deno.test("legacy profiles: schema presets compile to current Linux argv", () => {
   for (const [name, policy] of Object.entries(LEGACY_POLICY_PRESETS)) {
     assertEquals(

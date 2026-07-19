@@ -161,6 +161,8 @@ Security-relevant properties:
 - network remains isolated unless `net` is true;
 - the optional request socket and its environment name exist only when `--gate`
   is supplied;
+- binding `/nix/var/nix/daemon-socket` adds `NIX_REMOTE=daemon` to the compiled
+  environment and explanation; without the bind it is absent;
 - `--explain` is a projection of the exact compiled result and omits secret
   values;
 - gate-owned launches use `--evidence` to persist that spawned result's argv,
@@ -207,14 +209,15 @@ verifies the request gate is reachable, stops the narrower box, and starts
 approved launch it adds only that harness's RW state: `~/.codex`, or
 `~/.claude` plus `~/.claude.json`. This trusted launch overlay leaves the
 standing/profile policy immutable, passes through the same boundary validation
-and exact compiler/evidence path, and retains final secret denies. The launcher
-captures one cwd for its lifetime. Codex uses `codex resume SESSION_ID`; Claude
-uses cwd-anchored `claude --continue` because its UUID resume flag is unreliable.
-Versioned box launch evidence v1 and the `policy-launch` event bind compiled
-argv, cwd, and resume command together.
-Claude continuity therefore requires no competing Claude session in that cwd.
-[`src/gate/resume.ts`](src/gate/resume.ts) is the harness port: Codex uses
-an ID and Claude uses the launcher's stable cwd.
+and exact compiler/evidence path, and retains final secret denies. Session-store
+inference selects exactly one of Codex or Claude; ambiguous and missing matches
+fail loud, while an explicit harness skips discovery. Gate-session v1 retains
+that selection. Codex uses UUID resume with its inner approval/sandbox posture
+disabled because bubblewrap is the outer boundary; Claude uses
+`claude --resume SESSION_ID`. Versioned box launch evidence v1 and the
+`policy-launch` event bind compiled argv, cwd, and resume command together.
+[`src/gate/resume.ts`](src/gate/resume.ts) is the harness command/state port;
+[`src/gate/harness.ts`](src/gate/harness.ts) owns session-store discovery.
 
 ## Gate state and evidence
 
@@ -241,9 +244,10 @@ default state lives below `XDG_RUNTIME_DIR`, never below the project mount.
 Without that directory the operator supplies a private absolute directory;
 ownership, final mode, symlinks, and replaceable ancestry are checked.
 
-Every new gate run appends a versioned `gate-session` entry with its profile,
-subject, session, and timestamp. Request, decision, grant, and launch evidence
-also carries timestamps. [`src/telemetry/`](src/telemetry/) folds those retained
+Every CLI-owned gate run appends a gate-session v1 entry with its harness,
+profile, subject, session, and timestamp; v0 logs remain readable. Request,
+decision, grant, and launch evidence also carries timestamps.
+[`src/telemetry/`](src/telemetry/) folds those retained
 events into a versioned in-memory view; the CLI's table and JSON are two
 renderings of that same value. No telemetry database or flow dependency exists.
 

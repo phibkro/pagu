@@ -1,5 +1,11 @@
 // pure: append-only gate event logs projected into telemetry v0.
-import type { Entry, GateSessionEntry } from "../log/index.ts";
+import type {
+  Entry,
+  GateSessionEntry,
+  GateSessionEntryV0,
+} from "../log/index.ts";
+
+type AnyGateSessionEntry = GateSessionEntry | GateSessionEntryV0;
 
 /** One canonical event log collected for telemetry projection. */
 export interface TelemetryLogV0 {
@@ -64,7 +70,7 @@ const UNKNOWN: TelemetryIdentityV0 = {
   subjectLabel: "",
 };
 
-function identity(session?: GateSessionEntry): TelemetryIdentityV0 {
+function identity(session?: AnyGateSessionEntry): TelemetryIdentityV0 {
   if (!session) return UNKNOWN;
   return {
     profile: session.profile ?? "custom",
@@ -117,7 +123,7 @@ export function projectTelemetry(
   const candidates: PruneCandidateTelemetryV0[] = [];
 
   for (const log of logs) {
-    let session: GateSessionEntry | undefined;
+    let session: AnyGateSessionEntry | undefined;
     const requests = new Map<string, string>();
     const launches = new Set<string>();
 

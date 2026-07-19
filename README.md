@@ -164,17 +164,18 @@ flags cannot be combined with `--policy` or a category profile.
 ## Run a gate-owned harness session
 
 The relaunch lifecycle requires the gate to own the boxed child. Supply an
-existing Codex session UUID; the verified adapter runs `codex resume UUID` for
-the initial box and every approved relaunch. Immediately before launch, the gate
-composes Codex's read-write `~/.codex` state over the standing policy. This
-launch overlay appears in the compiled explanation; retained launch evidence
-pairs that argv with the exact cwd and resume command. It does not alter the
-policy or its final secret denies. Claude receives only `~/.claude` and
-`~/.claude.json`; because its UUID resume flag is unreliable, its adapter runs
-`claude --continue` from one cwd captured for the complete gate lifecycle. That
-selects the latest Claude session in that repository, so do not run a competing
-Claude session in the same cwd while the gate owns it. `persist` decisions
-update only the user policy or named-profile grant overlay.
+existing session UUID. Unless `--harness` explicitly overrides discovery, the
+gate identifies Codex from `~/.codex/sessions/**/rollout-*-UUID.jsonl` or Claude
+from `~/.claude/projects/*/UUID.jsonl`; both and neither fail loud. The selected
+harness is retained in gate-session v1 evidence. Codex resumes the exact UUID
+with its inner approval and sandbox layers disabled because the outer box is the
+enforced boundary. Claude resumes the exact UUID with `claude --resume UUID`.
+
+Immediately before launch, the gate composes only the selected harness's state:
+Codex receives read-write `~/.codex`; Claude receives `~/.claude` and
+`~/.claude.json`. This launch overlay appears in the compiled explanation and
+does not alter the standing policy or its final secret denies. `persist`
+decisions update only the user policy or named-profile grant overlay.
 
 ```sh
 SESSION="<codex-session-uuid>"
@@ -188,7 +189,6 @@ PAGU_POLICY="$HOME/.config/pagu/policy.json"
 nix run .#pagu -- gate \
   --policy "$PAGU_POLICY" \
   --session "$SESSION" \
-  --harness codex \
   --state-dir "$PAGU_STATE"
 ```
 
@@ -205,8 +205,10 @@ or sandbox-writable policy. The default state directory is
 private directory such as the `mktemp` result above. Startup rejects symlinks,
 foreign ownership, broad modes, and replaceable non-sticky ancestry.
 
-The gate starts `pagu-box` itself. `ResumeAdapterNotVerifiedError` remains the
-fail-loud behavior for harness names other than verified Codex and Claude.
+The gate starts `pagu-box` itself. Pass `--harness codex|claude` to skip session
+discovery. `HarnessInferenceError` names both failed location checks;
+`ResumeAdapterNotVerifiedError` remains the fail-loud behavior for an explicit
+unverified harness name.
 
 The in-sandbox SDK call is:
 

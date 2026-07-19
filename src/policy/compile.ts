@@ -110,6 +110,8 @@ const BASE_ARGS_SUFFIX = [
   "/tmp",
 ] as const;
 
+const NIX_DAEMON_SOCKET = "/nix/var/nix/daemon-socket";
+
 function expandPath(path: string, ctx: BwrapCompileContext): string {
   if (path === "$PWD") return ctx.pwd;
   if (path.startsWith("$PWD/")) return ctx.pwd + path.slice(4);
@@ -166,12 +168,10 @@ function compile(
   const rw = dedupe(policy.fs.rw.map((path) => expandPath(path, ctx)));
   const ro = dedupe(policy.fs.ro.map((path) => expandPath(path, ctx)));
 
-  for (const path of rw) {
-    if (ctx.pathKind(path) !== "missing") args.push("--bind", path, path);
-  }
-  for (const path of ro) {
-    if (ctx.pathKind(path) !== "missing") args.push("--ro-bind", path, path);
-  }
+  const boundRw = rw.filter((path) => ctx.pathKind(path) !== "missing");
+  const boundRo = ro.filter((path) => ctx.pathKind(path) !== "missing");
+  for (const path of boundRw) args.push("--bind", path, path);
+  for (const path of boundRo) args.push("--ro-bind", path, path);
 
   const pwdVisible = [...rw, ...ro].some((path) => contains(path, ctx.pwd)) ||
     (policy.fs.home === "rw" && contains(ctx.home, ctx.pwd));
@@ -225,6 +225,9 @@ function compile(
     LANG: ctx.lang,
   });
   if (ctx.nixRemote) environment.NIX_REMOTE = ctx.nixRemote;
+  else if (
+    [...boundRw, ...boundRo].some((path) => contains(path, NIX_DAEMON_SOCKET))
+  ) environment.NIX_REMOTE = "daemon";
   if (ctx.requestSocket) {
     environment.PAGU_REQUEST_SOCKET = ctx.requestSocket.sandboxPath;
   }

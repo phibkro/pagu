@@ -25,16 +25,26 @@ remaining work.
 | 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped    |
 | 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped    |
 | 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped    |
-| 8 — Claude resume       | Verify cwd-anchored `claude --continue` through the shared relaunch lifecycle.                                   | ✓ shipped    |
+| 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped    |
+| 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped    |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next         |
+
+## Slice 9 shipped boundary
+
+- `pagu gate` infers Codex or Claude from exactly one matching session store;
+  both/neither fail typed, explicit `--harness` skips inference, and
+  gate-session v1 retains the result.
+- A schema policy that binds the Nix daemon socket compiles
+  `NIX_REMOTE=daemon`; an unbound policy does not.
+- Codex UUID resume disables its inner approval and sandbox layers because the
+  outer pagu box remains the enforcement boundary. Claude stays UUID-bound.
 
 ## Slice 8 shipped boundary
 
-- Claude initial launches and approved relaunches use `claude --continue`,
-  never the unreliable UUID resume flag.
-- The launcher captures one repository cwd and reuses it with the Claude state
-  bind for every box. A competing external Claude session in the same cwd is an
-  explicit operator exclusion.
+- Claude initial launches and approved relaunches use the exact
+  `claude --resume UUID` adapter.
+- The launcher retains cwd as exact evidence and reuses the Claude state bind
+  for every box.
 - Session/grant binding, TOCTOU checks, and once consumption remain in the
   harness-agnostic gate lifecycle.
 
@@ -71,7 +81,7 @@ Slice 5 turns a recorded approval into a new launch as one security lifecycle.
 
 - Stop the denied attempt without widening the live mount namespace.
 - Compile a complete derived grant into a new box launch.
-- Resume through a typed adapter: Codex is ID-bound; Claude is cwd-bound.
+- Resume through a typed adapter: Codex and Claude are UUID-bound.
 - Record launch linkage and the exact compiled enforcement material.
 - Fail secure when resume is unavailable: retain the grant and require an
   explicit fresh launch.

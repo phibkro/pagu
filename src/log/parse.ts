@@ -109,7 +109,7 @@ export function parseLog(md: string): Entry[] {
       case "gate-session": {
         // Silently continuing would attribute following unversioned request
         // events to the previous session. An old reader must fail loud.
-        if (a.version !== "0") {
+        if (a.version !== "0" && a.version !== "1") {
           throw new Error(
             `unsupported gate-session version ${a.version ?? "missing"}`,
           );
@@ -120,30 +120,51 @@ export function parseLog(md: string): Entry[] {
           profile?: unknown;
           subjectAgent?: unknown;
           subjectLabel?: unknown;
+          harness?: unknown;
         };
         try {
           metadata = JSON.parse(body);
         } catch {
           throw new Error("malformed gate-session metadata");
         }
+        const expected = a.version === "0"
+          ? ["at", "profile", "session", "subjectAgent", "subjectLabel"]
+          : [
+            "at",
+            "harness",
+            "profile",
+            "session",
+            "subjectAgent",
+            "subjectLabel",
+          ];
+        const actual = metadata && typeof metadata === "object"
+          ? Object.keys(metadata).sort()
+          : [];
         if (
           !metadata || typeof metadata !== "object" ||
+          actual.length !== expected.length ||
+          actual.some((key, index) => key !== expected[index]) ||
           typeof metadata.at !== "string" ||
           typeof metadata.session !== "string" ||
           (metadata.profile !== null &&
             typeof metadata.profile !== "string") ||
           typeof metadata.subjectAgent !== "string" ||
-          typeof metadata.subjectLabel !== "string"
+          typeof metadata.subjectLabel !== "string" ||
+          (a.version === "1" && typeof metadata.harness !== "string")
         ) throw new Error("malformed gate-session metadata");
-        entries.push({
+        const base = {
           kind: "gate-session",
-          version: 0,
           at: metadata.at,
           session: metadata.session,
           profile: metadata.profile,
           subjectAgent: metadata.subjectAgent,
           subjectLabel: metadata.subjectLabel,
-        });
+        } as const;
+        entries.push(
+          a.version === "0"
+            ? { ...base, version: 0 }
+            : { ...base, version: 1, harness: metadata.harness as string },
+        );
         break;
       }
       case "request": {

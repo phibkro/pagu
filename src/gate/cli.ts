@@ -6,6 +6,7 @@ import {
 } from "./operator.ts";
 import { createBoxLauncher } from "./relaunch.ts";
 import { resumeAdapter } from "./resume.ts";
+import { resolveHarness } from "./harness.ts";
 import { createGate, type GatePaths, serveGate } from "../request/index.ts";
 import { assertOperatorBoundary } from "./boundary.ts";
 import { ensurePrivateStateDirectory } from "./state.ts";
@@ -24,7 +25,7 @@ interface GateOptions {
   readonly socket: string;
   readonly stateDir: string;
   readonly session: string;
-  readonly harness: string;
+  readonly harness: string | undefined;
   readonly box: string;
 }
 
@@ -49,7 +50,7 @@ function usage(message?: string): never {
   if (message) console.error(`pagu: ${message}`);
   console.error(
     "usage:\n" +
-      "  pagu gate (--policy FILE | --profile NAME) --session ID --harness codex|claude [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
       "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
   );
@@ -131,7 +132,6 @@ function parseArgs(args: readonly string[]): Options {
     usage(`unknown category profile ${JSON.stringify(profile)}`);
   }
   if (!session) usage("gate requires --session");
-  if (!harness) usage("gate requires --harness");
   const runtime = Deno.env.get("XDG_RUNTIME_DIR");
   if (!stateDir && !runtime) {
     usage("gate requires --state-dir when XDG_RUNTIME_DIR is unset");
@@ -240,6 +240,11 @@ async function materializeProfileBase(options: GateOptions): Promise<string> {
 }
 
 async function gate(options: GateOptions): Promise<void> {
+  const harness = await resolveHarness(
+    options.harness,
+    options.session,
+    Deno.env.get("HOME") ?? "/nonexistent",
+  );
   await ensurePrivateStateDirectory(options.stateDir);
   const policy = await materializeProfileBase(options);
   const paths: GatePaths = {
@@ -286,7 +291,7 @@ async function gate(options: GateOptions): Promise<void> {
     gateSocket: options.socket,
     stateDir: options.stateDir,
     session: options.session,
-    resume: resumeAdapter(options.harness),
+    resume: resumeAdapter(harness),
     validatePolicy: (policy) =>
       assertOperatorBoundary(policy, boundaryPaths, boundaryContext),
     onFatal: reportFatal,
@@ -295,6 +300,7 @@ async function gate(options: GateOptions): Promise<void> {
   const core = await createGate({
     paths,
     session: options.session,
+    harness,
     profile: options.profile,
     approver: createOperatorApprover({ paths: operatorPaths, terminal }),
     apply: (application) => {

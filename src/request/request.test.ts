@@ -110,6 +110,7 @@ Deno.test("gate session metadata is versioned and retained before initial launch
     const gate = await createGate({
       paths,
       session: "session-profile",
+      harness: "codex",
       profile: "worker",
       now: () => new Date("2026-07-19T12:00:00.000Z"),
     });
@@ -128,12 +129,13 @@ Deno.test("gate session metadata is versioned and retained before initial launch
     const entries = parseLog(await Deno.readTextFile(paths.eventLog));
     assertEquals(entries[0], {
       kind: "gate-session",
-      version: 0,
+      version: 1,
       at: "2026-07-19T12:00:00.000Z",
       session: "session-profile",
       profile: "worker",
       subjectAgent: "test",
       subjectLabel: "gate",
+      harness: "codex",
     });
     const launch = entries[1];
     assertEquals(launch.kind, "policy-launch");

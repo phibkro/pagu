@@ -174,12 +174,16 @@ Deno.test("operator state directory rejects replaceable ancestry and symlinks", 
   }
 });
 
-Deno.test("resume adapters: Codex is ID-bound and Claude is cwd-bound", () => {
+Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound", () => {
   const codex = codexResumeAdapter();
   assertEquals(codex.command("session-1"), [
     "codex",
     "resume",
     "session-1",
+    "-c",
+    "approval_policy=never",
+    "-c",
+    "sandbox_mode=danger-full-access",
   ]);
   assertEquals(codex.stateRw, ["$HOME/.codex"]);
   assertEquals(claudeResumeAdapter().stateRw, [
@@ -273,7 +277,7 @@ Deno.test("law: harness state is scoped and deny remains final", () => {
   assertEquals(claudeArgv.includes(`${home}/.codex`), false);
 });
 
-Deno.test("law: Claude relaunch keeps cwd continue argv and state", async () => {
+Deno.test("law: Claude relaunch keeps UUID argv and state", async () => {
   if (Deno.build.os === "windows") return;
   const { root, paths } = await fixture();
   const socket = `${root}/gate.sock`;

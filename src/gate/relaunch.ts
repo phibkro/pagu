@@ -14,7 +14,7 @@ export interface RunningBox {
 
 export interface SpawnBoxInput {
   readonly box: string;
-  /** Stable repository cwd; Claude `--continue` binds its session to this. */
+  /** Stable cwd retained as exact launch evidence across every relaunch. */
   readonly cwd: string;
   readonly gateSocket: string;
   readonly stateDir: string;

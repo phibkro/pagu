@@ -81,7 +81,9 @@ Bound laws:
 - [law: HOME repository cannot re-expose denied secrets]
 - [law: profile overlay re-composes persistent grants latest curated base]
 - [law: harness state is scoped and deny remains final]
-- [law: Claude relaunch keeps cwd continue argv and state]
+- [law: Claude relaunch keeps UUID argv and state]
+- [law: harness inference selects unique session location]
+- [law: harness inference fails typed for both or neither]
 
 Review questions:
 
@@ -152,6 +154,7 @@ Bound laws:
 - [law: log round trips any entry sequence]
 - [law: session grants survive gate restart]
 - [law: widened launch evidence uses explained compiled argv]
+- [law: daemon socket bind sets NIX_REMOTE compile explain]
 - [law: once grant applies once durably spent]
 - [law: operator file surface resolves same Approver port]
 - [law: operator authority paths stay outside sandbox policy roots]

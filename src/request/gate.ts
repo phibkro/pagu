@@ -58,7 +58,7 @@ export interface GrantApplication {
 export interface GrantLaunchEvidence {
   /** Exact policy that produced argv; trusted launcher composition included. */
   readonly policy: PolicyV0;
-  /** Exact box cwd; Claude `--continue` uses this as its session selector. */
+  /** Exact box cwd retained with the compiled launch evidence. */
   readonly cwd: string;
   readonly pid: number;
   readonly argv: readonly string[];
@@ -95,6 +95,9 @@ export interface Gate {
 export interface CreateGateOptions {
   readonly paths: GatePaths;
   readonly session: string;
+  /** Harness owning this gate run. When present, retained session metadata is
+   * emitted as v1 with the exact inferred or explicitly selected adapter. */
+  readonly harness?: string;
   /** Curated category name, or null for an explicit custom policy. Retained in
    * the event log so telemetry needs no parallel session registry. */
   readonly profile?: string | null;
@@ -786,15 +789,19 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
 
   // Retain identity before returning any request-capable Gate. This ordering is
   // structural: no adapter can serve `handle` before session metadata exists.
-  await append({
+  const sessionMetadata = {
     kind: "gate-session",
-    version: 0,
     at: at(),
     session: options.session,
     profile: options.profile ?? null,
     subjectAgent: effectivePolicy.subject.agent,
     subjectLabel: effectivePolicy.subject.label,
-  });
+  } as const;
+  await append(
+    options.harness === undefined
+      ? { ...sessionMetadata, version: 0 }
+      : { ...sessionMetadata, version: 1, harness: options.harness },
+  );
 
   return {
     events,

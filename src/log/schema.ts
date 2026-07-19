@@ -17,7 +17,8 @@ export type Entry =
   | ResultEntry
   | GrantEntry
   | RevokeEntry
-  | GateSessionEntry
+  | GateSessionEntryV0
+  | GateSessionEntryV1
   | FileRequestEntry
   | RequestDecisionEntry
   | PolicyGrantEntry
@@ -28,14 +29,26 @@ export type Entry =
 /** Versioned gate-run metadata. Later request events inherit the most recent
  * metadata in their log; the event keeps telemetry a projection of the
  * canonical append-only store rather than a parallel metadata database. */
-export interface GateSessionEntry {
+interface GateSessionBase {
   kind: "gate-session";
-  version: 0;
   at: string;
   session: string;
   profile: string | null;
   subjectAgent: string;
   subjectLabel: string;
+}
+
+/** Current gate-session wire shape; v0 remains separately readable. */
+export interface GateSessionEntry extends GateSessionBase {
+  version: 1;
+  harness: string;
+}
+
+export interface GateSessionEntryV0 extends GateSessionBase {
+  version: 0;
+}
+
+export interface GateSessionEntryV1 extends GateSessionEntry {
 }
 
 /** A sandbox-originated request. The gate allocates `id` before append. */
