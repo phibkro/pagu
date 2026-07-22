@@ -8,6 +8,7 @@ import {
   type BwrapCompileContext,
   compilePolicy,
   compileToBwrapArgs,
+  decodeDenialEvidence,
   EMPTY_POLICY,
   explain,
   LEGACY_POLICY_PRESETS,
@@ -460,6 +461,101 @@ Deno.test("falsifier 5: explain argv is exactly the compiled argv", () => {
   }
 });
 
+Deno.test("law: denial observer truth is the compiled fs.deny set", () => {
+  const policy = parsePolicy(completePolicy({
+    fs: {
+      home: "rw",
+      rw: ["$PWD"],
+      deny: ["~/.ssh", "/absolute/secret", "~/.ssh", "~/.netrc"],
+    },
+  }));
+  const compiled = compilePolicy(policy, CTX);
+  assertEquals(compiled.denyPaths, [
+    `${HOME}/.ssh`,
+    `${HOME}/.gnupg`,
+    "/absolute/secret",
+    `${HOME}/.netrc`,
+  ]);
+  assertEquals(compiled.denialRules, [
+    { path: `${HOME}/.ssh`, match: "subtree" },
+    { path: `${HOME}/.gnupg`, match: "subtree" },
+    { path: "/absolute/secret", match: "subtree" },
+    { path: `${HOME}/.netrc`, match: "exact" },
+  ]);
+  for (const path of compiled.denyPaths) {
+    assert(
+      compiled.argv.some((arg, index) =>
+        arg === path &&
+        (compiled.argv[index - 1] === "--tmpfs" ||
+          compiled.argv[index - 2] === "--bind")
+      ),
+      `compiled deny ${path} lacks an enforcement mount`,
+    );
+  }
+});
+
+Deno.test("denial evidence v1 rejects false or ambiguous records", () => {
+  assertEquals(
+    decodeDenialEvidence({
+      version: 1,
+      syscall: "openat",
+      path: "/home/tester/.ssh/key",
+      verdict: "deny",
+      ts: "2026-07-22T10:11:12.345Z",
+      profile: "worker",
+    }),
+    {
+      version: 1,
+      syscall: "openat",
+      path: "/home/tester/.ssh/key",
+      verdict: "deny",
+      ts: "2026-07-22T10:11:12.345Z",
+      profile: "worker",
+    },
+  );
+  for (
+    const invalid of [
+      { version: 2, syscall: "openat", path: "/x", verdict: "deny", ts: "bad" },
+      {
+        version: 1,
+        syscall: "stat",
+        path: "/x",
+        verdict: "deny",
+        ts: "2026-07-22T10:11:12.345Z",
+      },
+      {
+        version: 1,
+        syscall: "open",
+        path: "relative",
+        verdict: "deny",
+        ts: "2026-07-22T10:11:12.345Z",
+      },
+      {
+        version: 1,
+        syscall: "open",
+        path: "/x/../y",
+        verdict: "deny",
+        ts: "2026-07-22T10:11:12.345Z",
+      },
+      {
+        version: 1,
+        syscall: "open",
+        path: "/x",
+        verdict: "allow",
+        ts: "2026-07-22T10:11:12.345Z",
+      },
+      {
+        version: 1,
+        syscall: "open",
+        path: "/x",
+        verdict: "deny",
+        ts: "2026-07-22T10:11:12.345Z",
+        extra: true,
+      },
+    ]
+  ) assertThrows(() => decodeDenialEvidence(invalid));
+});
+
 Deno.test("request socket is mounted and named only when supplied", () => {
   const absent = compilePolicy(EMPTY_POLICY, CTX);
   assertEquals(absent.environment.PAGU_REQUEST_SOCKET, undefined);
@@ -525,11 +621,12 @@ Deno.test("darwin compilation fails with a typed unsupported-platform error", ()
   assertStringIncludes(error.message, "darwin");
 });
 
-Deno.test("falsifier 5: adapter enforces explained argv without logging env values", async () => {
+Deno.test("law: denial observation stays opt-in and host-owned", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const policyFile = `${dir}/policy.json`;
     const fakeBwrap = `${dir}/fake-bwrap`;
+    const fakeObserver = `${dir}/fake-observer`;
     const evidenceFile = `${dir}/launch-evidence.json`;
     const secret = "slice3-secret-must-not-appear-in-explain";
     await Deno.writeTextFile(
@@ -546,6 +643,11 @@ Deno.test("falsifier 5: adapter enforces explained argv without logging env valu
       "#!/bin/sh\nprintf 'ARG:%s\\n' \"$@\"\nprintf 'SECRET:%s\\n' \"${POLICY_TEST_SECRET:-}\"\n",
     );
     await Deno.chmod(fakeBwrap, 0o755);
+    await Deno.writeTextFile(
+      fakeObserver,
+      "#!/bin/sh\nprintf 'OBS:%s\\n' \"$@\"\n",
+    );
+    await Deno.chmod(fakeObserver, 0o755);
 
     const cli = decodeURIComponent(
       new URL("./cli.ts", import.meta.url).pathname,
@@ -606,6 +708,95 @@ Deno.test("falsifier 5: adapter enforces explained argv without logging env valu
     assertEquals(evidence.argv, explained.argv);
     assertEquals(evidence.environment, explained.environment);
     assertEquals(evidence.command, ["ignored-command"]);
+
+    const observedResult = await runAdapter([
+      "--policy",
+      policyFile,
+      "--bwrap",
+      fakeBwrap,
+      "--denial-supervisor",
+      fakeObserver,
+      "--observe-denials",
+      `${dir}/denials.jsonl`,
+      "--profile-context",
+      "worker",
+      "--",
+      "ignored-command",
+    ]);
+    assertEquals(observedResult.code, 0);
+    const observedLines = new TextDecoder().decode(observedResult.stdout)
+      .trimEnd().split("\n");
+    const adapterHome = Deno.env.get("HOME")!;
+    for (const denied of [`${adapterHome}/.ssh`, `${adapterHome}/.gnupg`]) {
+      assert(observedLines.includes("OBS:--deny-tree"));
+      assert(observedLines.includes(`OBS:${denied}`));
+    }
+    assert(observedLines.includes("OBS:--profile"));
+    assert(observedLines.includes("OBS:worker"));
+    assert(observedLines.includes(`OBS:${fakeBwrap}`));
+
+    const unsafeLogResult = await runAdapter([
+      "--policy",
+      policyFile,
+      "--bwrap",
+      fakeBwrap,
+      "--denial-supervisor",
+      fakeObserver,
+      "--observe-denials",
+      `${Deno.cwd()}/denials.jsonl`,
+      "--",
+      "ignored-command",
+    ]);
+    assertEquals(unsafeLogResult.code, 65);
+    assertStringIncludes(
+      new TextDecoder().decode(unsafeLogResult.stderr),
+      "sandbox-writable root",
+    );
+
+    const unsafeAlias = `${dir}/unsafe-root`;
+    await Deno.symlink(Deno.cwd(), unsafeAlias);
+    const aliasedLogResult = await runAdapter([
+      "--policy",
+      policyFile,
+      "--bwrap",
+      fakeBwrap,
+      "--denial-supervisor",
+      fakeObserver,
+      "--observe-denials",
+      `${unsafeAlias}/denials.jsonl`,
+      "--",
+      "ignored-command",
+    ]);
+    assertEquals(aliasedLogResult.code, 65);
+    assertStringIncludes(
+      new TextDecoder().decode(aliasedLogResult.stderr),
+      "sandbox-writable root",
+    );
+
+    const ambiguousPolicy = `${dir}/ambiguous-policy.json`;
+    await Deno.writeTextFile(
+      ambiguousPolicy,
+      JSON.stringify(completePolicy({
+        fs: { rw: ["$PWD"], deny: ["/safe/../secret"] },
+      })),
+    );
+    const ambiguousPolicyResult = await runAdapter([
+      "--policy",
+      ambiguousPolicy,
+      "--bwrap",
+      fakeBwrap,
+      "--denial-supervisor",
+      fakeObserver,
+      "--observe-denials",
+      `${dir}/ambiguous.jsonl`,
+      "--",
+      "ignored-command",
+    ]);
+    assertEquals(ambiguousPolicyResult.code, 65);
+    assertStringIncludes(
+      new TextDecoder().decode(ambiguousPolicyResult.stderr),
+      "requires lexically canonical fs.deny paths",
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

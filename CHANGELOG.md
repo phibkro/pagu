@@ -79,9 +79,11 @@ only forward work.
   exposed a standalone telemetry-v0 SDK/CLI projection with human and JSON
   denial, approval, tier, and conservative prune-candidate views.
 - Spiked unprivileged seccomp user-notif with a packaged one-path denial helper
-  and unit-tested JSON record. Outside-box verification remains lead-owned;
-  user-notif cannot passively see bubblewrap's result after `CONTINUE`, and the
-  complete denial pipeline remains deferred.
+  and unit-tested JSON record; the outside-box capture was lead-verified.
+- Promoted that substrate into opt-in Linux `--observe-denials`: the policy
+  adapter derives exact/subtree rules from its compiled `fs.deny`, rejects logs
+  below sandbox-writable roots, and appends strict denial-evidence v1 JSONL.
+  Full-policy/path-race coverage and automatic requests remain deferred.
 
 See `README.md` for current use, `CONTEXT.md` for the trust model, and
 `ROADMAP.md` for planned work.

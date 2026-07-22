@@ -23,6 +23,7 @@ let
     name = "pagu-policy-sdk-v0";
     filter = path: _type: baseNameOf path != "policy.test.ts";
   };
+  denialObserver = import ./denial-spike.nix { inherit pkgs; };
 in
 pkgs.writeShellApplication {
   name = "pagu-box";
@@ -48,6 +49,8 @@ pkgs.writeShellApplication {
     POLICY_FILE=""
     GATE_SOCKET=""
     LAUNCH_EVIDENCE=""
+    DENIAL_LOG=""
+    POLICY_PROFILE_CONTEXT=""
     SUPERVISOR_PID=""
     EXPLAIN=0
     LEGACY_OPTIONS=0
@@ -57,6 +60,7 @@ pkgs.writeShellApplication {
         --policy)       POLICY_FILE="$2"; shift 2 ;;
         --gate)         GATE_SOCKET="$2"; shift 2 ;;
         --evidence)     LAUNCH_EVIDENCE="$2"; shift 2 ;;
+        --observe-denials) DENIAL_LOG="$2"; shift 2 ;;
         --supervisor-pid) SUPERVISOR_PID="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
         --profile=*)    PROFILE="''${1#--profile=}"; PROFILE_EXPLICIT=1; shift ;;
@@ -90,6 +94,8 @@ pkgs.writeShellApplication {
       --policy FILE     compile and enforce a schema-v0 JSON policy via the SDK
       --gate SOCKET     mount the gate's append-and-await request socket; requires --policy
       --evidence FILE   write the exact spawned policy argv as operator-side launch evidence
+      --observe-denials FILE
+                        opt in to canonical-absolute fs.deny evidence JSONL; schema policies only
       --supervisor-pid PID
                         stop the sandbox if its owning gate process exits
       --explain         print the policy's compiled bwrap argv as JSON; requires --policy
@@ -140,6 +146,7 @@ pkgs.writeShellApplication {
       case "$PROFILE" in
         ${categoryProfilePattern})
           POLICY_FILE="${categoryProfiles}/$PROFILE.json"
+          POLICY_PROFILE_CONTEXT="$PROFILE"
           ;;
         default|strict|paranoid|loose)
           ;;
@@ -158,6 +165,13 @@ pkgs.writeShellApplication {
       adapter_args=( --policy "$POLICY_FILE" )
       [ -z "$GATE_SOCKET" ] || adapter_args+=( --gate "$GATE_SOCKET" )
       [ -z "$LAUNCH_EVIDENCE" ] || adapter_args+=( --evidence "$LAUNCH_EVIDENCE" )
+      if [ -n "$DENIAL_LOG" ]; then
+        adapter_args+=(
+          --observe-denials "$DENIAL_LOG"
+          --denial-supervisor ${denialObserver}/bin/pagu-denial-observer
+        )
+        [ -z "$POLICY_PROFILE_CONTEXT" ] || adapter_args+=( --profile-context "$POLICY_PROFILE_CONTEXT" )
+      fi
       [ -z "$SUPERVISOR_PID" ] || adapter_args+=( --supervisor-pid "$SUPERVISOR_PID" )
       if [ "$EXPLAIN" -eq 1 ]; then
         [ $# -eq 0 ] || { echo "pagu-box: --explain does not accept a command" >&2; exit 64; }
@@ -166,7 +180,9 @@ pkgs.writeShellApplication {
         [ $# -gt 0 ] || { echo "pagu-box: no command given" >&2; exit 64; }
         adapter_args+=( --bwrap ${pkgs.bubblewrap}/bin/bwrap -- "$@" )
       fi
-      deno_permissions=( --allow-read --allow-env --allow-run=${pkgs.bubblewrap}/bin/bwrap )
+      run_allow=${pkgs.bubblewrap}/bin/bwrap
+      [ -z "$DENIAL_LOG" ] || run_allow="$run_allow,${denialObserver}/bin/pagu-denial-observer"
+      deno_permissions=( --allow-read --allow-env "--allow-run=$run_allow" )
       [ -z "$LAUNCH_EVIDENCE" ] || deno_permissions+=( --allow-write="$LAUNCH_EVIDENCE" )
       exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
         "''${deno_permissions[@]}" \
@@ -178,6 +194,10 @@ pkgs.writeShellApplication {
     }
     [ -z "$LAUNCH_EVIDENCE" ] || {
       echo "pagu-box: --evidence requires --policy" >&2
+      exit 64
+    }
+    [ -z "$DENIAL_LOG" ] || {
+      echo "pagu-box: --observe-denials requires a schema policy or category profile" >&2
       exit 64
     }
     [ -z "$SUPERVISOR_PID" ] || {

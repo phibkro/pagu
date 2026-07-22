@@ -232,7 +232,8 @@ invent authority.
 - Codex resume is verified against `codex-cli 0.144.4`; Claude is a typed
   not-yet-verified adapter.
 - A new Codex session must currently exist before pagu can resume its UUID.
-- Structured PEP denial evidence is follow-on work.
+- Opt-in Linux denial evidence covers compiled `fs.deny` for absolute
+  `open`/`openat`; full-policy/path-race coverage remains follow-on work.
 - Multi-host cryptographic discharge is outside v0.
 
 These are explicit scope limits, not fallback permissions.

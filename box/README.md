@@ -128,12 +128,13 @@ v1 — minimum viable. Linux + macOS, allowlist via flags, deny-list compiled in
 
 - extendable. No telemetry, no audit log, no secret injection (yet).
 
-The Linux flakes also expose `pagu-denial-spike`, a separate, deliberately
-unsupported seccomp user-notif feasibility helper. It can mediate one exact
-absolute path and emit one JSON denial record for the lead verification in
+Linux schema-policy and category-profile launches can opt in with
+`--observe-denials FILE`. The outside seccomp user-notif supervisor receives
+exact-file/directory-subtree rules from the same compiled `fs.deny` value and
+appends denial-evidence v1 JSONL. The flag is off by default, rejects logs under
+sandbox-writable roots, and does not claim relative-path or full-policy
+coverage. See
 [`docs/notes/seccomp-user-notif-spike.md`](docs/notes/seccomp-user-notif-spike.md).
-It wraps but is not enabled by `pagu-box`, and it is not a denial telemetry
-pipeline.
 
 Future surface, in roughly that order of likely arrival:
 

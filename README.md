@@ -116,6 +116,22 @@ nix run .#pagu-box -- --policy ./policy.json --explain
 The explanation is derived from the same compiler result used for launch. It
 contains environment names but not forwarded secret values.
 
+Linux schema-policy launches can opt in to structured denial evidence:
+
+```sh
+LOG="$(mktemp -t pagu-denial.XXXXXX.jsonl)"
+nix run .#pagu-box -- \
+  --profile worker \
+  --observe-denials "$LOG" \
+  -- codex
+```
+
+The outside supervisor derives exact-file and directory-subtree rules from the
+same compiled `fs.deny` value that emits bubblewrap masks. It appends strict
+denial-evidence v1 JSONL to a path outside sandbox-writable roots. Observation
+is off by default and Linux-only; it rejects noncanonical deny rules, while
+relative or non-UTF-8 syscall paths and path races are not covered.
+
 ### Category profiles
 
 Six checked-in policy-v0 files under [`profiles/`](profiles/) provide stable
@@ -277,7 +293,8 @@ The human and JSON views report top denied/refused paths, approval rate per
 profile/subject, auto/operator/refuse decision counts, and old approved grants
 with no retained launch evidence. Those last rows are conservative prune
 candidates, not proof that a mounted path was never accessed: syscall-level use
-observation is explicitly deferred by ADR-0006.
+evidence remains unavailable. Full-policy denial classification and automatic
+requests remain deferred by ADR-0006.
 
 ## Programmatic API
 
@@ -286,6 +303,7 @@ The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 - strict policy and grant decoding;
 - trusted-user plus narrow-only project policy folding;
 - pure policy compilation and explanation;
+- strict denial-evidence v1 decoding;
 - the request client, session-bound gate core, and Approver port;
 - Codex/Claude resume adapters and the gate-owned box lifecycle;
 - queue reads and resolve-only operator submission;

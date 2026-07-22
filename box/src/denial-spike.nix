@@ -6,7 +6,7 @@ pkgs.stdenv.mkDerivation {
   dontUnpack = true;
   buildPhase = ''
     $CC -std=gnu11 -Wall -Wextra -Werror -O2 \
-      ${./denial-spike.c} -o pagu-denial-spike
+      ${./denial-spike.c} -o pagu-denial-observer
     $CC -std=gnu11 -Wall -Wextra -Werror -Wno-unused-function -O2 -I ${./.} \
       ${./denial-spike-test.c} -o denial-spike-test
   '';
@@ -16,6 +16,7 @@ pkgs.stdenv.mkDerivation {
   '';
   installPhase = ''
     mkdir -p $out/bin
-    install -m755 pagu-denial-spike $out/bin/
+    install -m755 pagu-denial-observer $out/bin/
+    ln -s pagu-denial-observer $out/bin/pagu-denial-spike
   '';
 }

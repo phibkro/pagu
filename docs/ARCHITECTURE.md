@@ -129,9 +129,9 @@ checked-in profile rather than freezing a full profile snapshot.
 | Path                           | Responsibility                                                                                       |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `box/src/linux.nix`            | Nix-built shell adapter, legacy bubblewrap profiles, and schema-policy handoff to the Deno compiler. |
-| `box/src/denial-spike.nix`     | Separate Linux-only build/check boundary for the unsupported feasibility helper.                     |
-| `box/src/denial-spike.c`       | Linux-only seccomp user-notif feasibility helper; one exact supervisor denial, not the live pipeline. |
-| `box/src/denial-spike-test.c`  | Packaged unit falsifier for the spike record and exact-path decision seam.                            |
+| `box/src/denial-spike.nix`     | Linux-only build/check boundary for the opt-in denial observer.                                      |
+| `box/src/denial-spike.c`       | Outside-bwrap seccomp supervisor; compiled deny rules → denial-evidence v1 JSONL.                     |
+| `box/src/denial-spike-test.c`  | Packaged unit falsifier for event encoding, subtree/exact matching, and false positives.              |
 | `box/src/darwin.nix`           | Legacy seatbelt profiles and typed rejection of schema lowering until the Darwin compiler exists.    |
 | `box/src/profiles/`            | Static seatbelt profiles for default, strict, paranoid, and loose compatibility modes.               |
 | `profiles/`                    | Six immutable schema-v0 category policies resolved by name on both CLI surfaces.                     |
@@ -143,6 +143,9 @@ compatibility launcher. With `--gate`, the Linux
 compiler bind-mounts the host socket at `/run/pagu/request.sock` and sets only
 the sandbox path in `PAGU_REQUEST_SOCKET`. `--evidence` writes the actual
 compiled argv after spawn; the gate never passes its operator resolution path.
+With `--observe-denials`, `src/policy/cli.ts` validates the host-only log path
+and wraps that same argv in the C supervisor using deny rules from the same
+`CompiledPolicy`; without the flag it directly spawns bubblewrap as before.
 
 ## Retained SDK primitives
 

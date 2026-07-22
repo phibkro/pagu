@@ -3,6 +3,7 @@ import {
   type BwrapCompileContext,
   compilePolicy,
   explain,
+  isLexicallyCanonicalAbsolutePath,
   loadPolicy,
   PolicyCompileError,
   PolicyValidationError,
@@ -15,6 +16,9 @@ interface Options {
   readonly bwrap?: string;
   readonly gate?: string;
   readonly evidence?: string;
+  readonly observeDenials?: string;
+  readonly denialSupervisor?: string;
+  readonly profileContext?: string;
   readonly supervisorPid?: number;
   readonly command: readonly string[];
 }
@@ -30,6 +34,9 @@ function parseArgs(args: readonly string[]): Options {
   let bwrap: string | undefined;
   let gate: string | undefined;
   let evidence: string | undefined;
+  let observeDenials: string | undefined;
+  let denialSupervisor: string | undefined;
+  let profileContext: string | undefined;
   let supervisorPid: number | undefined;
   let index = 0;
   for (; index < args.length; index++) {
@@ -48,6 +55,15 @@ function parseArgs(args: readonly string[]): Options {
       gate = args[++index] ?? usageError("--gate requires a socket");
     } else if (arg === "--evidence") {
       evidence = args[++index] ?? usageError("--evidence requires a file");
+    } else if (arg === "--observe-denials") {
+      observeDenials = args[++index] ??
+        usageError("--observe-denials requires a file");
+    } else if (arg === "--denial-supervisor") {
+      denialSupervisor = args[++index] ??
+        usageError("--denial-supervisor requires an executable");
+    } else if (arg === "--profile-context") {
+      profileContext = args[++index] ??
+        usageError("--profile-context requires a name");
     } else if (arg === "--supervisor-pid") {
       const value = Number(
         args[++index] ?? usageError("--supervisor-pid requires a PID"),
@@ -68,6 +84,12 @@ function parseArgs(args: readonly string[]): Options {
   if (explainOnly && evidence) {
     usageError("--evidence cannot be combined with --explain");
   }
+  if (explainOnly && observeDenials) {
+    usageError("--observe-denials cannot be combined with --explain");
+  }
+  if (observeDenials && !denialSupervisor) {
+    usageError("internal --denial-supervisor is required for observation");
+  }
   if (!explainOnly && command.length === 0) usageError("no command given");
   if (!explainOnly && !bwrap) usageError("internal --bwrap is required");
   return {
@@ -76,9 +98,50 @@ function parseArgs(args: readonly string[]): Options {
     bwrap,
     gate,
     evidence,
+    observeDenials,
+    denialSupervisor,
+    profileContext,
     supervisorPid,
     command,
   };
+}
+
+function contains(parent: string, child: string): boolean {
+  const root = parent.length > 1 ? parent.replace(/\/+$/, "") : parent;
+  return child === root || child.startsWith(root === "/" ? "/" : `${root}/`);
+}
+
+function canonicalLogPath(path: string): string {
+  if (!path.startsWith("/")) {
+    throw new PolicyCompileError("denial log path must be absolute");
+  }
+  try {
+    return Deno.realPathSync(path);
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotFound)) throw error;
+    const slash = path.lastIndexOf("/");
+    const parent = slash <= 0 ? "/" : path.slice(0, slash);
+    const leaf = path.slice(slash + 1);
+    if (!leaf) {
+      throw new PolicyCompileError("denial log path names a directory");
+    }
+    return `${Deno.realPathSync(parent).replace(/\/$/, "")}/${leaf}`;
+  }
+}
+
+function assertDenialLogBoundary(
+  logPath: string,
+  writablePaths: readonly string[],
+): void {
+  const target = canonicalLogPath(logPath);
+  for (const path of writablePaths) {
+    const root = Deno.realPathSync(path);
+    if (contains(root, target)) {
+      throw new PolicyCompileError(
+        `denial log ${target} is inside sandbox-writable root ${root}`,
+      );
+    }
+  }
 }
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -136,13 +199,42 @@ async function main(): Promise<number> {
     return 0;
   }
   const compiled = compilePolicy(loaded.policy, ctx);
+  if (options.observeDenials) {
+    assertDenialLogBoundary(options.observeDenials, compiled.writablePaths);
+    const ambiguous = compiled.denialRules.find((rule) =>
+      !isLexicallyCanonicalAbsolutePath(rule.path)
+    );
+    if (ambiguous) {
+      throw new PolicyCompileError(
+        `denial observation requires lexically canonical fs.deny paths: ${ambiguous.path}`,
+      );
+    }
+  }
   if (
     options.supervisorPid !== undefined && Deno.ppid !== options.supervisorPid
   ) {
     throw new PolicyCompileError("gate supervisor is not running");
   }
-  const child = new Deno.Command(options.bwrap!, {
-    args: [...compiled.argv, "--", ...options.command],
+  const bwrapArgs = [...compiled.argv, "--", ...options.command];
+  const executable = options.observeDenials
+    ? options.denialSupervisor!
+    : options.bwrap!;
+  const args = options.observeDenials
+    ? [
+      "--log",
+      options.observeDenials,
+      ...compiled.denialRules.flatMap((rule) => [
+        rule.match === "subtree" ? "--deny-tree" : "--deny-path",
+        rule.path,
+      ]),
+      ...(options.profileContext ? ["--profile", options.profileContext] : []),
+      "--",
+      options.bwrap!,
+      ...bwrapArgs,
+    ]
+    : bwrapArgs;
+  const child = new Deno.Command(executable, {
+    args,
     clearEnv: true,
     env: { ...compiled.environment },
     stdin: "inherit",

@@ -27,17 +27,22 @@ remaining work.
 | 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped    |
 | 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped    |
 | 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped    |
-| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                        | pending      |
+| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                        | ✓ verified   |
+| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | lead verify  |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next         |
 
-## Slice 11 feasibility boundary
+## Slice 12 bounded denial-evidence boundary
 
-- Linux seccomp user-notif is the preferred candidate shared with future
-  block/ask; unprivileged viability awaits the lead's outside-box proof.
-- The spike packages one exact-path supervisor denial and a unit-tested JSON
-  record. The lead owns the real outside-box proof command.
-- User-notif alone cannot passively observe the result after `CONTINUE`;
-  policy-aware mediation/path resolution is a full security-boundary slice.
+- Linux seccomp user-notif is verified unprivileged and remains the preferred
+  substrate shared with future block/ask.
+- `--observe-denials` is off by default. When present, the policy adapter passes
+  deny rules derived from its one `CompiledPolicy` value to the outside
+  supervisor and rejects logs below compiled writable roots.
+- Evidence v1 covers lexically canonical UTF-8 absolute `open`/`openat` paths:
+  existing files match exactly; directory and missing-path masks cover
+  descendants. Category profile context is retained when available.
+- Full-policy classification, relative/dirfd/cwd/symlink/rename handling,
+  `openat2`, other syscall families, and tier-3 auto-request remain deferred.
 - `LD_PRELOAD` remains only a partial diagnostic fallback; kernel audit logging
   is disqualified by privileged collection.
 
@@ -141,8 +146,9 @@ Next:
 
 These items follow the complete Slice 5 lifecycle:
 
-- Linux structured denial evidence from the enforcement adapter;
-- syscall-interception observation and automatic request generation;
+- full-policy denial classification and automatic request generation;
+- complete relative-path, dirfd, symlink, rename-race, and syscall-family
+  coverage for denial evidence;
 - reviewed overlay-to-profile promotion and unused-allow pruning tooling;
 - fresh-session creation/discovery so Codex need not start from an existing
   session UUID;

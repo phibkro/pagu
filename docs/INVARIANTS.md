@@ -68,6 +68,7 @@ Enforcement:
 | schema             | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`. |
 | fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.       |
 | compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                         |
+| observer           | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.      |
 | category profiles  | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts. |
 | retained primitive | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                       |
 
@@ -78,6 +79,7 @@ Bound laws:
 - [law: adding allows never revokes monotone]
 - [law: category profiles refuse complete secret floor]
 - [law: category compiled denies final concealment mounts]
+- [law: denial observer truth is the compiled fs.deny set]
 - [law: HOME repository cannot re-expose denied secrets]
 - [law: profile overlay re-composes persistent grants latest curated base]
 - [law: harness state is scoped and deny remains final]
@@ -144,6 +146,7 @@ Enforcement:
 | stream      | `src/events.ts` addresses the append-only entry array by stable offset.                                     |
 | writer      | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence. |
 | launch      | `src/policy/cli.ts` writes evidence from the same `CompiledPolicy` value after spawning bubblewrap.         |
+| denial      | Opt-in `src/policy/cli.ts` rejects writable log roots and passes that `CompiledPolicy`'s deny rules to the outside supervisor. |
 | telemetry   | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store. |
 | API floor   | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                               |
 
@@ -165,6 +168,7 @@ Bound laws:
 - [law: failed rollback keeps child tracked shutdown retry]
 - [law: retained persist grant rebuilds missing projection without ID reuse]
 - [law: telemetry projects denials approvals tiers stale unlaunched grants]
+- [law: denial observation stays opt-in and host-owned]
 
 Review questions:
 

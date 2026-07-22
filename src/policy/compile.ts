@@ -45,6 +45,14 @@ export interface PolicyExplanation {
 export interface CompiledPolicy {
   readonly argv: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
+  /** Expanded from the same fs.deny value used to emit enforcement mounts. */
+  readonly denyPaths: readonly string[];
+  readonly denialRules: readonly {
+    readonly path: string;
+    readonly match: "exact" | "subtree";
+  }[];
+  /** Host roots actually mounted read-write, used by outside evidence guards. */
+  readonly writablePaths: readonly string[];
 }
 
 export class UnsupportedPlatformError extends Error {
@@ -180,9 +188,18 @@ function compile(
   // Denies are emitted after every allow so they cannot be overlaid by a later
   // bind. Missing targets become empty directories: conservative and stable if
   // the underlying RW home gains that path during the run.
-  for (
-    const path of dedupe(policy.fs.deny.map((item) => expandPath(item, ctx)))
-  ) {
+  const denyPaths = dedupe(
+    policy.fs.deny.map((item) => expandPath(item, ctx)),
+  );
+  const denyMaterial = denyPaths.map((path) => ({
+    path,
+    kind: ctx.pathKind(path),
+  }));
+  const denialRules = denyMaterial.map(({ path, kind }) => ({
+    path,
+    match: kind === "file" ? "exact" as const : "subtree" as const,
+  }));
+  for (const { path, kind } of denyMaterial) {
     // A tmpfs HOME makes a nested deny redundant only while no explicit mount
     // overlaps it. `$PWD` may itself be HOME or a denied child; those later
     // mounts would otherwise re-expose the host subtree after the HOME mask.
@@ -193,7 +210,6 @@ function compile(
       contains(allowed, path) || contains(path, allowed)
     );
     const overlapsAllow = overlapsRw || overlapsRo;
-    const kind = ctx.pathKind(path);
     if (
       policy.fs.home === "tmpfs" && contains(ctx.home, path) && !overlapsAllow
     ) continue;
@@ -240,7 +256,11 @@ function compile(
   }
   args.push("--unshare-all", "--die-with-parent");
   if (policy.net) args.push("--share-net");
-  return { argv: args, environment };
+  const writablePaths = dedupe([
+    ...(policy.fs.home === "rw" ? [ctx.home] : []),
+    ...boundRw,
+  ]);
+  return { argv: args, environment, denyPaths, denialRules, writablePaths };
 }
 
 /** Canonical compilation used by the enforcement adapter. Process-mode output

@@ -40,6 +40,7 @@ pkgs.writeShellApplication {
     POLICY_FILE=""
     GATE_SOCKET=""
     LAUNCH_EVIDENCE=""
+    DENIAL_LOG=""
     SUPERVISOR_PID=""
     EXPLAIN=0
     LEGACY_OPTIONS=0
@@ -49,6 +50,7 @@ pkgs.writeShellApplication {
         --policy)       POLICY_FILE="$2"; shift 2 ;;
         --gate)         GATE_SOCKET="$2"; shift 2 ;;
         --evidence)     LAUNCH_EVIDENCE="$2"; shift 2 ;;
+        --observe-denials) DENIAL_LOG="$2"; shift 2 ;;
         --supervisor-pid) SUPERVISOR_PID="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
         --profile=*)    PROFILE="''${1#--profile=}"; PROFILE_EXPLICIT=1; shift ;;
@@ -70,6 +72,8 @@ pkgs.writeShellApplication {
       --policy FILE   validate a schema-v0 JSON policy via the SDK (Linux compile only in v0)
       --gate SOCKET   request channel; schema-policy enforcement is unsupported on Darwin in v0
       --evidence FILE operator-side launch evidence (schema policy is unsupported on Darwin)
+      --observe-denials FILE
+                      unsupported on Darwin; seccomp user-notif is Linux-only
       --supervisor-pid PID
                       owner lifecycle signal (schema policy is unsupported on Darwin)
       --explain       print compiled argv JSON; requires --policy (typed unsupported error on Darwin)
@@ -94,6 +98,11 @@ pkgs.writeShellApplication {
         *)              break ;;
       esac
     done
+
+    [ -z "$DENIAL_LOG" ] || {
+      echo "pagu-box: --observe-denials is unsupported on Darwin" >&2
+      exit 65
+    }
 
     if [ "$PROFILE_EXPLICIT" -eq 1 ] && [ -n "$POLICY_FILE" ]; then
       echo "pagu-box: --profile and --policy are mutually exclusive" >&2
