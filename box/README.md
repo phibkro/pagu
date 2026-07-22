@@ -128,6 +128,13 @@ v1 — minimum viable. Linux + macOS, allowlist via flags, deny-list compiled in
 
 - extendable. No telemetry, no audit log, no secret injection (yet).
 
+The Linux flakes also expose `pagu-denial-spike`, a separate, deliberately
+unsupported seccomp user-notif feasibility helper. It can mediate one exact
+absolute path and emit one JSON denial record for the lead verification in
+[`docs/notes/seccomp-user-notif-spike.md`](docs/notes/seccomp-user-notif-spike.md).
+It wraps but is not enabled by `pagu-box`, and it is not a denial telemetry
+pipeline.
+
 Future surface, in roughly that order of likely arrival:
 
 1. Configurable home-manager-module options mirroring the CLI flags.

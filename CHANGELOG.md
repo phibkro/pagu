@@ -78,6 +78,10 @@ only forward work.
 - Added versioned gate-session metadata and timestamped gate evidence, then
   exposed a standalone telemetry-v0 SDK/CLI projection with human and JSON
   denial, approval, tier, and conservative prune-candidate views.
+- Spiked unprivileged seccomp user-notif with a packaged one-path denial helper
+  and unit-tested JSON record. Outside-box verification remains lead-owned;
+  user-notif cannot passively see bubblewrap's result after `CONTINUE`, and the
+  complete denial pipeline remains deferred.
 
 See `README.md` for current use, `CONTEXT.md` for the trust model, and
 `ROADMAP.md` for planned work.

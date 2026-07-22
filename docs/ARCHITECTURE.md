@@ -129,6 +129,9 @@ checked-in profile rather than freezing a full profile snapshot.
 | Path                           | Responsibility                                                                                       |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `box/src/linux.nix`            | Nix-built shell adapter, legacy bubblewrap profiles, and schema-policy handoff to the Deno compiler. |
+| `box/src/denial-spike.nix`     | Separate Linux-only build/check boundary for the unsupported feasibility helper.                     |
+| `box/src/denial-spike.c`       | Linux-only seccomp user-notif feasibility helper; one exact supervisor denial, not the live pipeline. |
+| `box/src/denial-spike-test.c`  | Packaged unit falsifier for the spike record and exact-path decision seam.                            |
 | `box/src/darwin.nix`           | Legacy seatbelt profiles and typed rejection of schema lowering until the Darwin compiler exists.    |
 | `box/src/profiles/`            | Static seatbelt profiles for default, strict, paranoid, and loose compatibility modes.               |
 | `profiles/`                    | Six immutable schema-v0 category policies resolved by name on both CLI surfaces.                     |

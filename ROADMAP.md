@@ -27,7 +27,19 @@ remaining work.
 | 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped    |
 | 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped    |
 | 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped    |
+| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                        | pending      |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next         |
+
+## Slice 11 feasibility boundary
+
+- Linux seccomp user-notif is the preferred candidate shared with future
+  block/ask; unprivileged viability awaits the lead's outside-box proof.
+- The spike packages one exact-path supervisor denial and a unit-tested JSON
+  record. The lead owns the real outside-box proof command.
+- User-notif alone cannot passively observe the result after `CONTINUE`;
+  policy-aware mediation/path resolution is a full security-boundary slice.
+- `LD_PRELOAD` remains only a partial diagnostic fallback; kernel audit logging
+  is disqualified by privileged collection.
 
 ## Slice 9 shipped boundary
 

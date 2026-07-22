@@ -31,6 +31,9 @@
           default = drv;
           pagu-box = drv;
         }
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          pagu-denial-spike = import ./src/denial-spike.nix { inherit pkgs; };
+        }
       );
 
       homeManagerModules.default = import ./modules/home-manager.nix self;

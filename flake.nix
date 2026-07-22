@@ -56,6 +56,9 @@
           inherit pagu;
           pagu-box = paguBox;
         }
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          pagu-denial-spike = import ./box/src/denial-spike.nix { inherit pkgs; };
+        }
       );
 
       homeManagerModules.default = import ./box/modules/home-manager.nix self;

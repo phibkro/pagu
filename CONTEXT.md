@@ -168,6 +168,16 @@ Security-relevant properties:
 - gate-owned launches use `--evidence` to persist that spawned result's argv,
   environment names, command, and PID.
 
+The bounded seccomp user-notif spike in
+[`box/src/denial-spike.c`](box/src/denial-spike.c) implements and unit-checks an
+unprivileged candidate for denying one intercepted absolute-path syscall and
+formatting structured evidence; the real outside-box proof remains lead-owned.
+It also fixes the limit: user-notif runs before the syscall, so `CONTINUE`
+cannot reveal a later bubblewrap `ENOENT`/`EACCES`. Passive denial observation
+therefore still requires policy-aware mediation or another post-result
+mechanism; the spike is not part of the live enforcement path. See the
+[feasibility report](box/docs/notes/seccomp-user-notif-spike.md).
+
 [`src/policy/cli.ts`](src/policy/cli.ts) is the thin process adapter used by the
 Nix-built `pagu-box` launcher. Linux schema-policy compilation is implemented.
 The macOS schema compiler fails with a typed unsupported-platform error; the
