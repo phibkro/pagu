@@ -53,6 +53,10 @@ remaining work.
 
 ## Published integration boundary
 
+- Schema-v0 grants have one published machine-readable structural contract at
+  `schemas/grant-v0.schema.json`, with `parseGrant` retaining semantic
+  validation. This unblocks downstream grant consumers without creating a
+  second authority format.
 - `pagu-box --evidence` remains the supported harness integration adapter. A
   general arbitrary-harness gate/resume port is deferred to a larger boundary
   design rather than added to Slice 13.

@@ -96,9 +96,12 @@ The standing policy controls:
 - read-only auto-escalation and refusal scopes.
 
 A grant is gate-derived policy data with `parent` and `expires` derivation
-fields. It is not a hand-authored second policy language. Stored grants also
-carry the session, authoritative policy hash, decision-policy hash, original
-path, canonical target, and application state.
+fields. It is not a hand-authored second policy language. Its strict structural
+contract is published at
+[`schemas/grant-v0.schema.json`](schemas/grant-v0.schema.json), while
+`parseGrant` remains the semantic validator. Stored grants also carry the
+session, authoritative policy hash, decision-policy hash, original path,
+canonical target, and application state.
 
 ### Narrow-only composition
 

@@ -53,6 +53,10 @@ export interface GrantV0 extends PolicyV0 {
   readonly expires: string | null;
 }
 
+/** Stable identifier for the published machine-readable GrantV0 contract. */
+export const GRANT_V0_SCHEMA_ID =
+  "https://raw.githubusercontent.com/phibkro/pagu/main/schemas/grant-v0.schema.json";
+
 /** Secrets concealed by every schema-v0 policy. Profiles may add more. */
 export const BUILTIN_SECRET_DENY = ["~/.ssh", "~/.gnupg"] as const;
 

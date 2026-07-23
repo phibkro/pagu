@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/phibkro/pagu/main/schemas/grant-v0.schema.json",
+  "title": "pagu GrantV0",
+  "description": "The strict structural contract for a gate-derived pagu schema-v0 grant.",
+  "$comment": "parseGrant remains the semantic validator: it inserts built-in secret denies, normalizes duplicate arrays, and checks that escalation.refuse is covered by fs.deny.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "subject",
+    "fs",
+    "net",
+    "env",
+    "escalation",
+    "parent",
+    "expires"
+  ],
+  "properties": {
+    "version": { "const": 0 },
+    "subject": { "$ref": "#/$defs/subject" },
+    "fs": { "$ref": "#/$defs/fs" },
+    "net": { "type": "boolean" },
+    "env": { "$ref": "#/$defs/env" },
+    "escalation": { "$ref": "#/$defs/escalation" },
+    "parent": { "type": ["string", "null"] },
+    "expires": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "label"],
+      "properties": {
+        "agent": { "type": "string" },
+        "label": { "type": "string" }
+      }
+    },
+    "fs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["home", "rw", "ro", "deny"],
+      "properties": {
+        "home": { "enum": ["rw", "tmpfs"] },
+        "rw": { "type": "array", "items": { "type": "string" } },
+        "ro": { "type": "array", "items": { "type": "string" } },
+        "deny": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass"],
+      "properties": {
+        "pass": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "autoEscalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fs.ro", "scope"],
+      "properties": {
+        "fs.ro": { "type": "string" },
+        "scope": { "const": "session" }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["auto", "refuse"],
+      "properties": {
+        "auto": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/autoEscalation" }
+        },
+        "refuse": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 0,
+      "subject": { "agent": "codex", "label": "worker" },
+      "fs": {
+        "home": "tmpfs",
+        "rw": ["$PWD"],
+        "ro": [],
+        "deny": ["~/.ssh", "~/.gnupg"]
+      },
+      "net": false,
+      "env": { "pass": [] },
+      "escalation": {
+        "auto": [],
+        "refuse": ["~/.ssh/**", "~/.gnupg/**"]
+      },
+      "parent": null,
+      "expires": null
+    }
+  ]
+}

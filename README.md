@@ -91,6 +91,20 @@ Policy fields:
 `$PWD`, `$HOME`, and `~` are supported path roots. Denies are emitted after
 allows, so deny wins in the compiled mount order.
 
+### Published grant v0 contract
+
+The machine-readable contract for a gate-derived grant is
+[`schemas/grant-v0.schema.json`](schemas/grant-v0.schema.json). Deno consumers
+can address the package export as `@phibkro/pagu/grant-v0.schema.json`; its
+stable schema identifier is also exported by the SDK as `GRANT_V0_SCHEMA_ID`.
+Consumers should pin a pagu release or commit rather than following `main`
+implicitly.
+
+The JSON Schema publishes the strict wire shape. `parseGrant` remains the
+semantic validator for built-in secret denies, normalization, and refusal
+containment. Grants are derived by the gate, never handwritten; `parent` and
+`expires` are mandatory derivation fields even when null.
+
 If a missing denied path sits beneath an overlapping read-only bind (for
 example, advisor launched with `$PWD=$HOME`), Linux lowering fails loud: the
 host could create that path after the check, while bubblewrap cannot install a
