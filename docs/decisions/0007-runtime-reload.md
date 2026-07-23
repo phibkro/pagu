@@ -68,6 +68,17 @@ Verified primary sources (Linux commit
 - [`seccomp_notify_detach`, lines 1457–1496](https://github.com/torvalds/linux/blob/4539944e515183668109bdf4d0c3d7d228383d88/kernel/seccomp.c#L1457-L1496):
   final-release behavior for unreplied notifications.
 
+### Slice-1 spike finding
+
+Deno FD adoption is viable through a small, narrowly exported native library
+loaded with path-scoped FFI. The spike received a manifest-bound seccomp
+listener through `SCM_RIGHTS`, duplicated it with `F_DUPFD_CLOEXEC`, closed the
+original, and completed a real notification through the duplicate. The native
+surface was 65 lines of C with a 58-line typed Deno caller. Direct raw-libc FFI
+also worked, but `UnsafePointer` required unrestricted `--allow-ffi`; that shape
+is rejected. The narrow shim did not balloon, so this ADR's native-shim revisit
+condition was not triggered.
+
 ## Decision
 
 ### 1. Gate data reload and gate binary reload are separate capabilities
