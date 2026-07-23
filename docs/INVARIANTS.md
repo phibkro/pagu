@@ -43,6 +43,8 @@ Bound laws:
 - [law: auto grants only requested child scope]
 - [law: project policy cannot widen user authority]
 - [law: fail secure unavailable gate leaves narrower box running]
+- [law: Codex nonce attribution ignores staggered decoy session]
+- [law: fresh widen resumes discovered session id]
 
 Review questions:
 
@@ -163,6 +165,7 @@ Bound laws:
 - [law: operator authority paths stay outside sandbox policy roots]
 - [law: TOCTOU relaunch resolves again after old sandbox stops]
 - [law: widened child rolls back if durable launch evidence fails]
+- [law: fresh gate session retains discovered id]
 - [law: operator boundary rechecked after old sandbox stops]
 - [law: operator state directory rejects replaceable ancestry symlinks]
 - [law: failed rollback keeps child tracked shutdown retry]

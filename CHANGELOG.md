@@ -47,6 +47,14 @@ only forward work.
 - Added TTY plus host-only queue/resolution adapters over one Approver port in
   `src/gate/operator.ts`. The sandbox request protocol remains append-only.
 - Added retained launch/failure/spend events and exact post-spawn box evidence.
+- Added fresh gate-owned Codex/Claude launch. Codex binds the new rollout that
+  contains its generated prompt nonce while ignoring concurrent decoys; Claude
+  binds a caller-assigned `--session-id`. Gate-session v2 retains that UUID and
+  widening resumes it.
+- Accepted cooperative concurrent peers as the Slice 13 threat boundary and
+  deferred hostile shared-store isolation. Retained `pagu-box --evidence` as
+  the supported adapter while deferring a general arbitrary-harness gate/resume
+  port.
 - Versioned box launch evidence as v1 when cwd became part of the exact launch.
 - Enforced that gate state/socket stay outside sandbox mounts and the standing
   policy stays non-writable; the same proof reruns after the old sandbox stops.
@@ -73,8 +81,8 @@ only forward work.
   auto seeds.
 - Added named category resolution to `pagu-box` and `pagu gate` while retaining
   explicit `--policy` and the four legacy compatibility profiles.
-- Added CI assertions for advisor read-only behavior, journal exclusivity,
-  Herdr control-plane concealment, and deny-last compiled mounts.
+- Added CI assertions for advisor read-only behavior, journal exclusivity, Herdr
+  control-plane concealment, and deny-last compiled mounts.
 - Added versioned gate-session metadata and timestamped gate evidence, then
   exposed a standalone telemetry-v0 SDK/CLI projection with human and JSON
   denial, approval, tier, and conservative prune-candidate views.

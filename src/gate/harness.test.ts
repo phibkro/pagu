@@ -1,5 +1,15 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { HarnessInferenceError, resolveHarness } from "./harness.ts";
+import {
+  createFreshSessionPlanner,
+  HarnessInferenceError,
+  NewSessionDiscoveryError,
+  resolveHarness,
+} from "./harness.ts";
+import {
+  claudeResumeAdapter,
+  codexNonceMarker,
+  codexResumeAdapter,
+} from "./resume.ts";
 
 async function withHome(
   run: (home: string) => Promise<void>,
@@ -91,4 +101,128 @@ Deno.test("inference rejects traversal and non-file session nodes", async () => 
       "invalid session ID",
     );
   });
+});
+
+Deno.test("law: Codex nonce attribution ignores staggered decoy session", async () => {
+  const old = "00000000-0000-0000-0000-000000000001";
+  const decoy = "00000000-0000-0000-0000-000000000002";
+  const ours = "00000000-0000-0000-0000-000000000013";
+  const nonce = "00000000-0000-0000-0000-000000000099";
+  let poll = 0;
+  const planner = createFreshSessionPlanner(
+    codexResumeAdapter(),
+    "/home/test",
+    {
+      uuid: () => nonce,
+      codexSessions: () => {
+        poll++;
+        if (poll === 1) return Promise.resolve(new Map([[old, "/old"]]));
+        if (poll === 2) {
+          return Promise.resolve(
+            new Map([
+              [old, "/old"],
+              [decoy, "/decoy"],
+            ]),
+          );
+        }
+        return Promise.resolve(
+          new Map([
+            [old, "/old"],
+            [decoy, "/decoy"],
+            [ours, "/ours"],
+          ]),
+        );
+      },
+      readText: (path) =>
+        Promise.resolve(
+          path === "/old"
+            ? codexNonceMarker(nonce)
+            : path === "/ours" && poll >= 4
+            ? `event ${codexNonceMarker(nonce)}`
+            : "unrelated content",
+        ),
+      attempts: 5,
+      delayMs: 0,
+    },
+  );
+  const fresh = await planner.prepare();
+  assertEquals(fresh.command.at(-1)?.includes(codexNonceMarker(nonce)), true);
+  assertEquals(await fresh.bind(), ours);
+});
+
+Deno.test("Codex nonce attribution fails loud when marker never appears", async () => {
+  const nonce = "00000000-0000-0000-0000-000000000099";
+  let poll = 0;
+  const planner = createFreshSessionPlanner(
+    codexResumeAdapter(),
+    "/home/test",
+    {
+      uuid: () => nonce,
+      codexSessions: () => {
+        poll++;
+        return Promise.resolve(
+          poll === 1
+            ? new Map()
+            : new Map([["00000000-0000-0000-0000-000000000002", "/decoy"]]),
+        );
+      },
+      readText: () => Promise.resolve("no marker"),
+      attempts: 2,
+      delayMs: 0,
+    },
+  );
+  const fresh = await planner.prepare();
+  await assertRejects(
+    () => fresh.bind(),
+    NewSessionDiscoveryError,
+    "nonce marker never appeared",
+  );
+});
+
+Deno.test("Codex nonce attribution rejects duplicate marker ownership", async () => {
+  const nonce = "00000000-0000-0000-0000-000000000099";
+  let poll = 0;
+  const fresh = await createFreshSessionPlanner(
+    codexResumeAdapter(),
+    "/home/test",
+    {
+      uuid: () => nonce,
+      codexSessions: () => {
+        poll++;
+        return Promise.resolve(
+          poll === 1 ? new Map() : new Map([
+            ["00000000-0000-0000-0000-000000000002", "/one"],
+            ["00000000-0000-0000-0000-000000000003", "/two"],
+          ]),
+        );
+      },
+      readText: () => Promise.resolve(codexNonceMarker(nonce)),
+      attempts: 1,
+      delayMs: 0,
+    },
+  ).prepare();
+  await assertRejects(
+    () => fresh.bind(),
+    NewSessionDiscoveryError,
+    "nonce marker appeared in multiple sessions",
+  );
+});
+
+Deno.test("Claude fresh binds assigned session id without discovery", async () => {
+  const assigned = "00000000-0000-0000-0000-000000000014";
+  let discoveryPolls = 0;
+  const fresh = await createFreshSessionPlanner(
+    claudeResumeAdapter(),
+    "/home/test",
+    {
+      uuid: () => assigned,
+      codexSessions: () => {
+        discoveryPolls++;
+        return Promise.resolve(new Map());
+      },
+    },
+  ).prepare();
+  assertEquals(fresh.command, ["claude", "--session-id", assigned]);
+  assertEquals(await fresh.bind(), assigned);
+  assertEquals(discoveryPolls, 0);
 });

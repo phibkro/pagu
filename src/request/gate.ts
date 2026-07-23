@@ -98,6 +98,9 @@ export interface CreateGateOptions {
   /** Harness owning this gate run. When present, retained session metadata is
    * emitted as v1 with the exact inferred or explicitly selected adapter. */
   readonly harness?: string;
+  /** Fresh runs retain the discovered session ID and initial command mode in
+   * gate-session v2; existing resume runs retain the v1 wire shape. */
+  readonly initial?: "fresh" | "resume";
   /** Curated category name, or null for an explicit custom policy. Retained in
    * the event log so telemetry needs no parallel session registry. */
   readonly profile?: string | null;
@@ -232,6 +235,25 @@ function withPersistentRo(base: PolicyV0, ro: readonly string[]): PolicyV0 {
   };
 }
 
+async function loadStandingPolicyPair(
+  paths: GatePaths,
+): Promise<{ readonly base: PolicyV0; readonly standing: PolicyV0 }> {
+  const base = parsePolicy(await readJson(paths.userPolicy));
+  return {
+    base,
+    standing: withPersistentRo(
+      base,
+      await loadProfileOverlay(paths.profileOverlay),
+    ),
+  };
+}
+
+/** Materialize the same standing authority a fresh launch receives before its
+ * new harness session ID exists. Session-scoped grants cannot apply yet. */
+export async function loadStandingPolicy(paths: GatePaths): Promise<PolicyV0> {
+  return (await loadStandingPolicyPair(paths)).standing;
+}
+
 async function persistStandingPolicy(
   paths: GatePaths,
   base: PolicyV0,
@@ -294,11 +316,9 @@ export function canonicalizeGrantPath(path: string): string | null {
 
 /** Construct one session-bound outside-sandbox gate. All mutations serialize. */
 export async function createGate(options: CreateGateOptions): Promise<Gate> {
-  const basePolicy = parsePolicy(await readJson(options.paths.userPolicy));
-  let standingPolicy = withPersistentRo(
-    basePolicy,
-    await loadProfileOverlay(options.paths.profileOverlay),
-  );
+  const loaded = await loadStandingPolicyPair(options.paths);
+  const basePolicy = loaded.base;
+  let standingPolicy = loaded.standing;
   const grants = await loadStored(options.paths.sessionGrants);
   const canonicalize = options.canonicalize ?? canonicalizeGrantPath;
   let log: Entry[];
@@ -800,6 +820,13 @@ export async function createGate(options: CreateGateOptions): Promise<Gate> {
   await append(
     options.harness === undefined
       ? { ...sessionMetadata, version: 0 }
+      : options.initial === "fresh"
+      ? {
+        ...sessionMetadata,
+        version: 2,
+        harness: options.harness,
+        initial: "fresh",
+      }
       : { ...sessionMetadata, version: 1, harness: options.harness },
   );
 

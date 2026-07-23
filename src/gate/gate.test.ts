@@ -33,11 +33,13 @@ import {
 } from "./operator.ts";
 import {
   claudeResumeAdapter,
+  codexNonceMarker,
   codexResumeAdapter,
   composeHarnessState,
   resumeAdapter,
   ResumeAdapterNotVerifiedError,
 } from "./resume.ts";
+import { NewSessionDiscoveryError } from "./harness.ts";
 
 function policy(ro: readonly string[] = []): PolicyV0 {
   return {
@@ -176,6 +178,16 @@ Deno.test("operator state directory rejects replaceable ancestry and symlinks", 
 
 Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound", () => {
   const codex = codexResumeAdapter();
+  const nonce = "00000000-0000-0000-0000-000000000099";
+  assertEquals(codex.freshCommand(nonce), [
+    "codex",
+    "-c",
+    "approval_policy=never",
+    "-c",
+    "sandbox_mode=danger-full-access",
+    "pagu fresh-session attribution marker; no task is requested.\n\n" +
+    codexNonceMarker(nonce),
+  ]);
   assertEquals(codex.command("session-1"), [
     "codex",
     "resume",
@@ -195,6 +207,11 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     "--resume",
     "session-2",
   ]);
+  assertEquals(claudeResumeAdapter().freshCommand("session-2"), [
+    "claude",
+    "--session-id",
+    "session-2",
+  ]);
   assertEquals(
     claudeResumeAdapter().command("session-2").includes("--continue"),
     false,
@@ -203,6 +220,190 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     () => resumeAdapter("unverified"),
     ResumeAdapterNotVerifiedError,
   );
+});
+
+Deno.test("law: fresh widen resumes discovered session id", async () => {
+  if (Deno.build.os === "windows") return;
+  const root = await Deno.makeTempDir();
+  const socket = `${root}/gate.sock`;
+  const listener = Deno.listen({ transport: "unix", path: socket });
+  const discovered = "00000000-0000-0000-0000-000000000013";
+  const commands: string[][] = [];
+  const running: RunningBox = { stop: () => Promise.resolve() };
+  try {
+    const granted = `${root}/granted`;
+    await Deno.mkdir(granted);
+    const launcher = createBoxLauncher({
+      box: "pagu-box",
+      gateSocket: socket,
+      stateDir: root,
+      resume: codexResumeAdapter(),
+      fresh: {
+        prepare: () =>
+          Promise.resolve({
+            command: codexResumeAdapter().freshCommand("nonce"),
+            bind: () => Promise.resolve(discovered),
+          }),
+      },
+      spawn: (input) => {
+        commands.push([...input.resume]);
+        return Promise.resolve({
+          running,
+          evidence: {
+            cwd: input.cwd,
+            pid: 1,
+            argv: [],
+            environment: [],
+            resume: [...input.resume],
+          },
+        });
+      },
+    });
+    await launcher.start(policy());
+    assertEquals(launcher.session(), discovered);
+    await launcher.apply({
+      id: "pg1",
+      request: "r1",
+      scope: "session",
+      session: discovered,
+      authority: "sha256:a",
+      decidedPolicy: "sha256:a",
+      requestedFsRo: granted,
+      canonicalFsRo: granted,
+      policy: policy([granted]),
+    });
+    assertEquals(commands, [
+      [
+        "codex",
+        "-c",
+        "approval_policy=never",
+        "-c",
+        "sandbox_mode=danger-full-access",
+        "pagu fresh-session attribution marker; no task is requested.\n\n" +
+        codexNonceMarker("nonce"),
+      ],
+      [
+        "codex",
+        "resume",
+        discovered,
+        "-c",
+        "approval_policy=never",
+        "-c",
+        "sandbox_mode=danger-full-access",
+      ],
+    ]);
+  } finally {
+    listener.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("fresh attribution failure stops child and leaves session unbound", async () => {
+  if (Deno.build.os === "windows") return;
+  const root = await Deno.makeTempDir();
+  const socket = `${root}/gate.sock`;
+  const listener = Deno.listen({ transport: "unix", path: socket });
+  let stops = 0;
+  const launcher = createBoxLauncher({
+    box: "pagu-box",
+    gateSocket: socket,
+    stateDir: root,
+    resume: codexResumeAdapter(),
+    fresh: {
+      prepare: () =>
+        Promise.resolve({
+          command: codexResumeAdapter().freshCommand("nonce"),
+          bind: () =>
+            Promise.reject(
+              new NewSessionDiscoveryError("nonce marker never appeared"),
+            ),
+        }),
+    },
+    spawn: (input) =>
+      Promise.resolve({
+        running: {
+          stop() {
+            stops++;
+            return Promise.resolve();
+          },
+        },
+        evidence: {
+          cwd: input.cwd,
+          pid: 1,
+          argv: [],
+          environment: [],
+          resume: [...input.resume],
+        },
+      }),
+  });
+  try {
+    await assertRejects(
+      () => launcher.start(policy()),
+      NewSessionDiscoveryError,
+      "nonce marker never appeared",
+    );
+    assertEquals(stops, 1);
+    assertEquals(launcher.session(), undefined);
+  } finally {
+    await launcher.close();
+    listener.close();
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("failed fresh cleanup keeps child tracked for close retry", async () => {
+  if (Deno.build.os === "windows") return;
+  const root = await Deno.makeTempDir();
+  const socket = `${root}/gate.sock`;
+  const listener = Deno.listen({ transport: "unix", path: socket });
+  let stops = 0;
+  const launcher = createBoxLauncher({
+    box: "pagu-box",
+    gateSocket: socket,
+    stateDir: root,
+    resume: codexResumeAdapter(),
+    fresh: {
+      prepare: () =>
+        Promise.resolve({
+          command: codexResumeAdapter().freshCommand("nonce"),
+          bind: () =>
+            Promise.reject(
+              new NewSessionDiscoveryError("nonce marker never appeared"),
+            ),
+        }),
+    },
+    spawn: (input) =>
+      Promise.resolve({
+        running: {
+          stop() {
+            stops++;
+            return stops === 1
+              ? Promise.reject(new Error("first stop failed"))
+              : Promise.resolve();
+          },
+        },
+        evidence: {
+          cwd: input.cwd,
+          pid: 1,
+          argv: [],
+          environment: [],
+          resume: [...input.resume],
+        },
+      }),
+  });
+  try {
+    await assertRejects(
+      () => launcher.start(policy()),
+      AggregateError,
+      "fresh attribution failed and child could not stop",
+    );
+    assertEquals(launcher.session(), undefined);
+    await launcher.close();
+    assertEquals(stops, 2);
+  } finally {
+    listener.close();
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("box launch evidence v1 rejects old or unknown shapes", () => {

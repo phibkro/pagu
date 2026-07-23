@@ -127,9 +127,11 @@ export interface GateServer {
   close(): Promise<void>;
 }
 
+export type RequestGate = Pick<Gate, "handle" | "close">;
+
 /** Serve the deliberately narrow append-and-await endpoint. */
 export async function serveGate(
-  options: { readonly socket: string; readonly gate: Gate },
+  options: { readonly socket: string; readonly gate: RequestGate },
 ): Promise<GateServer> {
   await Deno.mkdir(dirname(options.socket), { recursive: true, mode: 0o700 });
   try {

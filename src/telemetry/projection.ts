@@ -3,9 +3,13 @@ import type {
   Entry,
   GateSessionEntry,
   GateSessionEntryV0,
+  GateSessionEntryV1,
 } from "../log/index.ts";
 
-type AnyGateSessionEntry = GateSessionEntry | GateSessionEntryV0;
+type AnyGateSessionEntry =
+  | GateSessionEntry
+  | GateSessionEntryV0
+  | GateSessionEntryV1;
 
 /** One canonical event log collected for telemetry projection. */
 export interface TelemetryLogV0 {

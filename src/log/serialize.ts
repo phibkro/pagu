@@ -85,7 +85,11 @@ export function serializeEntry(e: Entry): string {
         profile: e.profile,
         subjectAgent: e.subjectAgent,
         subjectLabel: e.subjectLabel,
-        ...(e.version === 1 ? { harness: e.harness } : {}),
+        ...(e.version === 1
+          ? { harness: e.harness }
+          : e.version === 2
+          ? { harness: e.harness, initial: e.initial }
+          : {}),
       });
       break;
     case "request":

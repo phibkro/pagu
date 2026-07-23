@@ -179,13 +179,26 @@ flags cannot be combined with `--policy` or a category profile.
 
 ## Run a gate-owned harness session
 
-The relaunch lifecycle requires the gate to own the boxed child. Supply an
-existing session UUID. Unless `--harness` explicitly overrides discovery, the
-gate identifies Codex from `~/.codex/sessions/**/rollout-*-UUID.jsonl` or Claude
-from `~/.claude/projects/*/UUID.jsonl`; both and neither fail loud. The selected
-harness is retained in gate-session v1 evidence. Codex resumes the exact UUID
-with its inner approval and sandbox layers disabled because the outer box is the
-enforced boundary. Claude resumes the exact UUID with `claude --resume UUID`.
+The relaunch lifecycle requires the gate to own the boxed child. For an existing
+session UUID, the gate identifies Codex from
+`~/.codex/sessions/**/rollout-*-UUID.jsonl` or Claude from
+`~/.claude/projects/*/UUID.jsonl` unless `--harness` overrides inference; both
+and neither fail loud. The selected harness is retained in gate-session v1
+evidence. Codex resumes the exact UUID with its inner approval and sandbox
+layers disabled because the outer box is the enforced boundary. Claude resumes
+the exact UUID with `claude --resume UUID`.
+
+For a new agent, supply `--harness codex|claude` and omit `--session` (or add
+`--fresh`). The initial box runs the harness's fresh command with the same
+authenticated state bind. For Codex, the gate adds an inert nonce marker to the
+initial prompt, snapshots existing session IDs, and binds only the new rollout
+whose content contains that marker. Concurrent unrelated rollouts are ignored,
+and an unflushed marker keeps discovery polling. This attribution assumes
+cooperative peers; hostile writers to the shared Codex session store remain
+outside the current boundary. Claude receives a generated UUID through
+`--session-id` and skips discovery entirely. Gate-session v2 records the
+attributed or assigned UUID and fresh initial mode, and every later widen
+resumes that UUID with context.
 
 Immediately before launch, the gate composes only the selected harness's state:
 Codex receives read-write `~/.codex`; Claude receives `~/.claude` and
@@ -208,6 +221,17 @@ nix run .#pagu -- gate \
   --state-dir "$PAGU_STATE"
 ```
 
+A fresh worker launch is:
+
+```sh
+PAGU_FRESH_STATE="${XDG_RUNTIME_DIR:?}/pagu/fresh-codex-verify"
+nix run .#pagu -- gate \
+  --profile worker \
+  --harness codex \
+  --fresh \
+  --state-dir "$PAGU_FRESH_STATE"
+```
+
 Use `--profile worker` in place of `--policy "$PAGU_POLICY"` to start from a
 curated category. The checked-in profile remains the shared immutable base; the
 gate refreshes a private materialization of that base on every start, then
@@ -221,10 +245,10 @@ or sandbox-writable policy. The default state directory is
 private directory such as the `mktemp` result above. Startup rejects symlinks,
 foreign ownership, broad modes, and replaceable non-sticky ancestry.
 
-The gate starts `pagu-box` itself. Pass `--harness codex|claude` to skip session
-discovery. `HarnessInferenceError` names both failed location checks;
-`ResumeAdapterNotVerifiedError` remains the fail-loud behavior for an explicit
-unverified harness name.
+The gate starts `pagu-box` itself. On an existing session, pass
+`--harness codex|claude` to skip harness inference. `HarnessInferenceError`
+names both failed location checks; `ResumeAdapterNotVerifiedError` remains the
+fail-loud behavior for an explicit unverified harness name.
 
 The in-sandbox SDK call is:
 

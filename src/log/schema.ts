@@ -19,6 +19,7 @@ export type Entry =
   | RevokeEntry
   | GateSessionEntryV0
   | GateSessionEntryV1
+  | GateSessionEntryV2
   | FileRequestEntry
   | RequestDecisionEntry
   | PolicyGrantEntry
@@ -38,17 +39,23 @@ interface GateSessionBase {
   subjectLabel: string;
 }
 
-/** Current gate-session wire shape; v0 remains separately readable. */
+/** Current gate-session wire shape; v0/v1 remain separately readable. */
 export interface GateSessionEntry extends GateSessionBase {
-  version: 1;
+  version: 2;
   harness: string;
+  initial: "fresh";
 }
 
 export interface GateSessionEntryV0 extends GateSessionBase {
   version: 0;
 }
 
-export interface GateSessionEntryV1 extends GateSessionEntry {
+export interface GateSessionEntryV1 extends GateSessionBase {
+  version: 1;
+  harness: string;
+}
+
+export interface GateSessionEntryV2 extends GateSessionEntry {
 }
 
 /** A sandbox-originated request. The gate allocates `id` before append. */

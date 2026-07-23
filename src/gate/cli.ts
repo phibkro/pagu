@@ -6,8 +6,17 @@ import {
 } from "./operator.ts";
 import { createBoxLauncher } from "./relaunch.ts";
 import { resumeAdapter } from "./resume.ts";
-import { resolveHarness } from "./harness.ts";
-import { createGate, type GatePaths, serveGate } from "../request/index.ts";
+import { createFreshSessionPlanner, resolveHarness } from "./harness.ts";
+import {
+  createGate,
+  type FileRequestInput,
+  type Gate,
+  type GateDecision,
+  type GatePaths,
+  loadStandingPolicy,
+  type RequestGate,
+  serveGate,
+} from "../request/index.ts";
 import { assertOperatorBoundary } from "./boundary.ts";
 import { ensurePrivateStateDirectory } from "./state.ts";
 import {
@@ -15,16 +24,18 @@ import {
   type CategoryProfileName,
   isCategoryProfile,
   parsePolicy,
+  policyIdentity,
 } from "../policy/index.ts";
 import { collectTelemetry, formatTelemetry } from "../telemetry/index.ts";
 
-interface GateOptions {
+export interface GateOptions {
   readonly command: "gate";
   readonly policy: string;
   readonly profile: string | null;
   readonly socket: string;
   readonly stateDir: string;
-  readonly session: string;
+  readonly session: string | undefined;
+  readonly fresh: boolean;
   readonly harness: string | undefined;
   readonly box: string;
 }
@@ -51,6 +62,7 @@ function usage(message?: string): never {
   console.error(
     "usage:\n" +
       "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
       "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
   );
@@ -61,7 +73,7 @@ function value(args: readonly string[], index: number, flag: string): string {
   return args[index + 1] ?? usage(`${flag} requires a value`);
 }
 
-function parseArgs(args: readonly string[]): Options {
+export function parseArgs(args: readonly string[]): Options {
   if (args[0] === "-h" || args[0] === "--help") usage();
   const command = args[0];
   if (command !== "gate" && command !== "resolve" && command !== "telemetry") {
@@ -73,6 +85,7 @@ function parseArgs(args: readonly string[]): Options {
   let stateDir: string | undefined;
   let session: string | undefined;
   let harness: string | undefined;
+  let fresh = false;
   let box = "pagu-box";
   let request: string | undefined;
   let scope: ResolveOptions["scope"] | undefined;
@@ -89,6 +102,7 @@ function parseArgs(args: readonly string[]): Options {
     else if (arg === "--state-dir") stateDir = value(args, index++, arg);
     else if (arg === "--session") session = value(args, index++, arg);
     else if (arg === "--harness") harness = value(args, index++, arg);
+    else if (arg === "--fresh") fresh = true;
     else if (arg === "--box") box = value(args, index++, arg);
     else if (arg === "--request") request = value(args, index++, arg);
     else if (arg === "--scope") {
@@ -131,12 +145,15 @@ function parseArgs(args: readonly string[]): Options {
   if (profile && !isCategoryProfile(profile)) {
     usage(`unknown category profile ${JSON.stringify(profile)}`);
   }
-  if (!session) usage("gate requires --session");
+  if (fresh && session) usage("--fresh and --session are mutually exclusive");
+  fresh ||= session === undefined;
+  if (fresh && !harness) usage("fresh gate launch requires --harness");
   const runtime = Deno.env.get("XDG_RUNTIME_DIR");
   if (!stateDir && !runtime) {
     usage("gate requires --state-dir when XDG_RUNTIME_DIR is unset");
   }
-  stateDir ??= `${runtime}/pagu/${encodeURIComponent(session)}`;
+  const stateKey = session ?? `fresh-${harness}-${crypto.randomUUID()}`;
+  stateDir ??= `${runtime}/pagu/${encodeURIComponent(stateKey)}`;
   if (profile) {
     const directory = Deno.env.get("PAGU_PROFILE_DIR") ?? decodeURIComponent(
       new URL("../../profiles", import.meta.url).pathname,
@@ -152,8 +169,51 @@ function parseArgs(args: readonly string[]): Options {
     socket: socket ?? `${stateDir}/request.sock`,
     stateDir,
     session,
+    fresh,
     harness,
     box,
+  };
+}
+
+export interface DeferredRequestGate extends RequestGate {
+  bind(gate: RequestGate): void;
+  fail(error: unknown): void;
+}
+
+export function createDeferredRequestGate(): DeferredRequestGate {
+  let gate: RequestGate | undefined;
+  let failure: unknown;
+  const waiting: Array<{
+    readonly input: FileRequestInput;
+    readonly resolve: (decision: GateDecision) => void;
+    readonly reject: (error: unknown) => void;
+  }> = [];
+  return {
+    handle(input) {
+      if (gate) return gate.handle(input);
+      if (failure !== undefined) return Promise.reject(failure);
+      return new Promise((resolve, reject) => {
+        waiting.push({ input, resolve, reject });
+      });
+    },
+    bind(bound) {
+      if (gate || failure !== undefined) {
+        throw new Error("deferred request gate is already settled");
+      }
+      gate = bound;
+      for (const item of waiting.splice(0)) {
+        void bound.handle(item.input).then(item.resolve, item.reject);
+      }
+    },
+    fail(error) {
+      if (gate || failure !== undefined) return;
+      failure = error;
+      for (const item of waiting.splice(0)) item.reject(error);
+    },
+    close() {
+      if (gate) gate.close();
+      else this.fail(new Error("gate closed before session discovery"));
+    },
   };
 }
 
@@ -240,11 +300,10 @@ async function materializeProfileBase(options: GateOptions): Promise<string> {
 }
 
 async function gate(options: GateOptions): Promise<void> {
-  const harness = await resolveHarness(
-    options.harness,
-    options.session,
-    Deno.env.get("HOME") ?? "/nonexistent",
-  );
+  const home = Deno.env.get("HOME") ?? "/nonexistent";
+  const harness = options.fresh
+    ? options.harness!
+    : await resolveHarness(options.harness, options.session!, home);
   await ensurePrivateStateDirectory(options.stateDir);
   const policy = await materializeProfileBase(options);
   const paths: GatePaths = {
@@ -286,46 +345,78 @@ async function gate(options: GateOptions): Promise<void> {
   );
   let reportFatal!: (reason: string) => void;
   const fatal = new Promise<string>((resolve) => reportFatal = resolve);
+  const adapter = resumeAdapter(harness);
   const launcher = createBoxLauncher({
     box: options.box,
     gateSocket: options.socket,
     stateDir: options.stateDir,
     session: options.session,
-    resume: resumeAdapter(harness),
+    resume: adapter,
+    fresh: options.fresh ? createFreshSessionPlanner(adapter, home) : undefined,
     validatePolicy: (policy) =>
       assertOperatorBoundary(policy, boundaryPaths, boundaryContext),
     onFatal: reportFatal,
   });
   const terminal = Deno.stdin.isTerminal() ? terminalDecision() : undefined;
-  const core = await createGate({
-    paths,
-    session: options.session,
-    harness,
-    profile: options.profile,
-    approver: createOperatorApprover({ paths: operatorPaths, terminal }),
-    apply: (application) => {
-      assertOperatorBoundary(
-        application.policy,
-        boundaryPaths,
-        boundaryContext,
-      );
-      return launcher.apply(application);
-    },
-    validatePolicy: (policy) =>
-      assertOperatorBoundary(policy, boundaryPaths, boundaryContext),
-    onFatal: reportFatal,
+  const createCore = async (session: string): Promise<Gate> => {
+    const core = await createGate({
+      paths,
+      session,
+      harness,
+      initial: options.fresh ? "fresh" : "resume",
+      profile: options.profile,
+      approver: createOperatorApprover({ paths: operatorPaths, terminal }),
+      apply: (application) => {
+        assertOperatorBoundary(
+          application.policy,
+          boundaryPaths,
+          boundaryContext,
+        );
+        return launcher.apply(application);
+      },
+      validatePolicy: (policy) =>
+        assertOperatorBoundary(policy, boundaryPaths, boundaryContext),
+      onFatal: reportFatal,
+    });
+    assertOperatorBoundary(
+      core.effectivePolicy(),
+      boundaryPaths,
+      boundaryContext,
+    );
+    return core;
+  };
+  let core: Gate | undefined;
+  const deferred = options.fresh ? createDeferredRequestGate() : undefined;
+  if (!options.fresh) core = await createCore(options.session!);
+  const server = await serveGate({
+    socket: options.socket,
+    gate: deferred ?? core!,
   });
-  assertOperatorBoundary(
-    core.effectivePolicy(),
-    boundaryPaths,
-    boundaryContext,
-  );
-  const server = await serveGate({ socket: options.socket, gate: core });
   try {
-    const initial = await launcher.start(core.effectivePolicy());
-    await core.recordInitialLaunch(initial);
+    const bootstrapPolicy = core?.effectivePolicy() ??
+      await loadStandingPolicy(paths);
+    const initial = await launcher.start(bootstrapPolicy);
+    if (options.fresh) {
+      const discovered = launcher.session();
+      if (!discovered) {
+        throw new Error("fresh session attribution did not bind");
+      }
+      core = await createCore(discovered);
+      if (
+        await policyIdentity(core.effectivePolicy()) !==
+          await policyIdentity(bootstrapPolicy)
+      ) {
+        throw new Error(
+          "discovered session unexpectedly changed initial standing policy",
+        );
+      }
+      await core.recordInitialLaunch(initial);
+      deferred!.bind(core);
+    }
+    if (!core) throw new Error("gate core was not bound to a session");
+    if (!options.fresh) await core.recordInitialLaunch(initial);
     console.error(
-      `pagu gate: session ${options.session} listening on ${options.socket}`,
+      `pagu gate: session ${launcher.session()} listening on ${options.socket}`,
     );
     await Promise.race([
       new Promise<void>((done) => {
@@ -338,9 +429,10 @@ async function gate(options: GateOptions): Promise<void> {
       }),
     ]);
   } finally {
+    deferred?.fail(new Error("gate stopped during session discovery"));
     await server.close();
     await launcher.close();
-    core.events.close();
+    core?.events.close();
   }
 }
 

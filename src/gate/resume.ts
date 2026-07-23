@@ -14,7 +14,14 @@ export interface ResumeAdapter {
   readonly harness: string;
   /** Trusted host state mounted RW into this harness's otherwise isolated HOME. */
   readonly stateRw: readonly string[];
+  /** Build a fresh command from a trusted nonce (Codex) or assigned UUID
+   * (Claude). The fresh-session planner owns generation and attribution. */
+  freshCommand(attribution: string): readonly string[];
   command(session: string): readonly string[];
+}
+
+export function codexNonceMarker(nonce: string): string {
+  return `<<<PAGU_SESSION_NONCE:${nonce}>>>`;
 }
 
 /** Compose harness-local authentication/session state over a standing policy.
@@ -38,6 +45,15 @@ export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
   return {
     harness: "codex",
     stateRw: ["$HOME/.codex"],
+    freshCommand: (nonce) => [
+      executable,
+      "-c",
+      "approval_policy=never",
+      "-c",
+      "sandbox_mode=danger-full-access",
+      "pagu fresh-session attribution marker; no task is requested.\n\n" +
+      codexNonceMarker(nonce),
+    ],
     command: (session) => [
       executable,
       "resume",
@@ -59,6 +75,7 @@ export function claudeResumeAdapter(executable = "claude"): ResumeAdapter {
   return {
     harness: "claude",
     stateRw: ["$HOME/.claude", "$HOME/.claude.json"],
+    freshCommand: (session) => [executable, "--session-id", session],
     command: (session) => [executable, "--resume", session],
   };
 }

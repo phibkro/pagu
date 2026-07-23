@@ -148,6 +148,35 @@ Deno.test("gate session metadata is versioned and retained before initial launch
   }
 });
 
+Deno.test("law: fresh gate session retains discovered id", async () => {
+  const { root, paths } = await tempPaths();
+  try {
+    await Deno.writeTextFile(paths.userPolicy, JSON.stringify(policy()));
+    const gate = await createGate({
+      paths,
+      session: "00000000-0000-0000-0000-000000000013",
+      harness: "codex",
+      initial: "fresh",
+      profile: "worker",
+      now: () => new Date("2026-07-22T12:00:00.000Z"),
+    });
+    assertEquals(parseLog(await Deno.readTextFile(paths.eventLog))[0], {
+      kind: "gate-session",
+      version: 2,
+      at: "2026-07-22T12:00:00.000Z",
+      session: "00000000-0000-0000-0000-000000000013",
+      profile: "worker",
+      subjectAgent: "test",
+      subjectLabel: "gate",
+      harness: "codex",
+      initial: "fresh",
+    });
+    gate.close();
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("refuse tier records denial and never invokes the approver", async () => {
   let prompts = 0;
   const approver: GateApprover = () => {

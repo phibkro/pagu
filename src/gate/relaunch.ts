@@ -7,6 +7,7 @@ import type {
 } from "../request/gate.ts";
 import { canonicalizeGrantPath } from "../request/gate.ts";
 import { composeHarnessState, type ResumeAdapter } from "./resume.ts";
+import type { FreshSessionPlanner } from "./harness.ts";
 
 export interface RunningBox {
   stop(): Promise<void>;
@@ -37,6 +38,8 @@ export interface BoxLauncher {
   apply(application: GrantApplication): Promise<PreparedGrantLaunch>;
   /** Test/embedding seam for a box that was started by the same trusted host. */
   adopt(running: RunningBox): Promise<void>;
+  /** Session supplied for resume or bound by a completed fresh discovery. */
+  session(): string | undefined;
   close(): Promise<void>;
 }
 
@@ -46,8 +49,10 @@ export interface BoxLauncherOptions {
   readonly cwd?: string;
   readonly gateSocket: string;
   readonly stateDir: string;
-  readonly session: string;
+  readonly session?: string;
   readonly resume: ResumeAdapter;
+  /** Required when session is absent; establishes harness-owned attribution. */
+  readonly fresh?: FreshSessionPlanner;
   readonly spawn?: SpawnBox;
   /** Complete boundary proof, rerun after the prior sandbox has stopped. */
   readonly validatePolicy?: (policy: PolicyV0) => void;
@@ -230,6 +235,7 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
   const spawn = options.spawn ?? realSpawn;
   const cwd = options.cwd ?? Deno.cwd();
   let current: RunningBox | undefined;
+  let session = options.session;
   let sequence = 1;
 
   const start = async (
@@ -237,7 +243,15 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
     launch: string,
   ): Promise<GrantLaunchEvidence> => {
     await requireActiveGate(options.gateSocket);
-    const resume = options.resume.command(options.session);
+    const fresh = session === undefined
+      ? await options.fresh?.prepare()
+      : undefined;
+    if (session === undefined && fresh === undefined) {
+      throw new Error("fresh box launch requires session attribution");
+    }
+    const resume = session === undefined
+      ? fresh!.command
+      : options.resume.command(session);
     const previous = current;
     if (previous) await previous.stop();
     current = undefined;
@@ -253,6 +267,25 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
       resume,
     });
     current = started.running;
+    if (session === undefined) {
+      try {
+        session = await fresh!.bind();
+      } catch (error) {
+        try {
+          await started.running.stop();
+          if (current === started.running) current = undefined;
+        } catch (stopError) {
+          options.onFatal?.(
+            stopError instanceof Error ? stopError.message : String(stopError),
+          );
+          throw new AggregateError(
+            [error, stopError],
+            "fresh attribution failed and child could not stop",
+          );
+        }
+        throw error;
+      }
+    }
     return { ...started.evidence, policy: launchPolicy };
   };
 
@@ -260,7 +293,15 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
     application: GrantApplication,
   ): Promise<PreparedGrantLaunch> => {
     await requireActiveGate(options.gateSocket);
-    const resume = options.resume.command(options.session);
+    if (session === undefined) {
+      throw new Error("fresh harness session has not been discovered");
+    }
+    if (application.session !== session) {
+      throw new Error(
+        `grant ${application.id} is bound to session ${application.session}`,
+      );
+    }
+    const resume = options.resume.command(session);
     const previous = current;
     if (previous) await previous.stop();
     current = undefined;
@@ -326,6 +367,7 @@ export function createBoxLauncher(options: BoxLauncherOptions): BoxLauncher {
       current = running;
       return Promise.resolve();
     },
+    session: () => session,
     async close() {
       const active = current;
       current = undefined;

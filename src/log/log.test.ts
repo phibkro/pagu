@@ -208,6 +208,17 @@ const entryG: fc.Arbitrary<Entry> = fc.oneof(
     harness: bodyG,
   }),
   fc.record({
+    kind: fc.constant("gate-session" as const),
+    version: fc.constant(2 as const),
+    at: bodyG,
+    session: bodyG,
+    profile: fc.option(bodyG, { nil: null }),
+    subjectAgent: bodyG,
+    subjectLabel: bodyG,
+    harness: bodyG,
+    initial: fc.constant("fresh" as const),
+  }),
+  fc.record({
     kind: fc.constant("request" as const),
     id: attrG,
     need: bodyG,

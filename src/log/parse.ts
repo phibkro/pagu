@@ -109,7 +109,7 @@ export function parseLog(md: string): Entry[] {
       case "gate-session": {
         // Silently continuing would attribute following unversioned request
         // events to the previous session. An old reader must fail loud.
-        if (a.version !== "0" && a.version !== "1") {
+        if (a.version !== "0" && a.version !== "1" && a.version !== "2") {
           throw new Error(
             `unsupported gate-session version ${a.version ?? "missing"}`,
           );
@@ -121,6 +121,7 @@ export function parseLog(md: string): Entry[] {
           subjectAgent?: unknown;
           subjectLabel?: unknown;
           harness?: unknown;
+          initial?: unknown;
         };
         try {
           metadata = JSON.parse(body);
@@ -129,9 +130,19 @@ export function parseLog(md: string): Entry[] {
         }
         const expected = a.version === "0"
           ? ["at", "profile", "session", "subjectAgent", "subjectLabel"]
+          : a.version === "1"
+          ? [
+            "at",
+            "harness",
+            "profile",
+            "session",
+            "subjectAgent",
+            "subjectLabel",
+          ]
           : [
             "at",
             "harness",
+            "initial",
             "profile",
             "session",
             "subjectAgent",
@@ -150,7 +161,8 @@ export function parseLog(md: string): Entry[] {
             typeof metadata.profile !== "string") ||
           typeof metadata.subjectAgent !== "string" ||
           typeof metadata.subjectLabel !== "string" ||
-          (a.version === "1" && typeof metadata.harness !== "string")
+          (a.version !== "0" && typeof metadata.harness !== "string") ||
+          (a.version === "2" && metadata.initial !== "fresh")
         ) throw new Error("malformed gate-session metadata");
         const base = {
           kind: "gate-session",
@@ -163,7 +175,14 @@ export function parseLog(md: string): Entry[] {
         entries.push(
           a.version === "0"
             ? { ...base, version: 0 }
-            : { ...base, version: 1, harness: metadata.harness as string },
+            : a.version === "1"
+            ? { ...base, version: 1, harness: metadata.harness as string }
+            : {
+              ...base,
+              version: 2,
+              harness: metadata.harness as string,
+              initial: "fresh",
+            },
         );
         break;
       }

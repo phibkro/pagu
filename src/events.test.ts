@@ -93,13 +93,14 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
   revoke: { kind: "revoke", grant: "" },
   "gate-session": {
     kind: "gate-session",
-    version: 1,
+    version: 2,
     at: "2026-07-19T00:00:00.000Z",
     session: 'session "quoted"\nline',
     profile: 'worker "blue"',
     subjectAgent: "category\nagent",
     subjectLabel: 'review "quoted" label',
     harness: "codex",
+    initial: "fresh",
   },
   request: {
     kind: "request",
@@ -167,10 +168,10 @@ Deno.test("event wire schema: unsupported gate-session version fails loud", () =
   assertThrows(
     () =>
       parseLog(
-        "~~~pagu:gate-session version=2\n{}\n~~~\n",
+        "~~~pagu:gate-session version=3\n{}\n~~~\n",
       ),
     Error,
-    "unsupported gate-session version 2",
+    "unsupported gate-session version 3",
   );
 });
 
@@ -190,6 +191,17 @@ Deno.test("event wire schema: gate-session rejects unknown metadata", () => {
     () =>
       parseLog(
         '~~~pagu:gate-session version=1\n{"at":"now","session":"s","profile":null,"subjectAgent":"a","subjectLabel":"l","harness":"codex","extra":true}\n~~~\n',
+      ),
+    Error,
+    "malformed gate-session metadata",
+  );
+});
+
+Deno.test("event wire schema: gate-session v2 is fresh-only", () => {
+  assertThrows(
+    () =>
+      parseLog(
+        '~~~pagu:gate-session version=2\n{"at":"now","session":"s","profile":null,"subjectAgent":"a","subjectLabel":"l","harness":"codex","initial":"resume"}\n~~~\n',
       ),
     Error,
     "malformed gate-session metadata",

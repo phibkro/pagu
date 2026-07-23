@@ -133,14 +133,14 @@ read-only session-auto seed.
 Named launch is sugar for selecting one immutable artifact. Persist-scoped
 growth is stored as a sparse read-only grant overlay in private gate state and
 re-composed with a freshly materialized copy of the latest base at each start;
-it is not a forked profile snapshot. The private materialization also prevents
-a source-checkout profile under writable `$PWD` from entering the sandbox. Fast
+it is not a forked profile snapshot. The private materialization also prevents a
+source-checkout profile under writable `$PWD` from entering the sandbox. Fast
 operational growth therefore cannot silently rewrite or freeze the curated
 category. Promotion into a profile requires review and profile assertions. The
-proof category keeps direct network isolated while the explicit
-Nix-daemon mount mediates cache and substitution work. Infra alone exposes
-journal paths. Orchestrator strips the Herdr control environment/socket surface;
-schema v0 does not claim to enforce a general per-executable allowlist.
+proof category keeps direct network isolated while the explicit Nix-daemon mount
+mediates cache and substitution work. Infra alone exposes journal paths.
+Orchestrator strips the Herdr control environment/socket surface; schema v0 does
+not claim to enforce a general per-executable allowlist.
 
 ## Enforcement model
 
@@ -169,8 +169,8 @@ Security-relevant properties:
   environment names, command, and PID.
 
 On Linux, `--observe-denials FILE` opts a schema-policy launch into the seccomp
-user-notif supervisor in [`box/src/denial-spike.c`](box/src/denial-spike.c).
-The same `CompiledPolicy` value drives bubblewrap argv and the expanded
+user-notif supervisor in [`box/src/denial-spike.c`](box/src/denial-spike.c). The
+same `CompiledPolicy` value drives bubblewrap argv and the expanded
 exact-file/directory-subtree deny rules; the adapter rejects a log below any
 compiled sandbox-writable root. The supervisor appends denial-evidence v1 JSONL
 outside bubblewrap and is absent from the default launch path. User-notif runs
@@ -218,18 +218,42 @@ canonical path, not the mutable alias.
 [`src/gate/relaunch.ts`](src/gate/relaunch.ts) owns the active child. It
 verifies the request gate is reachable, stops the narrower box, and starts
 `pagu-box` with the complete derived policy. Immediately before each initial or
-approved launch it adds only that harness's RW state: `~/.codex`, or
-`~/.claude` plus `~/.claude.json`. This trusted launch overlay leaves the
-standing/profile policy immutable, passes through the same boundary validation
-and exact compiler/evidence path, and retains final secret denies. Session-store
-inference selects exactly one of Codex or Claude; ambiguous and missing matches
-fail loud, while an explicit harness skips discovery. Gate-session v1 retains
-that selection. Codex uses UUID resume with its inner approval/sandbox posture
-disabled because bubblewrap is the outer boundary; Claude uses
-`claude --resume SESSION_ID`. Versioned box launch evidence v1 and the
-`policy-launch` event bind compiled argv, cwd, and resume command together.
-[`src/gate/resume.ts`](src/gate/resume.ts) is the harness command/state port;
-[`src/gate/harness.ts`](src/gate/harness.ts) owns session-store discovery.
+approved launch it adds only that harness's RW state: `~/.codex`, or `~/.claude`
+plus `~/.claude.json`. This trusted launch overlay leaves the standing/profile
+policy immutable, passes through the same boundary validation and exact
+compiler/evidence path, and retains final secret denies. Session-store inference
+selects exactly one of Codex or Claude; ambiguous and missing matches fail loud,
+while an explicit harness skips inference. Gate-session v1 retains that
+selection for existing-session launches. A fresh launch requires an explicit
+harness and establishes ownership rather than inferring it from file timing.
+Codex receives a generated nonce marker in its inert initial prompt; the gate
+snapshots existing IDs before spawn and polls new rollout contents until that
+exact marker attributes one UUID, ignoring unrelated concurrent sessions and
+waiting through file-before-content flushes. Claude receives a caller-generated
+UUID through `--session-id` and needs no discovery poll. Gate-session v2 retains
+the attributed or assigned UUID and fresh initial mode. Requests arriving during
+Codex attribution wait behind the already-mounted socket and cannot enter the
+session-bound gate until attribution completes. Codex uses UUID resume with its
+inner approval/sandbox posture disabled because bubblewrap is the outer
+boundary; Claude uses `claude --resume SESSION_ID`. Versioned box launch
+evidence v1 and the `policy-launch` event bind compiled argv, cwd, and the fresh
+or resume command together. [`src/gate/resume.ts`](src/gate/resume.ts) is the
+harness command/state port; [`src/gate/harness.ts`](src/gate/harness.ts) owns
+fresh identity attribution and existing-session inference.
+
+Nonce attribution handles cooperative fleet concurrency, not adversarial
+writers to the shared harness store. Every gate-owned Codex box intentionally
+receives the same `~/.codex` tree read-write for authentication and resume; a
+hostile concurrent box could copy or delete another launch's marker/session
+material. Per-launch write isolation or a harness-assigned Codex UUID is needed
+before treating mutually hostile fleet peers as an attribution boundary. The
+operator accepts cooperative peers for the current Slice 13 boundary; hostile-
+peer isolation is explicitly deferred.
+
+The existing `pagu-box --evidence` adapter remains the supported launch-evidence
+path for harness integrations. A general arbitrary-harness gate/resume port is
+deferred because it requires a separate boundary design; the current gate's
+Codex and Claude resume adapters are not generalized implicitly.
 
 ## Gate state and evidence
 
@@ -256,12 +280,13 @@ default state lives below `XDG_RUNTIME_DIR`, never below the project mount.
 Without that directory the operator supplies a private absolute directory;
 ownership, final mode, symlinks, and replaceable ancestry are checked.
 
-Every CLI-owned gate run appends a gate-session v1 entry with its harness,
-profile, subject, session, and timestamp; v0 logs remain readable. Request,
-decision, grant, and launch evidence also carries timestamps.
-[`src/telemetry/`](src/telemetry/) folds those retained
-events into a versioned in-memory view; the CLI's table and JSON are two
-renderings of that same value. No telemetry database or flow dependency exists.
+Every CLI-owned gate run appends versioned gate-session evidence with its
+harness, profile, subject, session, and timestamp: v1 records an existing-
+session launch and v2 records a fresh attributed/assigned launch; v0 logs remain
+readable. Request, decision, grant, and launch evidence also carries timestamps.
+[`src/telemetry/`](src/telemetry/) folds those retained events into a versioned
+in-memory view; the CLI's table and JSON are two renderings of that same value.
+No telemetry database or flow dependency exists.
 
 The current prune query can prove only that an old approved grant lacks launch
 evidence. It cannot prove whether an enforced filesystem capability was used.
