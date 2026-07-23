@@ -57,7 +57,8 @@ All policy core files are pure and exported through `src/policy/index.ts`.
 | Module                        | Responsibility                                                                                                    |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `src/policy/schema.ts`        | Strict policy/grant v0 types and decoding; bottom policy; built-in denies; refusal containment.                   |
-| `schemas/grant-v0.schema.json` | Published strict structural contract for downstream GrantV0 consumers.                                           |
+| `schemas/profile-grant-v0.schema.json` | Published box-accepted `PolicyV0` contract for external authority lowering.                              |
+| `schemas/grant-v0.schema.json` | Published strict structural contract for downstream gate GrantV0 consumers.                                      |
 | `src/policy/load.ts`          | Trusted-user plus narrow-only project fold; warnings for widening; canonical child validation.                    |
 | `src/policy/compile.ts`       | Explicit-context policy lowering to Linux bubblewrap argv and scrubbed environment; exact explanation projection. |
 | `src/policy/identity.ts`      | Canonical SHA-256 identity binding grants to complete policy authority.                                           |

@@ -51,6 +51,7 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "PolicyV0", kind: "interface" },
   { name: "GrantV0", kind: "interface" },
   { name: "GRANT_V0_SCHEMA_ID", kind: "variable" },
+  { name: "PROFILE_GRANT_V0_SCHEMA_ID", kind: "variable" },
   { name: "PolicyLayers", kind: "interface" },
   { name: "PolicyLoadContext", kind: "interface" },
   { name: "LoadedPolicy", kind: "interface" },

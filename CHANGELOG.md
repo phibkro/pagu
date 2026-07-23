@@ -18,9 +18,10 @@ only forward work.
   compilation remains unsupported there.
 - Added strict schema-v0 decoding, a compositional policy algebra, built-in
   refusal rules, and narrow-only user/project policy loading in `src/policy/`.
-- Published the strict GrantV0 structural contract as JSON Schema, with a stable
-  SDK identifier and package export; semantic validation remains in
-  `parseGrant`.
+- Published strict JSON Schema contracts for the complete `PolicyV0` profile
+  grant accepted by `pagu-box --policy` and the distinct gate-derived `GrantV0`,
+  with stable SDK identifiers and package exports; semantic validation remains
+  in `parsePolicy` and `parseGrant`.
 - Added Linux policy compilation to bubblewrap arguments. `--explain` is derived
   from the same compiled argument vector used for launch.
 - Added the outside `pagu gate` authority in `src/gate/cli.ts`, backed by strict

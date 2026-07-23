@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "exports": {
     ".": "./src/mod.ts",
-    "./grant-v0.schema.json": "./schemas/grant-v0.schema.json"
+    "./grant-v0.schema.json": "./schemas/grant-v0.schema.json",
+    "./profile-grant-v0.schema.json": "./schemas/profile-grant-v0.schema.json"
   },
   "tasks": {
     "test": "deno test --allow-run --allow-read --allow-write --allow-env --allow-net",

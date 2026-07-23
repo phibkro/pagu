@@ -91,19 +91,30 @@ Policy fields:
 `$PWD`, `$HOME`, and `~` are supported path roots. Denies are emitted after
 allows, so deny wins in the compiled mount order.
 
-### Published grant v0 contract
+### Published schema-v0 contracts
 
-The machine-readable contract for a gate-derived grant is
-[`schemas/grant-v0.schema.json`](schemas/grant-v0.schema.json). Deno consumers
-can address the package export as `@phibkro/pagu/grant-v0.schema.json`; its
-stable schema identifier is also exported by the SDK as `GRANT_V0_SCHEMA_ID`.
+The box-accepted profile-grant contract is
+[`schemas/profile-grant-v0.schema.json`](schemas/profile-grant-v0.schema.json).
+It is the complete `PolicyV0` wire shape accepted by `pagu-box --policy`, so an
+external authority such as Flow can lower exact read/write scopes, home,
+network, and named environment channels without interpreting a curated profile.
+`env.pass` authorizes copying a named variable already present in the trusted
+launch environment; the artifact does not contain or provision its secret value.
+
+The separate gate-derived grant contract is
+[`schemas/grant-v0.schema.json`](schemas/grant-v0.schema.json). It extends the
+complete policy shape with mandatory `parent` and `expires` derivation fields
+and is not accepted by the box policy decoder. Grants are derived by the gate,
+never handwritten.
+
+Deno consumers can address the package exports as
+`@phibkro/pagu/profile-grant-v0.schema.json` and
+`@phibkro/pagu/grant-v0.schema.json`; their stable schema identifiers are
+exported by the SDK as `PROFILE_GRANT_V0_SCHEMA_ID` and `GRANT_V0_SCHEMA_ID`.
 Consumers should pin a pagu release or commit rather than following `main`
-implicitly.
-
-The JSON Schema publishes the strict wire shape. `parseGrant` remains the
-semantic validator for built-in secret denies, normalization, and refusal
-containment. Grants are derived by the gate, never handwritten; `parent` and
-`expires` are mandatory derivation fields even when null.
+implicitly. The JSON Schemas publish strict wire shapes; `parsePolicy` and
+`parseGrant` remain the semantic validators for built-in secret denies,
+normalization, and refusal containment.
 
 If a missing denied path sits beneath an overlapping read-only bind (for
 example, advisor launched with `$PWD=$HOME`), Linux lowering fails loud: the

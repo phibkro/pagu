@@ -95,13 +95,21 @@ The standing policy controls:
 - copied environment names;
 - read-only auto-escalation and refusal scopes.
 
-A grant is gate-derived policy data with `parent` and `expires` derivation
-fields. It is not a hand-authored second policy language. Its strict structural
-contract is published at
+An external authority may emit one complete box-accepted profile-grant artifact
+using the published strict `PolicyV0` shape at
+[`schemas/profile-grant-v0.schema.json`](schemas/profile-grant-v0.schema.json).
+This is the same artifact accepted by `pagu-box --policy`, not a second authority
+language or a named-profile overlay. `parsePolicy` remains its semantic
+validator. Named environment channels carry names only; their values must
+already exist in the trusted launch environment and never enter the artifact.
+
+A gate grant is gate-derived policy data with `parent` and `expires` derivation
+fields. Its distinct strict structural contract is published at
 [`schemas/grant-v0.schema.json`](schemas/grant-v0.schema.json), while
-`parseGrant` remains the semantic validator. Stored grants also carry the
-session, authoritative policy hash, decision-policy hash, original path,
-canonical target, and application state.
+`parseGrant` remains the semantic validator. It is not accepted by the box
+policy decoder or a hand-authored second policy language. Stored grants also
+carry the session, authoritative policy hash, decision-policy hash, original
+path, canonical target, and application state.
 
 ### Narrow-only composition
 

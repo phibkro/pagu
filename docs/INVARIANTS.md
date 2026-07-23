@@ -151,7 +151,8 @@ Enforcement:
 | denial      | Opt-in `src/policy/cli.ts` rejects writable log roots and passes that `CompiledPolicy`'s deny rules to the outside supervisor. |
 | telemetry   | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store. |
 | API floor   | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                               |
-| grant wire  | `schemas/grant-v0.schema.json` publishes the strict GrantV0 shape; `parseGrant` retains semantic checks.     |
+| profile wire | `schemas/profile-grant-v0.schema.json` publishes the box-accepted `PolicyV0` shape; `parsePolicy` retains semantic checks. |
+| grant wire  | `schemas/grant-v0.schema.json` publishes the strict gate GrantV0 shape; `parseGrant` retains semantic checks. |
 
 Bound laws:
 
@@ -173,6 +174,7 @@ Bound laws:
 - [law: retained persist grant rebuilds missing projection without ID reuse]
 - [law: telemetry projects denials approvals tiers stale unlaunched grants]
 - [law: denial observation stays opt-in and host-owned]
+- [law: published profile grant v0 contract matches box policy decoder]
 - [law: published grant v0 contract matches strict decoder shape]
 
 Review questions:

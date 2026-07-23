@@ -53,7 +53,12 @@ export interface GrantV0 extends PolicyV0 {
   readonly expires: string | null;
 }
 
-/** Stable identifier for the published machine-readable GrantV0 contract. */
+/** Stable identifier for the published complete profile-grant artifact
+ * accepted by the pagu-box policy decoder. */
+export const PROFILE_GRANT_V0_SCHEMA_ID =
+  "https://raw.githubusercontent.com/phibkro/pagu/main/schemas/profile-grant-v0.schema.json";
+
+/** Stable identifier for the published machine-readable gate GrantV0 contract. */
 export const GRANT_V0_SCHEMA_ID =
   "https://raw.githubusercontent.com/phibkro/pagu/main/schemas/grant-v0.schema.json";
 

@@ -53,10 +53,14 @@ remaining work.
 
 ## Published integration boundary
 
-- Schema-v0 grants have one published machine-readable structural contract at
-  `schemas/grant-v0.schema.json`, with `parseGrant` retaining semantic
-  validation. This unblocks downstream grant consumers without creating a
-  second authority format.
+- Schema-v0 profile grants have one published machine-readable target at
+  `schemas/profile-grant-v0.schema.json`: the complete `PolicyV0` artifact
+  accepted by `pagu-box --policy`. This unblocks Flow-side lowering,
+  `SandboxFactory`, and named credential channels without creating a second
+  authority format or carrying secret values.
+- Gate-derived grants retain their distinct published structural contract at
+  `schemas/grant-v0.schema.json`; `parsePolicy` and `parseGrant` remain the
+  semantic validators for their respective artifacts.
 - `pagu-box --evidence` remains the supported harness integration adapter. A
   general arbitrary-harness gate/resume port is deferred to a larger boundary
   design rather than added to Slice 13.

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/phibkro/pagu/main/schemas/profile-grant-v0.schema.json",
+  "title": "pagu schema-v0 profile grant",
+  "description": "The strict structural contract for a complete policy artifact accepted by pagu-box --policy.",
+  "$comment": "parsePolicy remains the semantic validator: it inserts built-in secret denies, normalizes duplicate arrays, and checks that escalation.refuse is covered by fs.deny.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "subject", "fs", "net", "env", "escalation"],
+  "properties": {
+    "version": { "const": 0 },
+    "subject": { "$ref": "#/$defs/subject" },
+    "fs": { "$ref": "#/$defs/fs" },
+    "net": { "type": "boolean" },
+    "env": { "$ref": "#/$defs/env" },
+    "escalation": { "$ref": "#/$defs/escalation" }
+  },
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "label"],
+      "properties": {
+        "agent": { "type": "string" },
+        "label": { "type": "string" }
+      }
+    },
+    "fs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["home", "rw", "ro", "deny"],
+      "properties": {
+        "home": { "enum": ["rw", "tmpfs"] },
+        "rw": { "type": "array", "items": { "type": "string" } },
+        "ro": { "type": "array", "items": { "type": "string" } },
+        "deny": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass"],
+      "properties": {
+        "pass": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "autoEscalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fs.ro", "scope"],
+      "properties": {
+        "fs.ro": { "type": "string" },
+        "scope": { "const": "session" }
+      }
+    },
+    "escalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["auto", "refuse"],
+      "properties": {
+        "auto": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/autoEscalation" }
+        },
+        "refuse": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": 0,
+      "subject": { "agent": "flue", "label": "flow worker" },
+      "fs": {
+        "home": "tmpfs",
+        "rw": ["$PWD"],
+        "ro": ["/srv/share/projects/reference"],
+        "deny": ["~/.ssh", "~/.gnupg"]
+      },
+      "net": true,
+      "env": { "pass": ["OPENAI_API_KEY"] },
+      "escalation": {
+        "auto": [],
+        "refuse": ["~/.ssh/**", "~/.gnupg/**"]
+      }
+    }
+  ]
+}
