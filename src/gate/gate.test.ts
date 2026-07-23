@@ -679,7 +679,7 @@ Deno.test("gate shutdown cancels a pending operator decision", async () => {
       if ((await readPendingQueue(paths.queue)).length === 1) break;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
-    let timeout: number | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
         server.close(),

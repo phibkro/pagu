@@ -49,7 +49,7 @@ async function writeFrame(conn: Deno.Conn, value: unknown): Promise<void> {
 }
 
 async function readFrame(conn: Deno.Conn): Promise<string> {
-  let timeout: number | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       readLine(conn),
