@@ -28,8 +28,8 @@ remaining work.
 | 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped   |
 | 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped   |
 | 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                         | ✓ verified  |
-| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | lead verify |
-| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | lead verify |
+| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | ✓ shipped   |
+| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | ✓ shipped   |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next        |
 
 ## Slice 13 fresh-launch boundary
@@ -44,10 +44,9 @@ remaining work.
 - Requests arriving during discovery wait behind the same mounted socket. Once
   gate-session v2 retains the bound UUID and `initial: fresh`, every grant and
   widened launch uses that UUID through the existing resume adapter.
-- Real fresh Codex authentication, decoy-concurrent nonce attribution, and fresh
-  → widen → context-preserving resume remain the lead-owned non-nested
-  verification gate. Herdr launch wiring and homelab configuration remain
-  operator-owned.
+- The packaged non-nested journey verified fresh Codex authentication,
+  decoy-concurrent nonce attribution, and fresh → widen → context-preserving
+  resume. Herdr launch wiring and homelab configuration remain operator-owned.
 - The accepted threat scope is cooperative concurrent peers. Isolation against
   a hostile peer writing the shared Codex session store remains deferred.
 

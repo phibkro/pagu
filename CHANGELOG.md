@@ -55,6 +55,10 @@ only forward work.
   contains its generated prompt nonce while ignoring concurrent decoys; Claude
   binds a caller-assigned `--session-id`. Gate-session v2 retains that UUID and
   widening resumes it.
+- Verified the packaged fresh Codex lifecycle with a concurrently created decoy:
+  nonce attribution selected the intended UUID, a boxed request was approved
+  through the host adapter, the widened launch resumed that UUID, and the
+  resumed model recalled its original nonce marker.
 - Accepted cooperative concurrent peers as the Slice 13 threat boundary and
   deferred hostile shared-store isolation. Retained `pagu-box --evidence` as
   the supported adapter while deferring a general arbitrary-harness gate/resume
@@ -96,6 +100,9 @@ only forward work.
   adapter derives exact/subtree rules from its compiled `fs.deny`, rejects logs
   below sandbox-writable roots, and appends strict denial-evidence v1 JSONL.
   Full-policy/path-race coverage and automatic requests remain deferred.
+- Verified the packaged observer outside a box: a worker secret denial and a
+  custom compiled `/etc/hosts` deny each emitted one v1 `openat` record, while
+  an allowed `/etc/hosts` probe emitted no record.
 
 See `README.md` for current use, `CONTEXT.md` for the trust model, and
 `ROADMAP.md` for planned work.
