@@ -103,6 +103,16 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "OperatorBoundaryError", kind: "class" },
   { name: "ensurePrivateStateDirectory", kind: "function" },
   { name: "UnsafeStateDirectoryError", kind: "class" },
+  // Runtime reload wire floor.
+  { name: "parseGateReloadCheckpoint", kind: "function" },
+  { name: "parseGateReloadEvidence", kind: "function" },
+  { name: "assertReloadCheckpointAdoptable", kind: "function" },
+  { name: "validateReloadEvidenceChain", kind: "function" },
+  { name: "ReloadValidationError", kind: "class" },
+  { name: "GateReloadCheckpointV0", kind: "interface" },
+  { name: "GateReloadEvidenceV0", kind: "typeAlias" },
+  { name: "ReloadFdV0", kind: "interface" },
+  { name: "PendingRequestHandoffV0", kind: "interface" },
   // Telemetry projection v0.
   { name: "projectTelemetry", kind: "function" },
   { name: "collectTelemetry", kind: "function" },

@@ -54,19 +54,19 @@ but not implemented.
 
 All policy core files are pure and exported through `src/policy/index.ts`.
 
-| Module                        | Responsibility                                                                                                    |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `src/policy/schema.ts`        | Strict policy/grant v0 types and decoding; bottom policy; built-in denies; refusal containment.                   |
-| `schemas/profile-grant-v0.schema.json` | Published box-accepted `PolicyV0` contract for external authority lowering.                              |
-| `schemas/grant-v0.schema.json` | Published strict structural contract for downstream gate GrantV0 consumers.                                      |
-| `src/policy/load.ts`          | Trusted-user plus narrow-only project fold; warnings for widening; canonical child validation.                    |
-| `src/policy/compile.ts`       | Explicit-context policy lowering to Linux bubblewrap argv and scrubbed environment; exact explanation projection. |
-| `src/policy/identity.ts`      | Canonical SHA-256 identity binding grants to complete policy authority.                                           |
-| `src/policy/presets.ts`       | Schema representations of the four legacy profile baselines used for equivalence testing.                         |
-| `src/policy/profiles.ts`      | Stable curated category names, filenames, and the shared secret-floor assertion data.                             |
-| `src/policy/cli.ts`           | Effectful adapter: read JSON, assemble host context, explain or spawn bubblewrap.                                 |
-| `src/policy/policy.test.ts`   | Schema, attenuation, canonicalization, legacy equivalence, explain, and real-adapter falsifiers.                  |
-| `src/policy/profiles.test.ts` | Cross-profile secret, write, journal, Herdr, and compiled-deny assertions.                                        |
+| Module                                 | Responsibility                                                                                                    |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `src/policy/schema.ts`                 | Strict policy/grant v0 types and decoding; bottom policy; built-in denies; refusal containment.                   |
+| `schemas/profile-grant-v0.schema.json` | Published box-accepted `PolicyV0` contract for external authority lowering.                                       |
+| `schemas/grant-v0.schema.json`         | Published strict structural contract for downstream gate GrantV0 consumers.                                       |
+| `src/policy/load.ts`                   | Trusted-user plus narrow-only project fold; warnings for widening; canonical child validation.                    |
+| `src/policy/compile.ts`                | Explicit-context policy lowering to Linux bubblewrap argv and scrubbed environment; exact explanation projection. |
+| `src/policy/identity.ts`               | Canonical SHA-256 identity binding grants to complete policy authority.                                           |
+| `src/policy/presets.ts`                | Schema representations of the four legacy profile baselines used for equivalence testing.                         |
+| `src/policy/profiles.ts`               | Stable curated category names, filenames, and the shared secret-floor assertion data.                             |
+| `src/policy/cli.ts`                    | Effectful adapter: read JSON, assemble host context, explain or spawn bubblewrap.                                 |
+| `src/policy/policy.test.ts`            | Schema, attenuation, canonicalization, legacy equivalence, explain, and real-adapter falsifiers.                  |
+| `src/policy/profiles.test.ts`          | Cross-profile secret, write, journal, Herdr, and compiled-deny assertions.                                        |
 
 Dependency direction:
 
@@ -93,15 +93,16 @@ The request module exports through `src/request/index.ts`.
 
 Gate-side adapters export through `src/gate/index.ts`:
 
-| Module                  | Responsibility                                                                   |
-| ----------------------- | -------------------------------------------------------------------------------- |
-| `src/gate/harness.ts`   | Existing-session inference plus nonce/assigned-ID fresh identity attribution.    |
-| `src/gate/resume.ts`    | Fresh attributed argv and verified UUID-bound Codex/Claude resume commands.     |
-| `src/gate/relaunch.ts`  | Gate-owned child replacement, active-gate check, policy artifacts, box evidence. |
-| `src/gate/operator.ts`  | Queue read, ID-bound resolution submission, TTY/file Approver composition.       |
-| `src/gate/boundary.ts`  | Proves operator state/socket stay hidden and user policy stays non-writable.     |
-| `src/gate/state.ts`     | Establishes private owned state with non-replaceable host ancestry.              |
-| `src/gate/gate.test.ts` | Widened explain, TOCTOU, once, binding, operator, and fail-secure falsifiers.    |
+| Module                      | Responsibility                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------- |
+| `src/gate/harness.ts`       | Existing-session inference plus nonce/assigned-ID fresh identity attribution.    |
+| `src/gate/resume.ts`        | Fresh attributed argv and verified UUID-bound Codex/Claude resume commands.      |
+| `src/gate/relaunch.ts`      | Gate-owned child replacement, active-gate check, policy artifacts, box evidence. |
+| `src/gate/operator.ts`      | Queue read, ID-bound resolution submission, TTY/file Approver composition.       |
+| `src/gate/boundary.ts`      | Proves operator state/socket stay hidden and user policy stays non-writable.     |
+| `src/gate/state.ts`         | Establishes private owned state with non-replaceable host ancestry.              |
+| `src/gate/reload-schema.ts` | Strict runtime-reload checkpoint/evidence shapes and pure adoption laws.         |
+| `src/gate/gate.test.ts`     | Widened explain, TOCTOU, once, binding, operator, and fail-secure falsifiers.    |
 
 `src/gate/cli.ts` composes those adapters. The request core does not know about
 terminals, herdr, Codex argv, or process spawning.

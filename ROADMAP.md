@@ -15,22 +15,32 @@ remaining work.
 
 ## Delivery slices
 
-| Slice                   | Outcome                                                                                                          | Status      |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------- |
-| 1 — consolidate         | Import the cross-platform `pagu-box` history and preserve its compatibility package.                             | ✓ shipped   |
-| 2 — policy core         | Strict schema v0, bottom policy, grant shape, narrow-only project fold.                                          | ✓ shipped   |
-| 3 — enforcement adapter | Pure Linux lowering, `--policy`, exact `--explain`, fail-loud unsupported platforms.                             | ✓ shipped   |
-| 4 — gate MVP            | Typed append-and-await request channel; refuse/auto/operator tiers; once/session/persist state; retained events. | ✓ shipped   |
-| docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                    | ✓ shipped   |
-| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped   |
-| 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped   |
-| 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped   |
-| 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped   |
-| 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped   |
-| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                         | ✓ verified  |
-| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | ✓ shipped   |
-| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | ✓ shipped   |
-| homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | next        |
+| Slice                   | Outcome                                                                                                          | Status         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------- |
+| 1 — consolidate         | Import the cross-platform `pagu-box` history and preserve its compatibility package.                             | ✓ shipped      |
+| 2 — policy core         | Strict schema v0, bottom policy, grant shape, narrow-only project fold.                                          | ✓ shipped      |
+| 3 — enforcement adapter | Pure Linux lowering, `--policy`, exact `--explain`, fail-loud unsupported platforms.                             | ✓ shipped      |
+| 4 — gate MVP            | Typed append-and-await request channel; refuse/auto/operator tiers; once/session/persist state; retained events. | ✓ shipped      |
+| docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                    | ✓ shipped      |
+| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped      |
+| 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped      |
+| 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped      |
+| 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped      |
+| 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped      |
+| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                         | ✓ verified     |
+| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | ✓ shipped      |
+| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | ✓ shipped      |
+| runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                | slice 1        |
+| homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | operator-gated |
+
+## Runtime reload
+
+The frozen design and proposed decision are
+[`docs/runtime-reload-design.md`](docs/runtime-reload-design.md) and
+[`ADR-0007`](docs/decisions/0007-runtime-reload.md). Implementation proceeds by
+its eight falsifier-bound slices. Slice 1 publishes strict checkpoint and reload
+evidence shapes plus pure adoption/evidence-chain laws; it does not yet transfer
+an FD or alter a running gate.
 
 ## Slice 13 fresh-launch boundary
 
@@ -47,8 +57,8 @@ remaining work.
 - The packaged non-nested journey verified fresh Codex authentication,
   decoy-concurrent nonce attribution, and fresh → widen → context-preserving
   resume. Herdr launch wiring and homelab configuration remain operator-owned.
-- The accepted threat scope is cooperative concurrent peers. Isolation against
-  a hostile peer writing the shared Codex session store remains deferred.
+- The accepted threat scope is cooperative concurrent peers. Isolation against a
+  hostile peer writing the shared Codex session store remains deferred.
 
 ## Published integration boundary
 

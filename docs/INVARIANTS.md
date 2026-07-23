@@ -65,14 +65,14 @@ archaeology.
 
 Enforcement:
 
-| Rung               | Enforcer                                                                                           |
-| ------------------ | -------------------------------------------------------------------------------------------------- |
-| schema             | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`. |
-| fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.       |
-| compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                         |
-| observer           | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.      |
+| Rung               | Enforcer                                                                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| schema             | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`.                   |
+| fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.                         |
+| compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                                           |
+| observer           | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.                        |
 | category profiles  | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts. |
-| retained primitive | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                       |
+| retained primitive | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                                         |
 
 Bound laws:
 
@@ -141,18 +141,19 @@ views but cannot replace retained events.
 
 Enforcement:
 
-| Rung        | Enforcer                                                                                                    |
-| ----------- | ----------------------------------------------------------------------------------------------------------- |
-| compiler    | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                           |
-| event codec | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define versioned session metadata and retained wire entries. |
-| stream      | `src/events.ts` addresses the append-only entry array by stable offset.                                     |
-| writer      | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence. |
-| launch      | `src/policy/cli.ts` writes evidence from the same `CompiledPolicy` value after spawning bubblewrap.         |
-| denial      | Opt-in `src/policy/cli.ts` rejects writable log roots and passes that `CompiledPolicy`'s deny rules to the outside supervisor. |
-| telemetry   | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store. |
-| API floor   | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                               |
-| profile wire | `schemas/profile-grant-v0.schema.json` publishes the box-accepted `PolicyV0` shape; `parsePolicy` retains semantic checks. |
-| grant wire  | `schemas/grant-v0.schema.json` publishes the strict gate GrantV0 shape; `parseGrant` retains semantic checks. |
+| Rung         | Enforcer                                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| compiler     | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                                                |
+| event codec  | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define versioned session metadata and retained wire entries. |
+| stream       | `src/events.ts` addresses the append-only entry array by stable offset.                                                          |
+| writer       | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence.             |
+| launch       | `src/policy/cli.ts` writes evidence from the same `CompiledPolicy` value after spawning bubblewrap.                              |
+| denial       | Opt-in `src/policy/cli.ts` rejects writable log roots and passes that `CompiledPolicy`'s deny rules to the outside supervisor.   |
+| telemetry    | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store.                     |
+| API floor    | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                                                    |
+| profile wire | `schemas/profile-grant-v0.schema.json` publishes the box-accepted `PolicyV0` shape; `parsePolicy` retains semantic checks.       |
+| grant wire   | `schemas/grant-v0.schema.json` publishes the strict gate GrantV0 shape; `parseGrant` retains semantic checks.                    |
+| reload wire  | `src/gate/reload-schema.ts` strictly binds checkpoint adoption and prepare → handoff → active evidence.                          |
 
 Bound laws:
 
@@ -176,6 +177,10 @@ Bound laws:
 - [law: denial observation stays opt-in and host-owned]
 - [law: published profile grant v0 contract matches box policy decoder]
 - [law: published grant v0 contract matches strict decoder shape]
+- [law: reload checkpoint strict decoder preserves pending work fd manifest]
+- [law: reload adoption rejects mismatched session policy event digest]
+- [law: reload checkpoint binds request seccomp state typed fd roles]
+- [law: reload evidence cannot activate without exact prepare handoff]
 
 Review questions:
 
