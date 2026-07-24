@@ -42,7 +42,7 @@ remaining work.
 | 15 — agent interface    | Inhabitant discovers one typed request tool through MCP plus an in-repo skill; no prompt injection required.      | ✓ shipped      |
 | 16 — nested authority   | Host/inhabitant roles and strict child attenuation make the narrowest ancestor boundary final.                    | core + proof ✓ |
 | 16b — child lifecycle   | Narrow trusted launch/request routing, replacement, and lineage-linked evidence without a control socket.         | phase A ✓      |
-| 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                           | planned        |
+| 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                           | ✓ shipped      |
 | runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                 | slice 1 parked |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                  | operator-gated |
 
@@ -137,6 +137,12 @@ fallback rather than a CI dependency.
   existing automation may continue to invoke `pagu-box`.
 - **Falsifier:** the new subcommand compiles or launches differently from the
   compatibility executable for the same policy and argv.
+- **Delivered:** the root package dispatches `box` before changing the caller
+  environment and execs the packaged compatibility wrapper with untouched
+  remaining argv.
+- **Proof:** the packaged tracer compares help, schema explanation, and a real
+  launch—including the child-visible `PATH`, stdout, stderr, and exit status—
+  under both names.
 
 The runtime stays Deno. Effect v4 earns introduction only where typed context,
 resource lifetime, interruption, or concurrent failure semantics materially

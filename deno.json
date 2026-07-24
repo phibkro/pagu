@@ -9,6 +9,7 @@
   "tasks": {
     "test": "deno test --allow-run --allow-read --allow-write --allow-env --allow-net",
     "journey:mock": "deno run -A scripts/mock-gate-journey.ts",
+    "journey:box": "deno run -A scripts/box-command-journey.ts",
     "check": "deno check src",
     "lint": "deno lint src scripts",
     "fmt": "deno fmt src scripts profiles deno.json README.md",

@@ -49,7 +49,8 @@ flowchart TB
 | Surface              | Source                                     | Current role                                                                                                         |
 | -------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `pagu`               | `src/launch/` + `src/gate/cli.ts`          | Default fresh gated journey; resolves user defaults and a wrapped verified harness into the existing gate lifecycle. |
-| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.                                     |
+| `pagu box`           | `flake.nix` → `pagu-box`                   | Human direct-enforcement surface; preserves argv and caller environment before exact delegation.                    |
+| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Compatibility process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.                       |
 | `pagu gate`          | `src/gate/cli.ts`                          | Advanced explicit-policy/session surface over the same request listener, operator adapters, and relaunch lifecycle.  |
 | `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                                               |
 | `pagu mcp`           | `src/mcp/cli.ts` + `src/mcp/server.ts`     | Request-only stdio MCP adapter injected into gate-owned harness sessions; no operator methods.                       |
@@ -58,9 +59,10 @@ flowchart TB
 | Root flake           | `flake.nix`                                | Builds default `pagu`, compatibility `pagu-box`, formatter, and the Linux development shell.                         |
 | Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                                                   |
 
-`pagu` is the default root package. A future `pagu box` subcommand may expose
-direct enforcement beneath the product name; `pagu-box` remains available until
-compatibility callers migrate.
+`pagu` is the default root package. Its `box` subcommand execs the packaged
+`pagu-box` before the root wrapper changes `PATH`, so direct operation has one
+implementation and the same trusted launch environment under both names.
+`pagu-box` remains available for compatibility callers.
 
 ## Launch resolution
 
@@ -243,6 +245,11 @@ policy compiler, and event store remain in the path. It proves fresh
 attribution, request → operator decision → replacement, exact-session resume,
 and enforced access without calling a model. Client-specific session and MCP
 compatibility still require a real harness check.
+
+`scripts/box-command-journey.ts` is the direct-operation compatibility tracer.
+It compares `pagu box` with `pagu-box` for help, schema explanation, and a real
+boxed launch. The child prints its effective `PATH`, making parent-wrapper
+environment drift observable alongside stdout, stderr, and exit status.
 
 ## Retained SDK primitives
 

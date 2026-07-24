@@ -50,12 +50,13 @@ Or run either flake package directly:
 
 ```sh
 nix run . -- --help
+nix run . -- box --help
 nix run .#pagu
 nix run .#pagu-box -- --help
 ```
 
-The default flake package is `pagu`. `pagu-box` remains the direct-enforcement
-and compatibility executable.
+The default flake package is `pagu`. Direct enforcement lives at `pagu box`;
+`pagu-box` remains an exact compatibility executable for existing automation.
 
 ## Start a protected agent
 
@@ -187,8 +188,7 @@ new mask mountpoint below the RO destination. Use a narrower repository root.
 ## Run a boxed harness
 
 ```sh
-nix run .#pagu-box -- \
-  --policy ./policy.json \
+pagu box --policy ./policy.json \
   -- codex
 ```
 
@@ -198,7 +198,7 @@ sandbox. The standing policy remains the whole authority.
 Inspect the exact Linux lowering without launching anything:
 
 ```sh
-nix run .#pagu-box -- --policy ./policy.json --explain
+pagu box --policy ./policy.json --explain
 ```
 
 The explanation is derived from the same compiler result used for launch. It
@@ -208,7 +208,7 @@ Linux schema-policy launches can opt in to structured denial evidence:
 
 ```sh
 LOG="$(mktemp -t pagu-denial.XXXXXX.jsonl)"
-nix run .#pagu-box -- \
+pagu box \
   --profile worker \
   --observe-denials "$LOG" \
   -- codex
@@ -244,8 +244,8 @@ contract in addition to the filesystem/network boundary.
 Use a name anywhere an explicit schema policy is accepted:
 
 ```sh
-nix run .#pagu-box -- --profile advisor -- codex
-nix run .#pagu-box -- --profile worker -- sh -lc 'touch built.txt'
+pagu box --profile advisor -- codex
+pagu box --profile worker -- sh -lc 'touch built.txt'
 ```
 
 Resolution is deliberately unambiguous: an explicit `--policy FILE` or one
@@ -258,12 +258,16 @@ compatibility names below still select the legacy launcher.
 The imported launcher still supports its compatibility profiles and flags:
 
 ```sh
-nix run .#pagu-box -- --profile=strict -- codex
-nix run .#pagu-box -- --profile=paranoid --no-net -- claude
+pagu box --profile=strict -- codex
+pagu box --profile=paranoid --no-net -- claude
 ```
 
-Run `pagu-box --help` for the complete compatibility surface. Legacy policy
-flags cannot be combined with `--policy` or a category profile.
+Run `pagu box --help` for the complete direct-enforcement surface. The
+compatibility executable accepts the same argv, and
+`deno task journey:box /absolute/path/to/pagu /absolute/path/to/pagu-box` checks
+their help, schema explanation, child environment, output, and exit status
+against each other. Legacy policy flags cannot be combined with `--policy` or a
+category profile.
 
 ## Operate a gate-owned harness session directly
 
@@ -516,6 +520,9 @@ executable path:
 ```sh
 nix build .#pagu .#pagu-box
 deno task journey:mock /absolute/path/to/result/bin/pagu
+deno task journey:box \
+  /absolute/path/to/result/bin/pagu \
+  /absolute/path/to/result-1/bin/pagu-box
 ```
 
 `XDG_RUNTIME_DIR` must name the current user's private runtime directory. The
@@ -544,4 +551,5 @@ deno task ci
 deno task check:docs
 nix build .#pagu-box .#pagu
 deno task journey:mock /absolute/path/to/result/bin/pagu
+deno task journey:box /absolute/path/to/pagu /absolute/path/to/pagu-box
 ```

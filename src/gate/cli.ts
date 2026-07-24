@@ -84,6 +84,7 @@ function usage(message?: string): never {
   console.error(
     "usage:\n" +
       "  pagu [--profile NAME] [--harness codex|claude] [-- EXECUTABLE]\n" +
+      "  pagu box [pagu-box options] -- COMMAND [ARGS...]\n" +
       "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +

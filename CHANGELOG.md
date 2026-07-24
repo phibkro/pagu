@@ -56,6 +56,10 @@ only forward work.
   initially unavailable fixture; the host resolves it through `pagu resolve`,
   and the tracer verifies first-box replacement, exact-session resume, the
   retained policy transition, and final access with zero model calls.
+- Added `pagu box` as the human direct-enforcement surface while retaining
+  `pagu-box` as an exact compatibility executable. Dispatch occurs before the
+  root wrapper changes `PATH`; a packaged tracer compares help, schema
+  explanation, and a real child-visible launch under both names.
 
 ## Box and gate foundation
 

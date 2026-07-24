@@ -33,19 +33,30 @@
           };
           pagu = pkgs.writeShellApplication {
             name = "pagu";
-            runtimeInputs = [
-              pkgs.deno
-              paguBox
-              paguMcp
-            ];
+            # Keep the caller PATH untouched until subcommand dispatch. In
+            # particular, `pagu box` must enter the exact pagu-box wrapper with
+            # the same environment as invoking that compatibility executable
+            # directly.
+            runtimeInputs = [ ];
             text = ''
+              if [[ "''${1-}" == "box" ]]; then
+                shift
+                exec ${paguBox}/bin/pagu-box "$@"
+              fi
               if [[ "''${1-}" == "mcp" ]]; then
                 shift
                 exec ${paguMcp}/bin/pagu-mcp "$@"
               fi
+              export PATH=${
+                pkgs.lib.makeBinPath [
+                  pkgs.deno
+                  paguBox
+                  paguMcp
+                ]
+              }:"$PATH"
               PAGU_MCP_COMMAND=${paguMcp}/bin/pagu-mcp \
                 PAGU_PROFILE_DIR=${categoryProfiles} \
-                exec deno run --quiet --no-prompt \
+                exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
                 --allow-read --allow-write --allow-env --allow-net --allow-run \
                 ${paguSource}/gate/cli.ts "$@"
             '';

@@ -96,8 +96,14 @@ For box behavior, also build and exercise the real Nix package:
 ```sh
 nix build .#pagu .#pagu-box
 nix run . -- --help
+nix run . -- box --help
 nix run .#pagu-box -- --help
+deno task journey:box /absolute/path/to/pagu /absolute/path/to/pagu-box
 ```
+
+The box journey compares help, schema-policy explanation, and a real launch
+through both names. Its child-visible `PATH` check prevents a convenience
+wrapper from silently changing the compiled launch environment.
 
 For ordinary gate behavior, build both packages and run the deterministic
 packaged journey:
