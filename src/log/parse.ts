@@ -7,6 +7,24 @@ import type { Entry } from "./schema.ts";
  * letters and hyphens (e.g. "skill-invoke"). */
 const BLOCK = /^(~{3,})pagu:([a-z-]+)(.*)\n([\s\S]*?)\n\1$/gm;
 
+type JsonObject = Record<string, unknown>;
+
+function exactObject(
+  value: unknown,
+  keys: readonly string[],
+): value is JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index]);
+}
+
+function stringArray(value: unknown): value is string[] {
+  return Array.isArray(value) &&
+    value.every((item) => typeof item === "string");
+}
+
 /** Parse `k=v` / `k="quoted v"` attrs from a block's opening line. */
 function parseAttrs(s: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -286,6 +304,113 @@ export function parseLog(md: string): Entry[] {
           session: a.session ?? "",
         });
         break;
+      case "child-launch": {
+        if (a.version !== "0") {
+          throw new Error(
+            `unsupported child-launch version ${a.version ?? "missing"}`,
+          );
+        }
+        const attrKeys = Object.keys(a).sort();
+        const expectedAttrs = a.at === undefined
+          ? ["version"]
+          : ["at", "version"];
+        if (
+          attrKeys.length !== expectedAttrs.length ||
+          attrKeys.some((key, index) => key !== expectedAttrs[index])
+        ) throw new Error("malformed child-launch evidence");
+        let detail: unknown;
+        try {
+          detail = JSON.parse(body);
+        } catch {
+          throw new Error("malformed child-launch evidence");
+        }
+        const keys = [
+          "id",
+          "parent",
+          "depth",
+          "host",
+          "parentPolicy",
+          "policy",
+          "requestRoute",
+          "pid",
+          "namespace",
+          "cwd",
+          "command",
+          "argv",
+          "environment",
+        ];
+        if (!exactObject(detail, keys)) {
+          throw new Error("malformed child-launch evidence");
+        }
+        const host = detail.host;
+        const namespace = detail.namespace;
+        if (
+          !exactObject(host, ["actor", "position"]) ||
+          !exactObject(host.actor, ["kind", "id"]) ||
+          (host.actor.kind !== "human" && host.actor.kind !== "agent") ||
+          typeof host.actor.id !== "string" ||
+          host.position !== "parent-inhabitant" ||
+          !exactObject(namespace, [
+            "version",
+            "user",
+            "mount",
+            "pid",
+            "network",
+            "ipc",
+            "uts",
+          ]) ||
+          namespace.version !== 0 ||
+          ["user", "mount", "pid", "network", "ipc", "uts"].some((key) =>
+            typeof namespace[key] !== "string"
+          ) ||
+          typeof detail.id !== "string" ||
+          typeof detail.parent !== "string" ||
+          !Number.isSafeInteger(detail.depth) ||
+          (detail.depth as number) < 1 ||
+          typeof detail.parentPolicy !== "string" ||
+          typeof detail.policy !== "string" ||
+          typeof detail.requestRoute !== "string" ||
+          !Number.isSafeInteger(detail.pid) ||
+          (detail.pid as number) <= 0 ||
+          typeof detail.cwd !== "string" ||
+          !stringArray(detail.command) ||
+          !stringArray(detail.argv) ||
+          !stringArray(detail.environment)
+        ) throw new Error("malformed child-launch evidence");
+        entries.push({
+          kind: "child-launch",
+          version: 0,
+          ...(a.at ? { at: a.at } : {}),
+          id: detail.id,
+          parent: detail.parent,
+          depth: detail.depth as number,
+          host: {
+            actor: {
+              kind: host.actor.kind,
+              id: host.actor.id,
+            },
+            position: "parent-inhabitant",
+          },
+          parentPolicy: detail.parentPolicy,
+          policy: detail.policy,
+          requestRoute: detail.requestRoute,
+          pid: detail.pid as number,
+          namespace: {
+            version: 0,
+            user: namespace.user as string,
+            mount: namespace.mount as string,
+            pid: namespace.pid as string,
+            network: namespace.network as string,
+            ipc: namespace.ipc as string,
+            uts: namespace.uts as string,
+          },
+          cwd: detail.cwd,
+          command: detail.command,
+          argv: detail.argv,
+          environment: detail.environment,
+        });
+        break;
+      }
         // Unknown pagu kinds are skipped (forward-compatibility).
     }
   }

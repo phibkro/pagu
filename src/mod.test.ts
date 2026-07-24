@@ -49,6 +49,7 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "eventStream", kind: "function" },
   { name: "EventStream", kind: "interface" },
   { name: "GateSessionEntry", kind: "interface" },
+  { name: "ChildLaunchEntry", kind: "interface" },
   // Permission policy.
   { name: "parsePermission", kind: "function" },
   { name: "withinEnvelope", kind: "function" },
@@ -97,6 +98,20 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "isCategoryProfile", kind: "function" },
   { name: "categoryProfileFilename", kind: "function" },
   { name: "CategoryProfileName", kind: "typeAlias" },
+  // Credential/namespace-aware child-host broker.
+  { name: "parseChildLaunchFrame", kind: "function" },
+  { name: "createChildBroker", kind: "function" },
+  { name: "childLaunchEntry", kind: "function" },
+  { name: "ChildBrokerValidationError", kind: "class" },
+  { name: "ChildLaunchFrameV0", kind: "interface" },
+  { name: "SenderObservationV0", kind: "interface" },
+  { name: "BoxNamespaceV0", kind: "interface" },
+  { name: "BoxNamespaceRelationV0", kind: "interface" },
+  { name: "BrokerBoxV0", kind: "interface" },
+  { name: "ChildLaunchEvidenceV0", kind: "interface" },
+  { name: "ChildBrokerPorts", kind: "interface" },
+  { name: "ChildBroker", kind: "interface" },
+  { name: "ChildLaunchResultV0", kind: "interface" },
   // Request gate.
   { name: "fileRequest", kind: "function" },
   { name: "serveGate", kind: "function" },

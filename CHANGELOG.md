@@ -40,6 +40,17 @@ only forward work.
 - Recorded the trusted nested-lifecycle boundary in ADR-0010. Lineage-attributed
   child requests, replacement, and launch-chain evidence remain deferred to a
   narrow outside broker; no general control socket was introduced.
+- Accepted ADR-0011 and shipped child-lifecycle phase A: one strict
+  `launch-child` frame, sender-namespace-selected recursive authority,
+  transactional rollback, and versioned lineage-linked launch evidence.
+- Added a real host-owned tracer that enters the exact parent namespaces,
+  launches the packaged box from immutable inline policy, verifies the nested
+  namespace result, performs ordinary child work, and commits its compiled
+  material to the outside append-only event log.
+- Added internal Linux inline-policy and stdio-evidence adapter seams for the
+  trusted nested launcher. Darwin rejects them explicitly; the native
+  per-message credential/PIDFD frontend, inhabitant adapter, and child
+  request/replacement path remain deferred.
 
 ## Box and gate foundation
 

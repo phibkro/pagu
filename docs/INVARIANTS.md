@@ -39,6 +39,8 @@ Enforcement:
 | application | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace. |
 | child core  | `src/policy/child.ts` rejects a complete child proposal if any authority field exceeds its effective parent.            |
 | nesting     | Each descendant bubblewrap remains inside its ancestor namespace; bypassing the SDK cannot recover absent authority.    |
+| child broker | `src/child/broker.ts` selects the active parent from one trusted sender observation, derives before launch, and rolls back failed evidence. |
+| child frame | `src/child/schema.ts` accepts launch metadata only; parent selection, resolution, state, signals, and persistence are absent. |
 
 Bound laws:
 
@@ -54,6 +56,12 @@ Bound laws:
 - [law: narrowest ancestor remains final across child derivation]
 - [falsifier: child policy cannot regain ancestor filesystem network
   environment]
+- [falsifier: child broker frame cannot smuggle parent resolution or control]
+- [law: message sender namespace selects parent and recursive child ceiling]
+- [falsifier: unknown or stale sender namespace cannot launch]
+- [falsifier: child network namespace must implement derived net policy]
+- [falsifier: concurrent child launches cannot reuse one lineage id]
+- [falsifier: failed provisional rollback remains tracked for close retry]
 
 Review questions:
 
@@ -164,7 +172,8 @@ Enforcement:
 | event codec  | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define versioned session metadata and retained wire entries. |
 | stream       | `src/events.ts` addresses the append-only entry array by stable offset.                                                          |
 | writer       | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence.             |
-| launch       | `src/policy/cli.ts` writes evidence from the same `CompiledPolicy` value after spawning bubblewrap.                              |
+| launch       | `src/policy/cli.ts` writes evidence from one `CompiledPolicy` while staying outside any entered parent namespace.              |
+| child launch | `src/child/broker.ts` verifies lineage/policy/route/process material before `src/child/evidence.ts` creates a strict event.      |
 | denial       | Opt-in `src/policy/cli.ts` rejects writable log roots and passes that `CompiledPolicy`'s deny rules to the outside supervisor.   |
 | telemetry    | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store.                     |
 | API floor    | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                                                    |
@@ -176,6 +185,8 @@ Bound laws:
 
 - [law: explain argv exactly compiled argv]
 - [law: event wire schema every entry kind round trips]
+- [law: child launch evidence binds lineage policies route and material]
+- [falsifier: namespace or durable evidence failure stops provisional child]
 - [law: log round trips any entry sequence]
 - [law: session grants survive gate restart]
 - [law: widened launch evidence uses explained compiled argv]

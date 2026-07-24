@@ -56,6 +56,9 @@ export type { SandboxKind, SandboxScope } from "./runner/sandbox.ts";
 // Versioned standing policy / grant schema and pure policy compiler.
 export * from "./policy/index.ts";
 
+// Credential/namespace-aware child-host broker core.
+export * from "./child/index.ts";
+
 // Sandbox request SDK and outside-sandbox gate ports.
 export * from "./request/index.ts";
 export * from "./gate/index.ts";

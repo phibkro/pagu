@@ -47,21 +47,29 @@ pkgs.writeShellApplication {
                           # use this to keep a tree read-only without rewriting the bind set
     NEEDS_JOURNAL=0       # opt in to read-only journalctl access (journal dirs + machine-id)
     POLICY_FILE=""
+    POLICY_JSON=""
     GATE_SOCKET=""
     LAUNCH_EVIDENCE=""
+    EVIDENCE_STDIO=0
     DENIAL_LOG=""
     POLICY_PROFILE_CONTEXT=""
     SUPERVISOR_PID=""
+    NAMESPACE_TARGET=""
+    NSENTER=""
     EXPLAIN=0
     LEGACY_OPTIONS=0
 
     while [ $# -gt 0 ]; do
       case "$1" in
         --policy)       POLICY_FILE="$2"; shift 2 ;;
+        --policy-json)  POLICY_JSON="$2"; shift 2 ;;
         --gate)         GATE_SOCKET="$2"; shift 2 ;;
         --evidence)     LAUNCH_EVIDENCE="$2"; shift 2 ;;
+        --evidence-stdio) EVIDENCE_STDIO=1; shift ;;
         --observe-denials) DENIAL_LOG="$2"; shift 2 ;;
         --supervisor-pid) SUPERVISOR_PID="$2"; shift 2 ;;
+        --namespace-target) NAMESPACE_TARGET="$2"; shift 2 ;;
+        --nsenter)      NSENTER="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
         --profile=*)    PROFILE="''${1#--profile=}"; PROFILE_EXPLICIT=1; shift ;;
         --profile)      PROFILE="$2"; PROFILE_EXPLICIT=1; shift 2 ;;
@@ -138,8 +146,12 @@ pkgs.writeShellApplication {
       esac
     done
 
-    if [ "$PROFILE_EXPLICIT" -eq 1 ] && [ -n "$POLICY_FILE" ]; then
-      echo "pagu-box: --profile and --policy are mutually exclusive" >&2
+    if [ -n "$POLICY_FILE" ] && [ -n "$POLICY_JSON" ]; then
+      echo "pagu-box: --policy and --policy-json are mutually exclusive" >&2
+      exit 64
+    fi
+    if [ "$PROFILE_EXPLICIT" -eq 1 ] && { [ -n "$POLICY_FILE" ] || [ -n "$POLICY_JSON" ]; }; then
+      echo "pagu-box: --profile and schema policy are mutually exclusive" >&2
       exit 64
     fi
     if [ "$PROFILE_EXPLICIT" -eq 1 ]; then
@@ -157,14 +169,19 @@ pkgs.writeShellApplication {
       esac
     fi
 
-    if [ -n "$POLICY_FILE" ]; then
+    if [ -n "$POLICY_FILE" ] || [ -n "$POLICY_JSON" ]; then
       [ "$LEGACY_OPTIONS" -eq 0 ] || {
         echo "pagu-box: schema policy profiles cannot be combined with legacy policy options" >&2
         exit 64
       }
-      adapter_args=( --policy "$POLICY_FILE" )
+      if [ -n "$POLICY_FILE" ]; then
+        adapter_args=( --policy "$POLICY_FILE" )
+      else
+        adapter_args=( --policy-json "$POLICY_JSON" )
+      fi
       [ -z "$GATE_SOCKET" ] || adapter_args+=( --gate "$GATE_SOCKET" )
       [ -z "$LAUNCH_EVIDENCE" ] || adapter_args+=( --evidence "$LAUNCH_EVIDENCE" )
+      [ "$EVIDENCE_STDIO" -eq 0 ] || adapter_args+=( --evidence-stdio )
       if [ -n "$DENIAL_LOG" ]; then
         adapter_args+=(
           --observe-denials "$DENIAL_LOG"
@@ -173,6 +190,13 @@ pkgs.writeShellApplication {
         [ -z "$POLICY_PROFILE_CONTEXT" ] || adapter_args+=( --profile-context "$POLICY_PROFILE_CONTEXT" )
       fi
       [ -z "$SUPERVISOR_PID" ] || adapter_args+=( --supervisor-pid "$SUPERVISOR_PID" )
+      if [ -n "$NAMESPACE_TARGET" ] || [ -n "$NSENTER" ]; then
+        [ -n "$NAMESPACE_TARGET" ] && [ -n "$NSENTER" ] || {
+          echo "pagu-box: --namespace-target and --nsenter must be supplied together" >&2
+          exit 64
+        }
+        adapter_args+=( --namespace-target "$NAMESPACE_TARGET" --nsenter "$NSENTER" )
+      fi
       if [ "$EXPLAIN" -eq 1 ]; then
         [ $# -eq 0 ] || { echo "pagu-box: --explain does not accept a command" >&2; exit 64; }
         adapter_args+=( --explain )
@@ -182,6 +206,7 @@ pkgs.writeShellApplication {
       fi
       run_allow=${pkgs.bubblewrap}/bin/bwrap
       [ -z "$DENIAL_LOG" ] || run_allow="$run_allow,${denialObserver}/bin/pagu-denial-observer"
+      [ -z "$NSENTER" ] || run_allow="$run_allow,$NSENTER"
       deno_permissions=( --allow-read --allow-env "--allow-run=$run_allow" )
       [ -z "$LAUNCH_EVIDENCE" ] || deno_permissions+=( --allow-write="$LAUNCH_EVIDENCE" )
       exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
@@ -196,6 +221,10 @@ pkgs.writeShellApplication {
       echo "pagu-box: --evidence requires --policy" >&2
       exit 64
     }
+    [ "$EVIDENCE_STDIO" -eq 0 ] || {
+      echo "pagu-box: --evidence-stdio requires a schema policy" >&2
+      exit 64
+    }
     [ -z "$DENIAL_LOG" ] || {
       echo "pagu-box: --observe-denials requires a schema policy or category profile" >&2
       exit 64
@@ -204,6 +233,10 @@ pkgs.writeShellApplication {
       echo "pagu-box: --supervisor-pid requires --policy" >&2
       exit 64
     }
+    if [ -n "$NAMESPACE_TARGET" ] || [ -n "$NSENTER" ]; then
+      echo "pagu-box: --namespace-target and --nsenter require a schema policy" >&2
+      exit 64
+    fi
     [ "$EXPLAIN" -eq 0 ] || {
       echo "pagu-box: --explain requires --policy" >&2
       exit 64

@@ -450,10 +450,37 @@ derivation API. Both run under a real outer worker namespace; neither can
 recover host filesystem, network, environment, gate state, or control
 capabilities removed by that ancestor.
 
-This is the nested-authority core, not yet a `pagu child` product surface.
-Trusted child request routing, stop/replacement, and lineage-linked launch
-evidence require the narrow outside broker planned as Slice 16b. Pagu does not
-mount a general control socket or treat inhabitant-authored lineage as trusted.
+Slice 16b phase A adds the narrow trusted broker core and a second packaged
+tracer:
+
+```sh
+deno run -A scripts/child-broker-tracer.ts \
+  /absolute/path/to/pagu-box /absolute/path/to/nsenter
+```
+
+The broker accepts only `launch-child`, selects the parent from trusted
+per-message sender/namespace facts rather than a caller-supplied lineage ID,
+derives the complete child policy, and commits strict `child-launch` v0 evidence
+before making the child active. The tracer keeps the packaged policy/evidence
+supervisor wholly in host namespaces, then uses an explicit absolute `nsenter`
+to put only its enforcement child in the live parent namespaces before
+bubblewrap narrows them again. It passes immutable policy JSON to that host
+supervisor, observes distinct child namespace identities, and retains
+parent/child policy hashes, request-route identity, compiled argv/environment
+names, PID, command, cwd, and lineage outside the parent-visible tree. The
+parent actively scans `/proc` and attempts an evidence-FD forgery if that
+supervisor becomes visible. Failure to verify or retain evidence stops the
+provisional child.
+
+This is not yet a `pagu child` product surface. Phase A's controlled tracer
+keeps its numeric parent process target live, but does not claim PID-reuse-safe
+namespace selection. The native phase-B frontend must receive per-message
+`SCM_CREDENTIALS` plus `SCM_PIDFD`, pin the sender's namespace handles, and use
+those exact handles for launch; connection-time `SO_PEERCRED` is explicitly
+insufficient because a connected descriptor can be passed to a child. The agent
+adapter is also phase B; child request adjudication and replacement are phase C.
+Pagu still does not mount a general control socket or treat inhabitant-authored
+lineage as trusted.
 
 ## Programmatic API
 
@@ -464,6 +491,7 @@ The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 - strict policy and grant decoding;
 - trusted-user plus narrow-only project policy folding;
 - strict child-policy derivation and actor/box-lineage construction;
+- the strict namespace-aware child-broker core and child-launch event mapping;
 - pure policy compilation and explanation;
 - strict denial-evidence v1 decoding;
 - the request client, session-bound gate core, and Approver port;

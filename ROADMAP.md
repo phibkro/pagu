@@ -15,8 +15,11 @@ launch journey governed by
 [ADR-0009](docs/decisions/0009-request-only-agent-interface.md) governs the
 request-only inhabitant interface.
 [ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md) governs child
-authority and trusted lineage. [CONTEXT.md](CONTEXT.md) owns durable design;
-this file owns sequence and remaining work.
+authority and trusted lineage.
+[ADR-0011](docs/decisions/0011-credential-attested-child-broker.md) governs
+credential-attested child hosting and literal nesting.
+[CONTEXT.md](CONTEXT.md) owns durable design; this file owns sequence and
+remaining work.
 
 ## Delivery slices
 
@@ -38,7 +41,7 @@ this file owns sequence and remaining work.
 | 14 — product front door | Bare `pagu`, worker/Codex defaults, strict user launch config, wrapped-executable inference, default Nix package. | ✓ shipped      |
 | 15 — agent interface    | Inhabitant discovers one typed request tool through MCP plus an in-repo skill; no prompt injection required.      | ✓ shipped      |
 | 16 — nested authority   | Host/inhabitant roles and strict child attenuation make the narrowest ancestor boundary final.                    | core + proof ✓ |
-| 16b — child lifecycle   | Narrow trusted launch/request routing, replacement, and lineage-linked evidence without a control socket.         | planned        |
+| 16b — child lifecycle   | Narrow trusted launch/request routing, replacement, and lineage-linked evidence without a control socket.         | phase A ✓      |
 | 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                           | planned        |
 | runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                 | slice 1 parked |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                  | operator-gated |
@@ -101,11 +104,23 @@ runtime exercises the same core.
   packaged two-level tracer. The accepted child performs ordinary work. A direct
   derivation-bypass child still cannot recover outer filesystem, network,
   environment, state, resolution, or control capabilities.
-- **Deferred lifecycle (16b):** design and implement the narrow trusted broker
-  that attributes an inhabitant-hosted child, routes its request-only endpoint
-  outward, owns stop/replacement, and retains parent-policy → child-policy →
-  compiled-launch linkage. Until that tracer lands, the request-help portion of
-  the journey is not claimed complete.
+- **Delivered lifecycle phase A (16b):** ADR-0011; a strict `launch-child`
+  frame; namespace-selected recursive authority; transactional rollback;
+  strict retained `child-launch` evidence; immutable inline policy handoff; and
+  a real host-owned packaged supervisor → live-parent `nsenter` → bubblewrap
+  tracer. The supervisor remains outside the parent PID namespace, whose
+  inhabitant attempts and fails to discover its policy sentinel or forge its
+  evidence FD. The broker, not the inhabitant, mints lineage and request-route
+  identities.
+- **Deferred lifecycle phases B/C:** connect a Linux `SOCK_SEQPACKET` frontend
+  with per-message `SCM_CREDENTIALS` plus `SCM_PIDFD` attribution and the
+  agent-facing adapter. It must pin the attributed sender's namespace handles
+  and launch through those exact handles; the phase-A numeric target is a
+  controlled tracer mechanism, not PID-reuse-safe authority. Then route the
+  child's request-only endpoint through adjudication and gate-owned replacement.
+  Connection-time `SO_PEERCRED` is not sufficient. Until those tracers land,
+  pagu does not claim an inhabitant-accessible child command or
+  lineage-attributed child request/resume.
 
 ### Slice 17 — use one product name for expert control
 

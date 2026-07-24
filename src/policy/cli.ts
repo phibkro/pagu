@@ -11,15 +11,19 @@ import {
 } from "./index.ts";
 
 interface Options {
-  readonly policyFile: string;
+  readonly policyFile?: string;
+  readonly policyJson?: string;
   readonly explainOnly: boolean;
   readonly bwrap?: string;
   readonly gate?: string;
   readonly evidence?: string;
+  readonly evidenceStdio: boolean;
   readonly observeDenials?: string;
   readonly denialSupervisor?: string;
   readonly profileContext?: string;
   readonly supervisorPid?: number;
+  readonly namespaceTarget?: number;
+  readonly nsenter?: string;
   readonly command: readonly string[];
 }
 
@@ -30,14 +34,18 @@ function usageError(message: string): never {
 
 function parseArgs(args: readonly string[]): Options {
   let policyFile: string | undefined;
+  let policyJson: string | undefined;
   let explainOnly = false;
   let bwrap: string | undefined;
   let gate: string | undefined;
   let evidence: string | undefined;
+  let evidenceStdio = false;
   let observeDenials: string | undefined;
   let denialSupervisor: string | undefined;
   let profileContext: string | undefined;
   let supervisorPid: number | undefined;
+  let namespaceTarget: number | undefined;
+  let nsenter: string | undefined;
   let index = 0;
   for (; index < args.length; index++) {
     const arg = args[index];
@@ -47,6 +55,9 @@ function parseArgs(args: readonly string[]): Options {
     }
     if (arg === "--policy") {
       policyFile = args[++index] ?? usageError("--policy requires a file");
+    } else if (arg === "--policy-json") {
+      policyJson = args[++index] ??
+        usageError("--policy-json requires JSON");
     } else if (arg === "--explain") {
       explainOnly = true;
     } else if (arg === "--bwrap") {
@@ -55,6 +66,8 @@ function parseArgs(args: readonly string[]): Options {
       gate = args[++index] ?? usageError("--gate requires a socket");
     } else if (arg === "--evidence") {
       evidence = args[++index] ?? usageError("--evidence requires a file");
+    } else if (arg === "--evidence-stdio") {
+      evidenceStdio = true;
     } else if (arg === "--observe-denials") {
       observeDenials = args[++index] ??
         usageError("--observe-denials requires a file");
@@ -72,11 +85,28 @@ function parseArgs(args: readonly string[]): Options {
         usageError("--supervisor-pid requires a positive PID");
       }
       supervisorPid = value;
+    } else if (arg === "--namespace-target") {
+      const value = Number(
+        args[++index] ??
+          usageError("--namespace-target requires a PID"),
+      );
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        usageError("--namespace-target requires a positive PID");
+      }
+      namespaceTarget = value;
+    } else if (arg === "--nsenter") {
+      nsenter = args[++index] ??
+        usageError("--nsenter requires an executable");
     } else {
       usageError(`internal policy adapter received unknown option '${arg}'`);
     }
   }
-  if (!policyFile) usageError("--policy is required");
+  if (policyFile && policyJson) {
+    usageError("--policy and --policy-json are mutually exclusive");
+  }
+  if (!policyFile && !policyJson) {
+    usageError("--policy or --policy-json is required");
+  }
   const command = args.slice(index);
   if (explainOnly && command.length > 0) {
     usageError("--explain does not accept a command");
@@ -84,24 +114,42 @@ function parseArgs(args: readonly string[]): Options {
   if (explainOnly && evidence) {
     usageError("--evidence cannot be combined with --explain");
   }
+  if (explainOnly && evidenceStdio) {
+    usageError("--evidence-stdio cannot be combined with --explain");
+  }
+  if (evidence && evidenceStdio) {
+    usageError("--evidence and --evidence-stdio are mutually exclusive");
+  }
   if (explainOnly && observeDenials) {
     usageError("--observe-denials cannot be combined with --explain");
   }
   if (observeDenials && !denialSupervisor) {
     usageError("internal --denial-supervisor is required for observation");
   }
+  if ((namespaceTarget === undefined) !== (nsenter === undefined)) {
+    usageError(
+      "--namespace-target and --nsenter must be supplied together",
+    );
+  }
+  if (explainOnly && namespaceTarget !== undefined) {
+    usageError("--namespace-target cannot be combined with --explain");
+  }
   if (!explainOnly && command.length === 0) usageError("no command given");
   if (!explainOnly && !bwrap) usageError("internal --bwrap is required");
   return {
     policyFile,
+    policyJson,
     explainOnly,
     bwrap,
     gate,
     evidence,
+    evidenceStdio,
     observeDenials,
     denialSupervisor,
     profileContext,
     supervisorPid,
+    namespaceTarget,
+    nsenter,
     command,
   };
 }
@@ -190,7 +238,8 @@ function context(gate?: string): BwrapCompileContext {
 
 async function main(): Promise<number> {
   const options = parseArgs(Deno.args);
-  const source = await Deno.readTextFile(options.policyFile);
+  const source = options.policyJson ??
+    await Deno.readTextFile(options.policyFile!);
   const loaded = loadPolicy({ user: JSON.parse(source) });
   for (const warning of loaded.warnings) console.error(`pagu-box: ${warning}`);
   const ctx = context(options.gate);
@@ -216,10 +265,10 @@ async function main(): Promise<number> {
     throw new PolicyCompileError("gate supervisor is not running");
   }
   const bwrapArgs = [...compiled.argv, "--", ...options.command];
-  const executable = options.observeDenials
+  const sandboxExecutable = options.observeDenials
     ? options.denialSupervisor!
     : options.bwrap!;
-  const args = options.observeDenials
+  const sandboxArgs = options.observeDenials
     ? [
       "--log",
       options.observeDenials,
@@ -233,41 +282,39 @@ async function main(): Promise<number> {
       ...bwrapArgs,
     ]
     : bwrapArgs;
+  const executable = options.nsenter ?? sandboxExecutable;
+  const args = options.nsenter
+    ? [
+      "--target",
+      String(options.namespaceTarget),
+      "--user",
+      "--preserve-credentials",
+      "--mount",
+      "--net",
+      "--ipc",
+      "--uts",
+      "--pid",
+      `--wdns=${ctx.pwd}`,
+      "--",
+      sandboxExecutable,
+      ...sandboxArgs,
+    ]
+    : sandboxArgs;
   const child = new Deno.Command(executable, {
     args,
     clearEnv: true,
     env: { ...compiled.environment },
     stdin: "inherit",
     stdout: "inherit",
-    stderr: "inherit",
+    // In streamed-evidence mode the adapter must write the trusted prefix
+    // before an untrusted child can emit a lookalike line.
+    stderr: options.evidenceStdio ? "piped" : "inherit",
   }).spawn();
-  if (options.evidence) {
-    await Deno.writeTextFile(
-      options.evidence,
-      JSON.stringify({
-        version: 1,
-        platform: "linux",
-        cwd: ctx.pwd,
-        pid: child.pid,
-        argv: [...compiled.argv],
-        environment: Object.keys(compiled.environment),
-        command: [...options.command],
-      }) + "\n",
-      { createNew: true, mode: 0o600 },
-    );
-  }
   const status = child.status;
-  if (
-    options.supervisorPid !== undefined
-  ) {
-    const result = await Promise.race([
-      status.then((value) => ({ kind: "child" as const, value })),
-      supervisorLost(options.supervisorPid).then(
-        () => ({ kind: "supervisor" as const }),
-      ),
-    ]);
-    if (result.kind === "supervisor") {
-      console.error("pagu-box: gate supervisor exited; stopping sandbox");
+  let stopPromise: Promise<void> | undefined;
+  const stopEnforcement = (): Promise<void> => {
+    if (stopPromise) return stopPromise;
+    stopPromise = (async () => {
       try {
         child.kill("SIGTERM");
       } catch (error) {
@@ -278,14 +325,64 @@ async function main(): Promise<number> {
         delay(2_000).then(() => false),
       ]);
       if (!stopped) {
-        child.kill("SIGKILL");
+        try {
+          child.kill("SIGKILL");
+        } catch (error) {
+          if (!(error instanceof Deno.errors.NotFound)) throw error;
+        }
         await status;
       }
-      return 70;
+    })();
+    return stopPromise;
+  };
+  try {
+    const launchEvidence = {
+      version: 1,
+      platform: "linux",
+      cwd: ctx.pwd,
+      pid: child.pid,
+      argv: [...compiled.argv],
+      environment: Object.keys(compiled.environment),
+      command: [...options.command],
+    };
+    if (options.evidence) {
+      await Deno.writeTextFile(
+        options.evidence,
+        JSON.stringify(launchEvidence) + "\n",
+        { createNew: true, mode: 0o600 },
+      );
     }
-    return result.value.code;
+    if (options.evidenceStdio) {
+      console.error(
+        `PAGU_LAUNCH_EVIDENCE_V1=${JSON.stringify(launchEvidence)}`,
+      );
+    }
+    const stderrForward = options.evidenceStdio
+      ? child.stderr.pipeTo(Deno.stderr.writable, { preventClose: true })
+      : Promise.resolve();
+    if (options.supervisorPid !== undefined) {
+      const result = await Promise.race([
+        status.then((value) => ({ kind: "child" as const, value })),
+        supervisorLost(options.supervisorPid).then(
+          () => ({ kind: "supervisor" as const }),
+        ),
+      ]);
+      if (result.kind === "supervisor") {
+        console.error("pagu-box: gate supervisor exited; stopping sandbox");
+        await stopEnforcement();
+        await stderrForward;
+        return 70;
+      }
+      await stderrForward;
+      return result.value.code;
+    }
+    const result = await status;
+    await stderrForward;
+    return result.code;
+  } catch (error) {
+    await stopEnforcement();
+    throw error;
   }
-  return (await status).code;
 }
 
 try {

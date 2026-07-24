@@ -157,6 +157,35 @@ const WIRE_CONTRACT: { [K in Entry["kind"]]: Extract<Entry, { kind: K }> } = {
     grant: "",
     session: "",
   },
+  "child-launch": {
+    kind: "child-launch",
+    version: 0,
+    at: "2026-07-24T00:00:00.000Z",
+    id: "box-child",
+    parent: "box-root",
+    depth: 1,
+    host: {
+      actor: { kind: "agent", id: 'agent "quoted"\nline' },
+      position: "parent-inhabitant",
+    },
+    parentPolicy: "sha256:parent",
+    policy: "sha256:child",
+    requestRoute: "request:box-child",
+    pid: 123,
+    namespace: {
+      version: 0,
+      user: "user:[1]",
+      mount: "mnt:[2]",
+      pid: "pid:[3]",
+      network: "net:[4]",
+      ipc: "ipc:[5]",
+      uts: "uts:[6]",
+    },
+    cwd: "/work",
+    command: ["/bin/agent", "--resume"],
+    argv: ["--unshare-all"],
+    environment: ["HOME", "PATH"],
+  },
 };
 
 Deno.test("event wire schema: every entry kind round-trips (public-API floor)", () => {
@@ -205,5 +234,52 @@ Deno.test("event wire schema: gate-session v2 is fresh-only", () => {
       ),
     Error,
     "malformed gate-session metadata",
+  );
+});
+
+Deno.test("event wire schema: child-launch rejects unknown fields and versions", () => {
+  const body = {
+    id: "box-child",
+    parent: "box-root",
+    depth: 1,
+    host: {
+      actor: { kind: "agent", id: "agent" },
+      position: "parent-inhabitant",
+    },
+    parentPolicy: "sha256:parent",
+    policy: "sha256:child",
+    requestRoute: "request:box-child",
+    pid: 123,
+    namespace: {
+      version: 0,
+      user: "user:[1]",
+      mount: "mnt:[2]",
+      pid: "pid:[3]",
+      network: "net:[4]",
+      ipc: "ipc:[5]",
+      uts: "uts:[6]",
+    },
+    cwd: "/work",
+    command: ["/bin/agent"],
+    argv: ["--unshare-all"],
+    environment: ["HOME"],
+  };
+  assertThrows(
+    () =>
+      parseLog(
+        `~~~pagu:child-launch version=1\n${JSON.stringify(body)}\n~~~\n`,
+      ),
+    Error,
+    "unsupported child-launch version 1",
+  );
+  assertThrows(
+    () =>
+      parseLog(
+        `~~~pagu:child-launch version=0\n${
+          JSON.stringify({ ...body, resolution: "approve" })
+        }\n~~~\n`,
+      ),
+    Error,
+    "malformed child-launch evidence",
   );
 });

@@ -14,6 +14,7 @@ flowchart TB
         LC["src/launch/\ndefaults + inference"]
         GC["src/gate/cli.ts\npagu · pagu gate"]
         R["src/gate/relaunch.ts\nchild ownership + resume"]
+        CB["src/child/\ntrusted child broker core"]
         G["src/request/gate.ts\nPA state + adjudication"]
         P["src/policy/\nschema · fold · compile"]
         BC["box/src/linux.nix\npagu-box"]
@@ -23,6 +24,7 @@ flowchart TB
         H["any harness"]
         M["src/mcp/server.ts\nrequest_read_access only"]
         C["src/request/channel.ts\nfileRequest client"]
+        CH["parent inhabitant\nlaunch-child proposal"]
     end
 
     LC --> GC
@@ -36,6 +38,8 @@ flowchart TB
     C -. "strict Unix request" .-> G
     G -->|"validated grant"| R
     R -->|"stop + new complete policy"| BC
+    CH -. "strict launch only" .-> CB
+    CB -->|"derive + enter parent namespaces"| BC
     G --> L[("log + projections")]
     L --> T
 ```
@@ -134,6 +138,24 @@ Gate-side adapters export through `src/gate/index.ts`:
 `src/gate/cli.ts` composes those adapters. The request core does not know about
 terminals, herdr, Codex argv, or process spawning.
 
+## Trusted child lifecycle
+
+Child-lifecycle phase A exports through `src/child/index.ts`:
+
+| Module                           | Responsibility                                                                                           |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `src/child/schema.ts`            | Strict `launch-child` v0 frame; no parent selector, resolution, state, signal, or persistence operation. |
+| `src/child/broker.ts`            | Namespace-selected parent authority, recursive policy derivation, launch verification, and rollback.    |
+| `src/child/evidence.ts`          | Verified broker launch → canonical versioned `child-launch` event mapping.                               |
+| `src/child/broker.test.ts`       | Smuggling, stale namespace, recursive ceiling, evidence, rollback, and network-namespace falsifiers.     |
+| `scripts/child-broker-tracer.ts` | Real host-owned `nsenter` launch inside a packaged parent box with outside retained evidence.            |
+
+The broker core consumes one trusted, race-stable sender observation captured
+by its frontend; it does not rediscover a numeric PID or accept a caller-supplied
+parent. Phase A's real tracer supplies that observation directly. A native
+per-message `SCM_CREDENTIALS` + `SCM_PIDFD` frontend and inhabitant adapter are
+phase B, and child request adjudication/replacement are phase C.
+
 ## Agent interface
 
 `src/mcp/server.ts` owns a connection-local MCP lifecycle and one strict tool.
@@ -153,7 +175,7 @@ enforce the boundary.
 
 | Module                 | Responsibility                                                                        |
 | ---------------------- | ------------------------------------------------------------------------------------- |
-| `src/log/schema.ts`    | Entry union, including request, decision, grant, launch/failure, and spent evidence.  |
+| `src/log/schema.ts`    | Entry union, including request, decision, grant, policy/child launch, failure, and spent evidence. |
 | `src/log/serialize.ts` | Typed entry → tilde-fenced markdown block.                                            |
 | `src/log/parse.ts`     | Markdown blocks → typed entries; unknown future kinds are skipped.                    |
 | `src/events.ts`        | Offset-addressed reads and live wakeups over an append-only entry array.              |
@@ -173,7 +195,7 @@ checked-in profile rather than freezing a full profile snapshot.
 
 | Path                           | Responsibility                                                                                       |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `box/src/linux.nix`            | Nix-built shell adapter, legacy bubblewrap profiles, and schema-policy handoff to the Deno compiler. |
+| `box/src/linux.nix`            | Nix-built shell adapter, legacy profiles, schema-policy handoff, and host-supervised parent-namespace entry. |
 | `box/src/denial-spike.nix`     | Linux-only build/check boundary for the opt-in denial observer.                                      |
 | `box/src/denial-spike.c`       | Outside-bwrap seccomp supervisor; compiled deny rules → denial-evidence v1 JSONL.                    |
 | `box/src/denial-spike-test.c`  | Packaged unit falsifier for event encoding, subtree/exact matching, and false positives.             |
@@ -192,12 +214,27 @@ the gate never passes its operator resolution path. With `--observe-denials`,
 the C supervisor using deny rules from the same `CompiledPolicy`; without the
 flag it directly spawns bubblewrap as before.
 
-`scripts/nested-box-tracer.ts` is the real two-level composition adapter. It
-launches the packaged `pagu-box` inside an outer packaged `pagu-box`, verifies
-ordinary child work, and then bypasses `deriveChildPolicy` deliberately. The
-outer namespace still prevents recovery of removed filesystem, network,
-environment, state, and control capabilities. Trusted request routing and
-lineage-linked replacement evidence are not yet runtime components.
+The trusted nested-launch adapter can pass the already decoded child policy as
+internal `--policy-json` argv and receive the same post-spawn evidence through
+internal `--evidence-stdio`. Policy v0 contains environment names but no secret
+values. These immutable/process-owned channels avoid an inhabitant-writable
+policy or evidence file; Darwin rejects both because schema enforcement remains
+unsupported there.
+
+`scripts/nested-box-tracer.ts` is the adversarial two-level composition
+adapter. It launches the packaged `pagu-box` inside an outer packaged
+`pagu-box`, verifies ordinary child work, and then bypasses
+`deriveChildPolicy` deliberately. The outer namespace still prevents recovery
+of removed filesystem, network, environment, state, and control capabilities.
+
+`scripts/child-broker-tracer.ts` is the phase-A lifecycle adapter. The outside
+host uses a pinned absolute `nsenter` to enter the exact parent namespaces,
+launches the packaged child from immutable policy and a scrubbed launcher
+environment, observes the real sandbox PID and distinct namespaces, and commits
+strict lineage-linked `child-launch` evidence before broker success. Namespace
+ancestry here is a claim about controlled construction, not an inference from
+unequal inode strings alone. Credential attestation and request-linked
+replacement remain the explicit next phases.
 
 ## Retained SDK primitives
 

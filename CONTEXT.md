@@ -25,7 +25,9 @@ belongs in [ROADMAP.md](ROADMAP.md). The default product entrypoint is fixed by
 request interface is fixed by
 [ADR-0009](docs/decisions/0009-request-only-agent-interface.md). Nested
 authority and lineage are fixed by
-[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md).
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md). Trusted child
+launch attribution and literal namespace nesting are fixed by
+[ADR-0011](docs/decisions/0011-credential-attested-child-broker.md).
 
 ## Why the split exists
 
@@ -161,11 +163,37 @@ two-level tracer in
 child cannot recover filesystem, network, environment, gate state, or control
 capabilities removed by its outer worker.
 
-The trusted child lifecycle is not yet shipped. A future narrow broker must
-route child requests to an outside ancestor and own replacement/evidence without
-mounting resolution, persistence, state, or a general control socket. Until
-then, pagu does not claim lineage-attributed child requests or host-owned child
-resume.
+[`src/child/`](src/child/) now supplies the first trusted lifecycle phase. Its
+strict launch frame contains a complete proposed policy, host display metadata,
+and command only. The broker selects authority from trusted per-message
+sender/namespace facts, derives from that exact active parent, mints lineage and
+route identity, and rolls a provisional child back unless namespace checks and
+outside-owned `child-launch` evidence commit. A child cannot name a parent,
+resolution, operator state, signal, or persistence operation.
+
+[`scripts/child-broker-tracer.ts`](scripts/child-broker-tracer.ts) proves the
+host can own the process while launching it by controlled construction through
+a live parent process's user, mount, PID, network, IPC, and UTS namespaces.
+Policy crosses that boundary as a strict immutable argv value; exact compiled evidence
+returns through a machine-prefixed adapter line that the trusted adapter emits
+before forwarding child stderr. The adapter itself remains wholly in host
+namespaces; only its `nsenter` enforcement child enters the parent namespaces,
+so the parent PID namespace cannot discover the adapter and write its evidence
+FD. The retained event binds lineage, both policy identities, request-route
+identity, compiled argv/environment names, command, cwd, PID, and observed
+namespaces. The log remains outside every governed write root. The separate
+adversarial nested tracer, not unequal namespace IDs alone, proves the
+ancestor-final claim.
+
+The stable Deno Unix socket API does not expose the ancillary-message facts
+required for sender attribution, so the native credential frontend and
+inhabitant adapter remain phase B. That frontend must receive per-message
+`SCM_CREDENTIALS` and a kernel-bound `SCM_PIDFD`, pin the sender namespace
+handles, and launch through those exact handles; it must never substitute
+connection-time `SO_PEERCRED` or the phase-A tracer's numeric PID targeting.
+Child request adjudication/replacement remain phase C. Until those land, pagu
+does not claim an inhabitant-accessible child command, lineage-attributed child
+requests, or host-owned child resume.
 
 ### Deny wins
 

@@ -658,6 +658,7 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
   try {
     const policyFile = `${dir}/policy.json`;
     const fakeBwrap = `${dir}/fake-bwrap`;
+    const fakeNsenter = `${dir}/fake-nsenter`;
     const fakeObserver = `${dir}/fake-observer`;
     const evidenceFile = `${dir}/launch-evidence.json`;
     const secret = "slice3-secret-must-not-appear-in-explain";
@@ -672,9 +673,14 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
     );
     await Deno.writeTextFile(
       fakeBwrap,
-      "#!/bin/sh\nprintf 'ARG:%s\\n' \"$@\"\nprintf 'SECRET:%s\\n' \"${POLICY_TEST_SECRET:-}\"\n",
+      "#!/bin/sh\nprintf 'PAGU_LAUNCH_EVIDENCE_V1={\"version\":999}\\n' >&2\nprintf 'ARG:%s\\n' \"$@\"\nprintf 'SECRET:%s\\n' \"${POLICY_TEST_SECRET:-}\"\n",
     );
     await Deno.chmod(fakeBwrap, 0o755);
+    await Deno.writeTextFile(
+      fakeNsenter,
+      '#!/bin/sh\nwhile [ "$1" != -- ]; do printf \'NS:%s\\n\' "$1"; shift; done\nshift\nprintf \'EXEC:%s\\n\' "$@"\nexec "$@"\n',
+    );
+    await Deno.chmod(fakeNsenter, 0o755);
     await Deno.writeTextFile(
       fakeObserver,
       "#!/bin/sh\nprintf 'OBS:%s\\n' \"$@\"\n",
@@ -715,6 +721,31 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
     };
     assert(explained.environment.includes("POLICY_TEST_SECRET"));
 
+    const policyJson = await Deno.readTextFile(policyFile);
+    const inlineExplainedResult = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--explain",
+    ]);
+    assertEquals(inlineExplainedResult.code, 0);
+    assertEquals(
+      JSON.parse(new TextDecoder().decode(inlineExplainedResult.stdout)),
+      explained,
+    );
+
+    const duplicatePolicySourceResult = await runAdapter([
+      "--policy",
+      policyFile,
+      "--policy-json",
+      policyJson,
+      "--explain",
+    ]);
+    assertEquals(duplicatePolicySourceResult.code, 64);
+    assertStringIncludes(
+      new TextDecoder().decode(duplicatePolicySourceResult.stderr),
+      "--policy and --policy-json are mutually exclusive",
+    );
+
     const enforcedResult = await runAdapter([
       "--policy",
       policyFile,
@@ -740,6 +771,79 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
     assertEquals(evidence.argv, explained.argv);
     assertEquals(evidence.environment, explained.environment);
     assertEquals(evidence.command, ["ignored-command"]);
+
+    const streamedResult = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--bwrap",
+      fakeBwrap,
+      "--evidence-stdio",
+      "--",
+      "streamed-command",
+    ]);
+    assertEquals(streamedResult.code, 0);
+    const evidenceLines = new TextDecoder().decode(streamedResult.stderr)
+      .split("\n")
+      .filter((line) => line.startsWith("PAGU_LAUNCH_EVIDENCE_V1="));
+    assertEquals(evidenceLines.length, 2);
+    const evidenceLine = evidenceLines[0];
+    const streamedEvidence = JSON.parse(
+      evidenceLine.slice("PAGU_LAUNCH_EVIDENCE_V1=".length),
+    );
+    assertEquals(streamedEvidence.version, 1);
+    assertEquals(streamedEvidence.argv, explained.argv);
+    assertEquals(streamedEvidence.environment, explained.environment);
+    assertEquals(streamedEvidence.command, ["streamed-command"]);
+    assertEquals(
+      evidenceLines[1],
+      'PAGU_LAUNCH_EVIDENCE_V1={"version":999}',
+    );
+
+    const pidNestedResult = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--bwrap",
+      fakeBwrap,
+      "--nsenter",
+      fakeNsenter,
+      "--namespace-target",
+      "1",
+      "--",
+      "pid-nested-command",
+    ]);
+    assertEquals(pidNestedResult.code, 0);
+    const pidNestedLines = new TextDecoder().decode(pidNestedResult.stdout)
+      .trimEnd().split("\n");
+    assertEquals(pidNestedLines.slice(0, 10), [
+      "NS:--target",
+      "NS:1",
+      "NS:--user",
+      "NS:--preserve-credentials",
+      "NS:--mount",
+      "NS:--net",
+      "NS:--ipc",
+      "NS:--uts",
+      "NS:--pid",
+      `NS:--wdns=${Deno.cwd()}`,
+    ]);
+    assert(pidNestedLines.includes(`EXEC:${fakeBwrap}`));
+    assert(pidNestedLines.includes("ARG:pid-nested-command"));
+
+    const incompletePidNesting = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--bwrap",
+      fakeBwrap,
+      "--namespace-target",
+      "1",
+      "--",
+      "pid-nested-command",
+    ]);
+    assertEquals(incompletePidNesting.code, 64);
+    assertStringIncludes(
+      new TextDecoder().decode(incompletePidNesting.stderr),
+      "--namespace-target and --nsenter must be supplied together",
+    );
 
     const observedResult = await runAdapter([
       "--policy",

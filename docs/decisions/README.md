@@ -51,3 +51,6 @@ silently drift either.
   request-only MCP tool plus the pagu skill to sandbox inhabitants.
 - [ADR-0010](0010-nested-authority-and-lineage.md) — derive child policy through
   trusted lineage while the narrowest ancestor remains the final boundary.
+- [ADR-0011](0011-credential-attested-child-broker.md) — bind child-host
+  authority to per-message sender credentials/PIDFD and exact namespaces while
+  launching literally inside the parent.
