@@ -49,3 +49,5 @@ silently drift either.
   fresh gated journey with strict launch defaults and harness inference.
 - [ADR-0009](0009-request-only-agent-interface.md) — expose one session-local,
   request-only MCP tool plus the pagu skill to sandbox inhabitants.
+- [ADR-0010](0010-nested-authority-and-lineage.md) — derive child policy through
+  trusted lineage while the narrowest ancestor remains the final boundary.

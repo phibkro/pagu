@@ -106,8 +106,15 @@ is not a substitute when the changed seam depends on live process behavior.
 
 For an inhabitant MCP change, exercise the packaged `pagu mcp` protocol and
 verify the generated session-local configuration with the actual supported
-harness clients. If request behavior changed, file the request through that
-MCP surface in a real box and confirm that resolution remains host-only.
+harness clients. If request behavior changed, file the request through that MCP
+surface in a real box and confirm that resolution remains host-only.
+
+For nested authority, run
+`scripts/nested-box-tracer.ts /absolute/path/to/pagu-box`. The accepted child
+must complete ordinary work, and the deliberate derivation bypass must still
+fail to recover every capability removed by the outer box. Do not count
+inhabitant-authored lineage or evidence as trusted merely because the nested
+process launched.
 
 Security-boundary work should receive an independent-context review. The
 reviewer should try to falsify the claim, not merely restate the diff.

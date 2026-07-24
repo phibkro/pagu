@@ -414,6 +414,38 @@ Deno.test("falsifier 3: project dot segments cannot escape a trusted path", () =
   assertEquals(warnings.length, 2);
 });
 
+Deno.test("falsifier 3: project filesystem wildcard is a literal path", () => {
+  const { policy, warnings } = loadPolicy({
+    user: completePolicy({ fs: { rw: ["/srv/work/**"] } }),
+    project: completePolicy({ fs: { rw: ["/srv/work"] } }),
+  }, { canonicalize: (path) => path });
+
+  assertEquals(policy.fs.rw, []);
+  assertEquals(warnings, [
+    'project policy: ignored fs.rw widening "/srv/work"',
+  ]);
+});
+
+Deno.test("law: project may narrow rw home to explicit child scopes", () => {
+  const canonicalize = (path: string) => {
+    if (path === "$HOME" || path === "~") return HOME;
+    if (path.startsWith("$HOME/")) return `${HOME}${path.slice(5)}`;
+    if (path.startsWith("~/")) return `${HOME}${path.slice(1)}`;
+    return path;
+  };
+  const { policy, warnings } = loadPolicy({
+    user: completePolicy({ fs: { home: "rw" } }),
+    project: completePolicy({
+      fs: { home: "tmpfs", rw: ["$HOME/work"], ro: ["~/reference"] },
+    }),
+  }, { canonicalize });
+
+  assertEquals(policy.fs.home, "tmpfs");
+  assertEquals(policy.fs.rw, [`${HOME}/work`]);
+  assertEquals(policy.fs.ro, [`${HOME}/reference`]);
+  assertEquals(warnings, []);
+});
+
 Deno.test("falsifier 3: canonical paths reject symlink escapes and accept symbolic aliases", async () => {
   const root = await Deno.makeTempDir();
   try {

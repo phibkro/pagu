@@ -11,13 +11,13 @@ only forward work.
 
 ## Product launch surface
 
-- Made bare `pagu` start a fresh gate-owned worker Codex session and made
-  `pagu` the root flake's default package. The direct `pagu gate` and
-  compatibility `pagu-box` surfaces remain available.
-- Added strict, versioned user launch defaults in XDG
-  `pagu/launch.json`. The file may select one checked-in category and verified
-  Codex/Claude adapter; absence uses built-in defaults and malformed or unknown
-  fields fail before launch.
+- Made bare `pagu` start a fresh gate-owned worker Codex session and made `pagu`
+  the root flake's default package. The direct `pagu gate` and compatibility
+  `pagu-box` surfaces remain available.
+- Added strict, versioned user launch defaults in XDG `pagu/launch.json`. The
+  file may select one checked-in category and verified Codex/Claude adapter;
+  absence uses built-in defaults and malformed or unknown fields fail before
+  launch.
 - Added typed SDK functions for launch-config decoding/discovery, harness
   inference, and launch resolution. `pagu -- EXECUTABLE` infers a recognized
   Codex/Claude basename, while an opaque wrapper requires `--harness`.
@@ -30,6 +30,16 @@ only forward work.
 - Updated the bundled pagu skill for MCP discovery, exact-path request
   semantics, and the approval-triggered disconnect/resume lifecycle. Operator
   resolution and gate state remain host-only.
+- Added strict child-policy derivation and relative actor/box lineage to the
+  public SDK. Child identity may change, while filesystem, home, network,
+  environment, auto-escalation, deny, and refusal authority can only attenuate
+  from the effective parent.
+- Proved two real bubblewrap levels with an accepted child and an API-bypass
+  widening attempt. Ordinary child work succeeds, while outer filesystem,
+  network, environment, gate state, and control removals remain final.
+- Recorded the trusted nested-lifecycle boundary in ADR-0010. Lineage-attributed
+  child requests, replacement, and launch-chain evidence remain deferred to a
+  narrow outside broker; no general control socket was introduced.
 
 ## Box and gate foundation
 
@@ -82,8 +92,8 @@ only forward work.
   through the host adapter, the widened launch resumed that UUID, and the
   resumed model recalled its original nonce marker.
 - Accepted cooperative concurrent peers as the Slice 13 threat boundary and
-  deferred hostile shared-store isolation. Retained `pagu-box --evidence` as
-  the supported adapter while deferring a general arbitrary-harness gate/resume
+  deferred hostile shared-store isolation. Retained `pagu-box --evidence` as the
+  supported adapter while deferring a general arbitrary-harness gate/resume
   port.
 - Versioned box launch evidence as v1 when cwd became part of the exact launch.
 - Enforced that gate state/socket stay outside sandbox mounts and the standing

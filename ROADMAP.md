@@ -14,32 +14,34 @@ launch journey governed by
 [ADR-0008](docs/decisions/0008-default-launch-surface.md).
 [ADR-0009](docs/decisions/0009-request-only-agent-interface.md) governs the
 request-only inhabitant interface.
-[CONTEXT.md](CONTEXT.md) owns durable design; this file owns sequence and
-remaining work.
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md) governs child
+authority and trusted lineage. [CONTEXT.md](CONTEXT.md) owns durable design;
+this file owns sequence and remaining work.
 
 ## Delivery slices
 
-| Slice                   | Outcome                                                                                                          | Status         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------- |
-| 1 — consolidate         | Import the cross-platform `pagu-box` history and preserve its compatibility package.                             | ✓ shipped      |
-| 2 — policy core         | Strict schema v0, bottom policy, grant shape, narrow-only project fold.                                          | ✓ shipped      |
-| 3 — enforcement adapter | Pure Linux lowering, `--policy`, exact `--explain`, fail-loud unsupported platforms.                             | ✓ shipped      |
-| 4 — gate MVP            | Typed append-and-await request channel; refuse/auto/operator tiers; once/session/persist state; retained events. | ✓ shipped      |
-| docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                    | ✓ shipped      |
-| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped      |
-| 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped      |
-| 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped      |
-| 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped      |
-| 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped      |
-| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                         | ✓ verified     |
-| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | ✓ shipped      |
-| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | ✓ shipped      |
+| Slice                   | Outcome                                                                                                           | Status         |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------- |
+| 1 — consolidate         | Import the cross-platform `pagu-box` history and preserve its compatibility package.                              | ✓ shipped      |
+| 2 — policy core         | Strict schema v0, bottom policy, grant shape, narrow-only project fold.                                           | ✓ shipped      |
+| 3 — enforcement adapter | Pure Linux lowering, `--policy`, exact `--explain`, fail-loud unsupported platforms.                              | ✓ shipped      |
+| 4 — gate MVP            | Typed append-and-await request channel; refuse/auto/operator tiers; once/session/persist state; retained events.  | ✓ shipped      |
+| docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                     | ✓ shipped      |
+| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.    | ✓ shipped      |
+| 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection.  | ✓ shipped      |
+| 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                              | ✓ shipped      |
+| 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                        | ✓ shipped      |
+| 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                      | ✓ shipped      |
+| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                          | ✓ verified     |
+| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                                | ✓ shipped      |
+| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                 | ✓ shipped      |
 | 14 — product front door | Bare `pagu`, worker/Codex defaults, strict user launch config, wrapped-executable inference, default Nix package. | ✓ shipped      |
-| 15 — agent interface    | Inhabitant discovers one typed request tool through MCP plus an in-repo skill; no prompt injection required.    | ✓ shipped      |
-| 16 — nested authority   | Host/inhabitant roles and child pagu attenuation make the narrowest ancestor boundary final.                     | design + spike |
-| 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                          | planned        |
-| runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                | slice 1 parked |
-| homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | operator-gated |
+| 15 — agent interface    | Inhabitant discovers one typed request tool through MCP plus an in-repo skill; no prompt injection required.      | ✓ shipped      |
+| 16 — nested authority   | Host/inhabitant roles and strict child attenuation make the narrowest ancestor boundary final.                    | core + proof ✓ |
+| 16b — child lifecycle   | Narrow trusted launch/request routing, replacement, and lineage-linked evidence without a control socket.         | planned        |
+| 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                           | planned        |
+| runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                 | slice 1 parked |
+| homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                  | operator-gated |
 
 ## Product journey sequence
 
@@ -94,11 +96,21 @@ runtime exercises the same core.
 - **Design gate:** specify authority provenance, host-vs-inhabitant identity,
   request routing, state placement, and evidence linkage in a new ADR before
   implementation. Do not mount a general control socket.
+- **Delivered core:** ADR-0010; strict `deriveChildPolicy`; relative
+  actor/box-lineage constructors; shared canonical path containment; and a real
+  packaged two-level tracer. The accepted child performs ordinary work. A direct
+  derivation-bypass child still cannot recover outer filesystem, network,
+  environment, state, resolution, or control capabilities.
+- **Deferred lifecycle (16b):** design and implement the narrow trusted broker
+  that attributes an inhabitant-hosted child, routes its request-only endpoint
+  outward, owns stop/replacement, and retains parent-policy → child-policy →
+  compiled-launch linkage. Until that tracer lands, the request-help portion of
+  the journey is not claimed complete.
 
 ### Slice 17 — use one product name for expert control
 
-- **Journey:** a human who needs direct static enforcement runs
-  `pagu box …`; existing automation may continue to invoke `pagu-box`.
+- **Journey:** a human who needs direct static enforcement runs `pagu box …`;
+  existing automation may continue to invoke `pagu-box`.
 - **Falsifier:** the new subcommand compiles or launches differently from the
   compatibility executable for the same policy and argv.
 
@@ -113,10 +125,10 @@ choosing an HTTP framework.
 The frozen design and proposed decision are
 [`docs/runtime-reload-design.md`](docs/runtime-reload-design.md) and
 [`ADR-0007`](docs/decisions/0007-runtime-reload.md). Implementation proceeds by
-its eight falsifier-bound slices. Slice 1 publishes strict checkpoint and
-reload evidence shapes plus pure adoption/evidence-chain laws; it does not yet
-transfer an FD or alter a running gate. Further runtime-reload work is parked
-behind the user and agent journey slices above.
+its eight falsifier-bound slices. Slice 1 publishes strict checkpoint and reload
+evidence shapes plus pure adoption/evidence-chain laws; it does not yet transfer
+an FD or alter a running gate. Further runtime-reload work is parked behind the
+user and agent journey slices above.
 
 ## Slice 13 fresh-launch boundary
 

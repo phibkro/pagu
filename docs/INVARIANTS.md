@@ -30,13 +30,15 @@ Enforcement:
 
 | Rung        | Enforcer                                                                                                                |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
-| runtime     | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket.       |
-| agent API   | `src/mcp/server.ts` exposes one strict `request_read_access` tool over that socket and has no operator-resolution port.       |
-| schema      | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.            |
-| pure core   | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.            |
-| persistence | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                               |
-| packaging   | `src/policy/compile.ts` emits the socket mount and `PAGU_REQUEST_SOCKET` only when a gate socket is supplied.                 |
-| application | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace.       |
+| runtime     | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket. |
+| agent API   | `src/mcp/server.ts` exposes one strict `request_read_access` tool over that socket and has no operator-resolution port. |
+| schema      | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.      |
+| pure core   | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.      |
+| persistence | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                         |
+| packaging   | `src/policy/compile.ts` emits the socket mount and `PAGU_REQUEST_SOCKET` only when a gate socket is supplied.           |
+| application | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace. |
+| child core  | `src/policy/child.ts` rejects a complete child proposal if any authority field exceeds its effective parent.            |
+| nesting     | Each descendant bubblewrap remains inside its ancestor namespace; bypassing the SDK cannot recover absent authority.    |
 
 Bound laws:
 
@@ -49,6 +51,9 @@ Bound laws:
 - [law: MCP exposes one request-only inhabitant tool]
 - [law: MCP cannot resolve or smuggle authority]
 - [law: MCP services ping while retaining cancelled gate request]
+- [law: narrowest ancestor remains final across child derivation]
+- [falsifier: child policy cannot regain ancestor filesystem network
+  environment]
 
 Review questions:
 
@@ -56,6 +61,7 @@ Review questions:
 - Can an auto rule return its wildcard parent instead of the exact request?
 - Can a project layer enable authority absent from the user layer?
 - Did grant application move into the existing sandbox instead of a new launch?
+- Did an inhabitant-facing child surface gain resolution, state, or control?
 
 ### #2 — Deny wins at every layer
 
@@ -73,6 +79,7 @@ Enforcement:
 | ------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | schema             | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`.                   |
 | fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.                         |
+| child derivation   | `src/policy/child.ts` unions ancestor/child denies and refusals after checking every positive capability.            |
 | compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                                           |
 | observer           | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.                        |
 | category profiles  | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts. |
@@ -92,6 +99,8 @@ Bound laws:
 - [law: Claude relaunch keeps UUID argv and state]
 - [law: harness inference selects unique session location]
 - [law: harness inference fails typed for both or neither]
+- [law: child derivation preserves identity while attenuating every authority]
+- [law: rw parent home may attenuate to explicit child home scopes]
 
 Review questions:
 
@@ -115,6 +124,7 @@ Enforcement:
 | Rung          | Enforcer                                                                                                                             |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | fold          | `src/policy/load.ts` treats the project policy as attenuation of user authority and returns warnings for widening attempts.          |
+| child path    | `src/policy/path.ts` requires canonical containment for nested child scopes; null or escape rejects the complete derivation.         |
 | path boundary | Project children and auto requests require canonical containment; grant application requires the same target at relaunch.            |
 | gate          | `src/request/adjudicate.ts` never uses `need` or `justification` as authority; only the typed rule and standing policy affect tiers. |
 | operator seam | `GateApprover` receives the full request but returns only deny or an explicit decision scope.                                        |
@@ -126,6 +136,9 @@ Bound laws:
 - [law: auto tier fails closed requested child symlink escape]
 - [law: symlink swapped after decision cannot widen relaunch]
 - [law: grant binding session policy cannot apply]
+- [falsifier: child canonical path cannot escape parent through symlink]
+- [falsifier: literal filesystem wildcard cannot become its parent directory]
+- [falsifier 3: project filesystem wildcard is a literal path]
 
 Review questions:
 

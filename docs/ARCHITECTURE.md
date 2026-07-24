@@ -42,21 +42,21 @@ flowchart TB
 
 ## Entrypoints and packages
 
-| Surface              | Source                                     | Current role                                                                                                             |
-| -------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `pagu`               | `src/launch/` + `src/gate/cli.ts`          | Default fresh gated journey; resolves user defaults and a wrapped verified harness into the existing gate lifecycle.     |
-| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.                                         |
-| `pagu gate`          | `src/gate/cli.ts`                          | Advanced explicit-policy/session surface over the same request listener, operator adapters, and relaunch lifecycle.      |
-| `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                                                   |
-| `pagu mcp`           | `src/mcp/cli.ts` + `src/mcp/server.ts`     | Request-only stdio MCP adapter injected into gate-owned harness sessions; no operator methods.                           |
-| `pagu telemetry`     | `src/gate/cli.ts` + `src/telemetry/`       | Standalone human/JSON projection over one or many gate event logs.                                                       |
-| SDK                  | `src/mod.ts`                               | Stable front door for launch, policy, request, event, and retained security primitives.                                  |
-| Root flake           | `flake.nix`                                | Builds default `pagu`, compatibility `pagu-box`, formatter, and the Linux development shell.                             |
-| Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                                                       |
+| Surface              | Source                                     | Current role                                                                                                         |
+| -------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `pagu`               | `src/launch/` + `src/gate/cli.ts`          | Default fresh gated journey; resolves user defaults and a wrapped verified harness into the existing gate lifecycle. |
+| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.                                     |
+| `pagu gate`          | `src/gate/cli.ts`                          | Advanced explicit-policy/session surface over the same request listener, operator adapters, and relaunch lifecycle.  |
+| `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                                               |
+| `pagu mcp`           | `src/mcp/cli.ts` + `src/mcp/server.ts`     | Request-only stdio MCP adapter injected into gate-owned harness sessions; no operator methods.                       |
+| `pagu telemetry`     | `src/gate/cli.ts` + `src/telemetry/`       | Standalone human/JSON projection over one or many gate event logs.                                                   |
+| SDK                  | `src/mod.ts`                               | Stable front door for launch, policy, request, event, and retained security primitives.                              |
+| Root flake           | `flake.nix`                                | Builds default `pagu`, compatibility `pagu-box`, formatter, and the Linux development shell.                         |
+| Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                                                   |
 
 `pagu` is the default root package. A future `pagu box` subcommand may expose
-direct enforcement beneath the product name; `pagu-box` remains available
-until compatibility callers migrate.
+direct enforcement beneath the product name; `pagu-box` remains available until
+compatibility callers migrate.
 
 ## Launch resolution
 
@@ -79,6 +79,9 @@ All policy core files are pure and exported through `src/policy/index.ts`.
 | Module                                 | Responsibility                                                                                                    |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `src/policy/schema.ts`                 | Strict policy/grant v0 types and decoding; bottom policy; built-in denies; refusal containment.                   |
+| `src/policy/path.ts`                   | Shared pure exact/pattern normalization and canonical path-containment primitive.                                 |
+| `src/policy/child.ts`                  | Fail-loud complete child derivation from one effective parent policy.                                             |
+| `src/policy/lineage.ts`                | Relative human/agent host and parent/child box-lineage values.                                                    |
 | `schemas/profile-grant-v0.schema.json` | Published box-accepted `PolicyV0` contract for external authority lowering.                                       |
 | `schemas/grant-v0.schema.json`         | Published strict structural contract for downstream gate GrantV0 consumers.                                       |
 | `src/policy/load.ts`                   | Trusted-user plus narrow-only project fold; warnings for widening; canonical child validation.                    |
@@ -87,15 +90,17 @@ All policy core files are pure and exported through `src/policy/index.ts`.
 | `src/policy/presets.ts`                | Schema representations of the four legacy profile baselines used for equivalence testing.                         |
 | `src/policy/profiles.ts`               | Stable curated category names, filenames, and the shared secret-floor assertion data.                             |
 | `src/policy/cli.ts`                    | Effectful adapter: read JSON, assemble host context, explain or spawn bubblewrap.                                 |
-| `src/policy/policy.test.ts`            | Schema, attenuation, canonicalization, legacy equivalence, explain, and real-adapter falsifiers.                  |
+| `src/policy/policy.test.ts`            | Schema, project attenuation, canonicalization, legacy equivalence, explain, and adapter falsifiers.               |
+| `src/policy/child.test.ts`             | Child authority, transitive ancestor, symlink, deny/refusal, identity, and lineage laws.                          |
 | `src/policy/profiles.test.ts`          | Cross-profile secret, write, journal, Herdr, and compiled-deny assertions.                                        |
 
 Dependency direction:
 
 ```text
-schema.ts <- load.ts
+schema/path.ts <- load.ts
+schema/path.ts <- child.ts
 schema.ts <- compile.ts
-schema/load/compile <- cli.ts
+schema/load/child/compile <- cli.ts
 ```
 
 The shell launcher calls the adapter; policy logic is not duplicated in Nix or
@@ -135,9 +140,9 @@ terminals, herdr, Codex argv, or process spawning.
 It lowers `{path, need, justification}` to the existing `fileRequest` core;
 there is no parallel request schema or adjudicator. `src/gate/resume.ts` adds
 the immutable packaged server to both fresh and resume argv through
-harness-native session-local configuration. The MCP process runs inside the
-box and sees the mounted request socket, while operator projections and
-resolution remain outside.
+harness-native session-local configuration. The MCP process runs inside the box
+and sees the mounted request socket, while operator projections and resolution
+remain outside.
 
 `skills/pagu/SKILL.md` teaches agents when to request, what an
 approval-triggered disconnect means, and how to retry after resume. It is
@@ -187,6 +192,13 @@ the gate never passes its operator resolution path. With `--observe-denials`,
 the C supervisor using deny rules from the same `CompiledPolicy`; without the
 flag it directly spawns bubblewrap as before.
 
+`scripts/nested-box-tracer.ts` is the real two-level composition adapter. It
+launches the packaged `pagu-box` inside an outer packaged `pagu-box`, verifies
+ordinary child work, and then bypasses `deriveChildPolicy` deliberately. The
+outer namespace still prevents recovery of removed filesystem, network,
+environment, state, and control capabilities. Trusted request routing and
+lineage-linked replacement evidence are not yet runtime components.
+
 ## Retained SDK primitives
 
 These modules survived the pivot and remain exported, but they are not the
@@ -219,6 +231,7 @@ authority path.
 | --------------------------- | -------------------------------------------------------- |
 | Policy JSON shape           | `src/policy/schema.ts` + `src/policy/policy.test.ts`     |
 | User/project attenuation    | `src/policy/load.ts` + policy falsifiers                 |
+| Parent/child attenuation    | `src/policy/child.ts` + child laws + nested tracer       |
 | Linux enforcement lowering  | `src/policy/compile.ts` + explain/adapter tests          |
 | Box CLI flags               | `box/src/linux.nix` and `box/src/darwin.nix`             |
 | Request wire shape          | `src/request/schema.ts` + real channel tests             |
@@ -226,7 +239,7 @@ authority path.
 | Gate persistence/evidence   | `src/request/gate.ts` + log/event codecs                 |
 | Telemetry queries/rendering | `src/telemetry/` + versioned gate event entries          |
 | Human approval surface      | adapter over `GateApprover`; do not fork adjudication    |
-| Inhabitant tool surface     | `src/mcp/server.ts`; request only, no operator methods    |
+| Inhabitant tool surface     | `src/mcp/server.ts`; request only, no operator methods   |
 | Resume syntax               | `src/gate/resume.ts` + live adapter test                 |
 | Grant application           | `src/request/gate.ts` + `src/gate/relaunch.ts`           |
 | Operator resolution         | `src/gate/operator.ts`; keep it outside compiler context |

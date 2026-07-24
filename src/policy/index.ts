@@ -1,4 +1,6 @@
 export * from "./schema.ts";
+export * from "./child.ts";
+export * from "./lineage.ts";
 export * from "./load.ts";
 export * from "./presets.ts";
 export * from "./profiles.ts";

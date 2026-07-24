@@ -23,7 +23,9 @@ loop are authoritative in
 belongs in [ROADMAP.md](ROADMAP.md). The default product entrypoint is fixed by
 [ADR-0008](docs/decisions/0008-default-launch-surface.md). The inhabitant
 request interface is fixed by
-[ADR-0009](docs/decisions/0009-request-only-agent-interface.md).
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md). Nested
+authority and lineage are fixed by
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md).
 
 ## Why the split exists
 
@@ -75,6 +77,7 @@ The box and gate share a schema family, not a process:
 | User policy selected by the operator    | trusted authority        | may grant within schema v0                                           |
 | Project policy supplied by a repository | untrusted                | may only attenuate user authority; widening is ignored with warnings |
 | Harness and everything it reads         | untrusted                | may request; cannot resolve or edit gate state                       |
+| Agent hosting a child from inside a box | untrusted parent         | may derive an initial child; remains bounded by every ancestor       |
 | Gate process and its state directory    | trusted core             | single writer and owner of the boxed child lifecycle                 |
 | Box compiler and OS sandbox             | trusted enforcement core | exact lowering is the security boundary                              |
 | Human-readable explanation              | evidence, not authority  | derived from the same compiled result used to launch                 |
@@ -101,10 +104,11 @@ The standing policy controls:
 An external authority may emit one complete box-accepted profile-grant artifact
 using the published strict `PolicyV0` shape at
 [`schemas/profile-grant-v0.schema.json`](schemas/profile-grant-v0.schema.json).
-This is the same artifact accepted by `pagu-box --policy`, not a second authority
-language or a named-profile overlay. `parsePolicy` remains its semantic
-validator. Named environment channels carry names only; their values must
-already exist in the trusted launch environment and never enter the artifact.
+This is the same artifact accepted by `pagu-box --policy`, not a second
+authority language or a named-profile overlay. `parsePolicy` remains its
+semantic validator. Named environment channels carry names only; their values
+must already exist in the trusted launch environment and never enter the
+artifact.
 
 A gate grant is gate-derived policy data with `parent` and `expires` derivation
 fields. Its distinct strict structural contract is published at
@@ -129,6 +133,39 @@ with an optional project policy. The project layer can:
 Nested paths require canonical containment. Invalid, widening, or symlink-
 escaping candidates are dropped and surfaced as warnings. This is attenuation,
 not a merge of peers.
+
+### Nested child authority
+
+[`src/policy/child.ts`](src/policy/child.ts) derives one complete child policy
+from the effective parent policy. This is stricter than project composition: the
+child subject is retained, but any attempted authority regain rejects the whole
+derivation. Ancestor denies and refusals are inherited; filesystem, network,
+environment, home, and automatic-escalation authority can only narrow.
+[`src/policy/path.ts`](src/policy/path.ts) is the one canonical containment
+primitive shared by both folds. Mount fields use exact path semantics—`/**` is
+literal there—while auto/refuse scopes use pattern semantics. An `rw` parent
+home also acts as the parent read-write root, so a child may mask home with
+`tmpfs` and rebind only a canonical subdirectory.
+
+[`src/policy/lineage.ts`](src/policy/lineage.ts) models host identity as a
+relative position. An agent can be a child host while remaining an inhabitant of
+the parent. Actor kind is metadata, not authority. Canonical lineage becomes
+evidence only when retained by a lifecycle owner outside every governed
+descendant; an environment depth marker, PID ancestry, or an inhabitant-writable
+file is not trusted provenance.
+
+The outer bubblewrap namespace is the final ceiling even when an inhabitant
+bypasses the SDK and invokes another `pagu-box` directly. The reproducible
+two-level tracer in
+[`scripts/nested-box-tracer.ts`](scripts/nested-box-tracer.ts) proves that a
+child cannot recover filesystem, network, environment, gate state, or control
+capabilities removed by its outer worker.
+
+The trusted child lifecycle is not yet shipped. A future narrow broker must
+route child requests to an outside ancestor and own replacement/evidence without
+mounting resolution, persistence, state, or a general control socket. Until
+then, pagu does not claim lineage-attributed child requests or host-owned child
+resume.
 
 ### Deny wins
 
@@ -219,8 +256,8 @@ or unsupported version fails before launch. The historical integrated-harness
 
 Direct `pagu gate` operation remains for explicit policies and existing
 sessions. `pagu-box` remains the direct PEP compatibility surface. The root Nix
-package launches `pagu`, making the product journey the default without
-removing either expert surface.
+package launches `pagu`, making the product journey the default without removing
+either expert surface.
 
 ## Escalation loop
 
@@ -240,18 +277,18 @@ Frames and concurrent clients are bounded, incomplete frames time out, active
 listeners cannot be replaced, and the socket is private to the user.
 
 [`src/mcp/server.ts`](src/mcp/server.ts) is the discoverable inhabitant adapter
-over that same channel. It exposes exactly one strict `request_read_access`
-tool and receives only `PAGU_REQUEST_SOCKET`; it cannot resolve, persist, read
-gate state, or launch a child. Fresh and resumed Codex/Claude commands receive
-the server through session-local harness arguments, never a persistent config
-edit. Packaged `pagu mcp` dispatches to the same narrow helper rather than the
-broader host CLI runtime. The bundled skill teaches the same boundary.
+over that same channel. It exposes exactly one strict `request_read_access` tool
+and receives only `PAGU_REQUEST_SOCKET`; it cannot resolve, persist, read gate
+state, or launch a child. Fresh and resumed Codex/Claude commands receive the
+server through session-local harness arguments, never a persistent config edit.
+Packaged `pagu mcp` dispatches to the same narrow helper rather than the broader
+host CLI runtime. The bundled skill teaches the same boundary.
 
 An approved request intentionally stops the old box, including its MCP child,
 before launching the wider replacement. The call may disconnect rather than
 return its approval. The resumed harness retries the denied read and treats the
-new enforcement result as evidence. The stdio server remains responsive to
-ping while a request awaits the host. MCP cancellation suppresses a stale tool
+new enforcement result as evidence. The stdio server remains responsive to ping
+while a request awaits the host. MCP cancellation suppresses a stale tool
 response but does not retract the retained gate request.
 
 [`src/request/adjudicate.ts`](src/request/adjudicate.ts) applies tiers in this
@@ -293,14 +330,14 @@ or resume command together. [`src/gate/resume.ts`](src/gate/resume.ts) is the
 harness command/state port; [`src/gate/harness.ts`](src/gate/harness.ts) owns
 fresh identity attribution and existing-session inference.
 
-Nonce attribution handles cooperative fleet concurrency, not adversarial
-writers to the shared harness store. Every gate-owned Codex box intentionally
-receives the same `~/.codex` tree read-write for authentication and resume; a
-hostile concurrent box could copy or delete another launch's marker/session
-material. Per-launch write isolation or a harness-assigned Codex UUID is needed
-before treating mutually hostile fleet peers as an attribution boundary. The
-operator accepts cooperative peers for the current Slice 13 boundary; hostile-
-peer isolation is explicitly deferred.
+Nonce attribution handles cooperative fleet concurrency, not adversarial writers
+to the shared harness store. Every gate-owned Codex box intentionally receives
+the same `~/.codex` tree read-write for authentication and resume; a hostile
+concurrent box could copy or delete another launch's marker/session material.
+Per-launch write isolation or a harness-assigned Codex UUID is needed before
+treating mutually hostile fleet peers as an attribution boundary. The operator
+accepts cooperative peers for the current Slice 13 boundary; hostile- peer
+isolation is explicitly deferred.
 
 The existing `pagu-box --evidence` adapter remains the supported launch-evidence
 path for harness integrations. A general arbitrary-harness gate/resume port is
@@ -379,6 +416,10 @@ Claims about enforcement bind to executable evidence:
 
 - policy schema, attenuation, canonical paths, and explain equivalence:
   [`src/policy/policy.test.ts`](src/policy/policy.test.ts);
+- child derivation, transitive attenuation, lineage position, and symlink
+  falsifiers: [`src/policy/child.test.ts`](src/policy/child.test.ts), plus the
+  packaged two-level
+  [`scripts/nested-box-tracer.ts`](scripts/nested-box-tracer.ts);
 - request protocol, tiers, persistence, socket boundary, and real bubblewrap
   falsifier: [`src/request/request.test.ts`](src/request/request.test.ts);
 - relaunch, resume, TOCTOU, once, binding, operator, and fail-secure falsifiers:

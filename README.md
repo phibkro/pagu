@@ -22,7 +22,9 @@ category profiles and their telemetry loop are specified by
 [ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md). The default
 launch and request-only agent interface are specified by
 [ADR-0008](docs/decisions/0008-default-launch-surface.md) and
-[ADR-0009](docs/decisions/0009-request-only-agent-interface.md).
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md). Nested child
+authority is specified by
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md).
 
 ## Platform status
 
@@ -422,6 +424,37 @@ candidates, not proof that a mounted path was never accessed: syscall-level use
 evidence remains unavailable. Full-policy denial classification and automatic
 requests remain deferred by ADR-0006.
 
+## Derive a nested child
+
+An agent inside pagu can act as a host to a narrower child while remaining an
+inhabitant of its own parent. The public `deriveChildPolicy` core accepts a
+complete parent policy, complete child proposal, and canonical path resolver. It
+preserves the child's subject and rejects the whole proposal if any filesystem,
+home, network, environment, or auto-escalation field exceeds the parent.
+Ancestor denies and refusals are always inherited.
+
+`rootLineage` and `deriveChildLineage` model whether the observed host is an
+outside operator or a parent inhabitant. Those values become authority evidence
+only when an outside lifecycle owner retains them; a child cannot attest its own
+lineage.
+
+The kernel composition can be exercised against the packaged launcher:
+
+```sh
+deno run --allow-run --allow-read --allow-write --allow-env --allow-net \
+  scripts/nested-box-tracer.ts /absolute/path/to/pagu-box
+```
+
+The tracer launches an ordinary child and then deliberately bypasses the
+derivation API. Both run under a real outer worker namespace; neither can
+recover host filesystem, network, environment, gate state, or control
+capabilities removed by that ancestor.
+
+This is the nested-authority core, not yet a `pagu child` product surface.
+Trusted child request routing, stop/replacement, and lineage-linked launch
+evidence require the narrow outside broker planned as Slice 16b. Pagu does not
+mount a general control socket or treat inhabitant-authored lineage as trusted.
+
 ## Programmatic API
 
 The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
@@ -430,6 +463,7 @@ The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
   resolution;
 - strict policy and grant decoding;
 - trusted-user plus narrow-only project policy folding;
+- strict child-policy derivation and actor/box-lineage construction;
 - pure policy compilation and explanation;
 - strict denial-evidence v1 decoding;
 - the request client, session-bound gate core, and Approver port;

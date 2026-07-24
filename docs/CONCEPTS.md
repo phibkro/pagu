@@ -21,6 +21,8 @@ tags: [concepts, reference]
 | **projection**     | Mutable gate-owned view such as the queue or session-grants JSON.                          |
 | **explain**        | Redacted view of the same compiled result used to launch the box.                          |
 | **attenuation**    | Producing authority less than or equal to a trusted parent.                                |
+| **agent host**     | An agent choosing a child launch while still an inhabitant of its own parent box.          |
+| **lineage**        | Outside-observed parent/child relation; trusted only when retained outside descendants.    |
 
 ## PEP and PA are different jobs
 
@@ -67,6 +69,32 @@ For schema v0, narrowing means:
 
 This is not a symmetric configuration merge. The user layer is authority; the
 project layer is a filter.
+
+Filesystem mount paths are exact. A trailing `/**` is a pattern only in
+auto/refuse scopes; treating it as a mount wildcard would make an absent literal
+parent path authorize its real parent directory. A read-write parent home is an
+implicit read-write root, so replacing it with temporary home plus selected
+canonical subdirectory mounts is valid attenuation.
+
+### Child derivation is strict attenuation
+
+Repository attenuation and child derivation share the same partial order and
+canonical path primitive, but differ at their user boundary:
+
+| Input                  | Identity result       | Widening attempt                 |
+| ---------------------- | --------------------- | -------------------------------- |
+| hostile project policy | keep trusted subject  | ignore candidate, return warning |
+| explicit child policy  | keep proposed subject | reject the complete derivation   |
+
+An actor's authority is positional. A human or agent outside the governed
+lineage can be an operator host. An agent inside a parent can host a child, but
+is simultaneously a parent inhabitant. It may select an initial child no wider
+than its effective policy; it cannot widen its own live namespace or an
+already-running child.
+
+The outer namespace supplies transitive confinement independently of the SDK.
+Canonical lineage and launch-chain evidence require an outside owner; process
+depth, environment markers, and descendant-writable files are narration.
 
 ## Bottom, complete policies, and fail-loud decoding
 
