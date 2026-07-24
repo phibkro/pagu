@@ -23,6 +23,16 @@ Deno.test("launch config v0 is strict and defaults to worker Codex", () => {
     version: 0,
     defaults: { harness: "codex", profile: "worker" },
   });
+  assertEquals(
+    parseLaunchConfig({
+      version: 0,
+      defaults: { harness: "pi", profile: "worker" },
+    }),
+    {
+      version: 0,
+      defaults: { harness: "pi", profile: "worker" },
+    },
+  );
 
   assertThrows(
     () =>
@@ -75,6 +85,7 @@ Deno.test("launch config path is user-owned and a missing file uses defaults", a
 Deno.test("launch resolution infers recognized children and checks conflicts", () => {
   assertEquals(inferHarness("/nix/store/example/bin/codex"), "codex");
   assertEquals(inferHarness("C:\\tools\\claude.exe"), "claude");
+  assertEquals(inferHarness("/etc/profiles/per-user/test/bin/pi"), "pi");
   assertEquals(inferHarness("/opt/bin/company-agent"), null);
 
   assertEquals(
@@ -96,6 +107,16 @@ Deno.test("launch resolution infers recognized children and checks conflicts", (
       harness: "codex",
       profile: "worker",
       executable: "/opt/bin/company-agent",
+    },
+  );
+  assertEquals(
+    resolveLaunch(DEFAULT_LAUNCH_CONFIG, {
+      executable: "/opt/bin/pi",
+    }),
+    {
+      harness: "pi",
+      profile: "worker",
+      executable: "/opt/bin/pi",
     },
   );
   assertThrows(

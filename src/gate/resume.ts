@@ -14,8 +14,10 @@ export interface ResumeAdapter {
   readonly harness: string;
   /** Trusted host state mounted RW into this harness's otherwise isolated HOME. */
   readonly stateRw: readonly string[];
+  /** Exact user-installed runtime roots mounted read-only when needed. */
+  readonly stateRo: readonly string[];
   /** Build a fresh command from a trusted nonce (Codex) or assigned UUID
-   * (Claude). The fresh-session planner owns generation and attribution. */
+   * (Claude/Pi). The fresh-session planner owns generation and attribution. */
   freshCommand(attribution: string): readonly string[];
   command(session: string): readonly string[];
 }
@@ -23,6 +25,11 @@ export interface ResumeAdapter {
 export interface McpServerCommand {
   readonly command: string;
   readonly args?: readonly string[];
+}
+
+export interface PiAgentResources {
+  readonly extension: string;
+  readonly skill?: string;
 }
 
 export function codexNonceMarker(nonce: string): string {
@@ -40,6 +47,7 @@ export function composeHarnessState(
     fs: {
       ...policy.fs,
       rw: [...new Set([...policy.fs.rw, ...adapter.stateRw])],
+      ro: [...new Set([...policy.fs.ro, ...adapter.stateRo])],
     },
   };
 }
@@ -67,6 +75,7 @@ export function codexResumeAdapter(
   return {
     harness: "codex",
     stateRw: ["$HOME/.codex"],
+    stateRo: [],
     freshCommand: (nonce) => [
       executable,
       "-c",
@@ -117,6 +126,7 @@ export function claudeResumeAdapter(
   return {
     harness: "claude",
     stateRw: ["$HOME/.claude", "$HOME/.claude.json"],
+    stateRo: [],
     freshCommand: (session) => [
       executable,
       ...mcpArgs,
@@ -127,12 +137,51 @@ export function claudeResumeAdapter(
   };
 }
 
+/** Pi persists sessions below ~/.pi and accepts an exact caller-assigned UUID.
+ * Pi deliberately has no MCP client, so the packaged CLI extension exposes the
+ * same request-only core as one native tool without changing persistent user
+ * configuration or suppressing the inhabitant's ordinary tools. */
+export function piResumeAdapter(
+  executable = "pi",
+  resources?: PiAgentResources,
+): ResumeAdapter {
+  const resourceArgs = resources
+    ? [
+      "--extension",
+      resources.extension,
+      ...(resources.skill ? ["--skill", resources.skill] : []),
+    ]
+    : [];
+  return {
+    harness: "pi",
+    stateRw: ["$HOME/.pi"],
+    stateRo: [
+      "$HOME/.local/lib/node_modules/@earendil-works/pi-coding-agent",
+      "$HOME/.local/lib/node_modules/@mariozechner/pi-coding-agent",
+    ],
+    freshCommand: (session) => [
+      executable,
+      ...resourceArgs,
+      "--session-id",
+      session,
+    ],
+    command: (session) => [
+      executable,
+      ...resourceArgs,
+      "--session",
+      session,
+    ],
+  };
+}
+
 export function resumeAdapter(
   harness: string,
   executable?: string,
   mcp?: McpServerCommand,
+  pi?: PiAgentResources,
 ): ResumeAdapter {
   if (harness === "codex") return codexResumeAdapter(executable, mcp);
   if (harness === "claude") return claudeResumeAdapter(executable, mcp);
+  if (harness === "pi") return piResumeAdapter(executable, pi);
   throw new ResumeAdapterNotVerifiedError(harness);
 }

@@ -133,8 +133,10 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   // Relaunch and operator adapters.
   { name: "codexResumeAdapter", kind: "function" },
   { name: "claudeResumeAdapter", kind: "function" },
+  { name: "piResumeAdapter", kind: "function" },
   { name: "resumeAdapter", kind: "function" },
   { name: "ResumeAdapter", kind: "interface" },
+  { name: "PiAgentResources", kind: "interface" },
   { name: "ResumeAdapterNotVerifiedError", kind: "class" },
   { name: "parseBoxLaunchEvidence", kind: "function" },
   { name: "createBoxLauncher", kind: "function" },

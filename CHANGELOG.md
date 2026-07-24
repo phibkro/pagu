@@ -60,6 +60,17 @@ only forward work.
   `pagu-box` as an exact compatibility executable. Dispatch occurs before the
   root wrapper changes `PATH`; a packaged tracer compares help, schema
   explanation, and a real child-visible launch under both names.
+- Added Pi as a verified launch adapter with basename/config/session-store
+  inference, caller-assigned fresh UUIDs, exact `--session` reopening, and
+  scoped `~/.pi` state. Common user-local Pi package roots are visible
+  read-only, while final policy denies remain unchanged.
+- Added an immutable Pi-native `request_read_access` extension and explicit
+  pagu skill injection on both fresh and resume commands. The extension invokes
+  the same packaged request-only MCP adapter rather than duplicating the request
+  protocol or editing persistent Pi configuration.
+- Verified a fresh packaged Pi 0.80.6 box and a second exact-UUID resume box
+  against local Ollama `qwen3.5:9b`; both reported the native request tool
+  present, with hosted-provider variables removed from the journey.
 
 ## Box and gate foundation
 

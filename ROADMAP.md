@@ -18,6 +18,8 @@ request-only inhabitant interface.
 authority and trusted lineage.
 [ADR-0011](docs/decisions/0011-credential-attested-child-broker.md) governs
 credential-attested child hosting and literal nesting.
+[ADR-0012](docs/decisions/0012-pi-native-adapter.md) governs Pi's assigned
+session and native request-tool transport.
 [CONTEXT.md](CONTEXT.md) owns durable design; this file owns sequence and
 remaining work.
 
@@ -43,6 +45,7 @@ remaining work.
 | 16 — nested authority   | Host/inhabitant roles and strict child attenuation make the narrowest ancestor boundary final.                    | core + proof ✓ |
 | 16b — child lifecycle   | Narrow trusted launch/request routing, replacement, and lineage-linked evidence without a control socket.         | phase A ✓      |
 | 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                           | ✓ shipped      |
+| 18 — Pi adapter         | Infer Pi, preserve exact sessions, and expose the request core through a native extension verified on local Ollama. | ✓ shipped      |
 | runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                 | slice 1 parked |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                  | operator-gated |
 
@@ -57,10 +60,10 @@ Routine lifecycle regression is now provider-free:
 `deno task journey:mock /absolute/path/to/pagu` drives the packaged root
 command, MCP server, gate, host resolver, and two real boxes with a
 deterministic fake inhabitant. It verifies the retained policy transition and
-makes no model call. Real Codex/Claude checks remain release or adapter-contract
-evidence. When Pi becomes a verified adapter, its routine behavioral smoke
-should use local Ollama; a remote free-tier provider remains an optional
-fallback rather than a CI dependency.
+makes no model call. Real harness checks remain release or adapter-contract
+evidence. Pi contract changes use local Ollama with hosted-provider credentials
+removed; a remote free-tier provider remains an optional fallback rather than a
+CI dependency.
 
 ### Slice 14 — start protected work
 
@@ -68,7 +71,7 @@ fallback rather than a CI dependency.
   agent starts under the gate without selecting an implementation component or
   profile.
 - **Variants:** the host selects a category, configures trusted defaults, or
-  wraps one Codex/Claude executable whose harness is inferred.
+  wraps one Codex/Claude/Pi executable whose harness is inferred.
 - **Falsifier:** default/configured/wrapped invocations lower to a different
   lifecycle or authority than the equivalent explicit fresh gate launch.
 - **Boundary:** the CLI adds no policy field and no new process authority. It
@@ -143,6 +146,28 @@ fallback rather than a CI dependency.
 - **Proof:** the packaged tracer compares help, schema explanation, and a real
   launch—including the child-visible `PATH`, stdout, stderr, and exit status—
   under both names.
+
+### Slice 18 — run a local-first Pi inhabitant
+
+- **Journey:** a human host wraps Pi with `pagu`; Pi starts with an assigned
+  session, discovers `request_read_access` through its native tool system, and
+  the exact UUID reopens inside a later box.
+- **Falsifier:** the native adapter implements a parallel request or operator
+  surface, edits persistent Pi configuration, loses the assigned UUID, or
+  requires a hosted model for routine evidence.
+- **Delivered:** Pi launch/config/executable and existing-session inference;
+  exact `--session-id` → `--session` lifecycle; `~/.pi` state; narrow read-only
+  compatibility roots for common user-local Pi packages; immutable extension
+  plus explicit skill injection on fresh and resume.
+- **Proof:** unit laws bind the argv, state overlay, unique session-store
+  inference, one-tool registration, and exact packaged MCP translation. A real
+  packaged web-profile journey used Pi 0.80.6 and local Ollama
+  `qwen3.5:9b`—with hosted-provider variables removed—to observe
+  `PAGU_PI_TOOL_OK`, then reopened the same UUID in a second box and observed it
+  again.
+- **Boundary:** Pi's extension is transport glue over the Slice 15 core. It has
+  no resolution, persistence, state, or child-host method. Provider-free mock
+  remains routine CI; remote free tiers remain optional.
 
 The runtime stays Deno. Effect v4 earns introduction only where typed context,
 resource lifetime, interruption, or concurrent failure semantics materially

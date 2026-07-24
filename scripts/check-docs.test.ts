@@ -20,6 +20,7 @@ Deno.test("repoPathRefs: extracts real repo paths, skips placeholders + runtime 
   const md = [
     "see `src/config/run-state.ts` and the `src/permissions/` dir",
     "spec at `docs/specs/2026-05-30-x.md`, runner `scripts/check-docs.ts`",
+    "native adapter `integrations/pi/pagu.ts`",
     "template `<scope>/profiles/<name>.md` and `src/skills/<name>/` are skipped",
     "runtime `.pagu/inferred-perms.json` is skipped (not src/docs/scripts/examples)",
     "a bare module `src/agent` (no ext, no slash) is skipped",
@@ -30,6 +31,7 @@ Deno.test("repoPathRefs: extracts real repo paths, skips placeholders + runtime 
     [
       "docs/specs/2026-05-30-x.md",
       "examples/eval/ci_live.ts",
+      "integrations/pi/pagu.ts",
       "scripts/check-docs.ts",
       "src/config/run-state.ts",
       "src/permissions/",

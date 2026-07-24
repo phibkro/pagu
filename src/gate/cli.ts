@@ -47,6 +47,8 @@ export interface GateOptions {
   readonly harness: string | undefined;
   readonly harnessExecutable?: string;
   readonly mcpCommand?: string;
+  readonly piExtension?: string;
+  readonly skillPath?: string;
   readonly box: string;
 }
 
@@ -76,6 +78,8 @@ export interface CliParseContext {
   readonly runtimeDir?: string;
   readonly profileDir?: string;
   readonly mcpCommand?: string;
+  readonly piExtension?: string;
+  readonly skillPath?: string;
   readonly randomUUID?: () => string;
 }
 
@@ -83,10 +87,10 @@ function usage(message?: string): never {
   if (message) console.error(`pagu: ${message}`);
   console.error(
     "usage:\n" +
-      "  pagu [--profile NAME] [--harness codex|claude] [-- EXECUTABLE]\n" +
+      "  pagu [--profile NAME] [--harness codex|claude|pi] [-- EXECUTABLE]\n" +
       "  pagu box [pagu-box options] -- COMMAND [ARGS...]\n" +
-      "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
-      "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude|pi] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude|pi [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
       "  pagu mcp\n" +
       "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
@@ -209,6 +213,8 @@ export function parseArgs(
     harness,
     harnessExecutable: undefined,
     mcpCommand: context.mcpCommand ?? Deno.env.get("PAGU_MCP_COMMAND"),
+    piExtension: context.piExtension ?? Deno.env.get("PAGU_PI_EXTENSION"),
+    skillPath: context.skillPath ?? Deno.env.get("PAGU_SKILL_PATH"),
     box,
   };
 }
@@ -234,8 +240,10 @@ function parseRootArgs(
       profile = candidate;
     } else if (arg === "--harness") {
       const candidate = value(args, index++, arg);
-      if (candidate !== "codex" && candidate !== "claude") {
-        usage("--harness must be codex or claude");
+      if (
+        candidate !== "codex" && candidate !== "claude" && candidate !== "pi"
+      ) {
+        usage("--harness must be codex, claude, or pi");
       }
       harness = candidate;
     } else if (arg === "--socket") socket = value(args, index++, arg);
@@ -284,6 +292,8 @@ function parseRootArgs(
     harness: launch.harness,
     harnessExecutable: launch.executable,
     mcpCommand: context.mcpCommand ?? Deno.env.get("PAGU_MCP_COMMAND"),
+    piExtension: context.piExtension ?? Deno.env.get("PAGU_PI_EXTENSION"),
+    skillPath: context.skillPath ?? Deno.env.get("PAGU_SKILL_PATH"),
     box,
   };
 }
@@ -462,6 +472,9 @@ async function gate(options: GateOptions): Promise<void> {
     harness,
     options.harnessExecutable,
     options.mcpCommand ? { command: options.mcpCommand } : undefined,
+    options.piExtension
+      ? { extension: options.piExtension, skill: options.skillPath }
+      : undefined,
   );
   const launcher = createBoxLauncher({
     box: options.box,

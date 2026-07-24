@@ -36,6 +36,7 @@ import {
   codexNonceMarker,
   codexResumeAdapter,
   composeHarnessState,
+  piResumeAdapter,
   resumeAdapter,
   ResumeAdapterNotVerifiedError,
 } from "./resume.ts";
@@ -176,7 +177,7 @@ Deno.test("operator state directory rejects replaceable ancestry and symlinks", 
   }
 });
 
-Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound", () => {
+Deno.test("resume adapters preserve exact Codex, Claude, and Pi sessions", () => {
   const mcp = {
     command: "/nix/store/pagu-mcp/bin/pagu-mcp",
     args: [] as const,
@@ -222,10 +223,12 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     "mcp_servers.pagu.required=true",
   ]);
   assertEquals(codex.stateRw, ["$HOME/.codex"]);
+  assertEquals(codex.stateRo, []);
   assertEquals(claudeResumeAdapter().stateRw, [
     "$HOME/.claude",
     "$HOME/.claude.json",
   ]);
+  assertEquals(claudeResumeAdapter().stateRo, []);
   const claude = claudeResumeAdapter("claude", mcp);
   const claudeConfig = JSON.stringify({
     mcpServers: {
@@ -259,6 +262,33 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     claude.command("session-2").includes("--continue"),
     false,
   );
+  const pi = piResumeAdapter("pi", {
+    extension: "/nix/store/pagu-pi-extension.ts",
+    skill: "/nix/store/pagu-skill/SKILL.md",
+  });
+  assertEquals(pi.stateRw, ["$HOME/.pi"]);
+  assertEquals(pi.stateRo, [
+    "$HOME/.local/lib/node_modules/@earendil-works/pi-coding-agent",
+    "$HOME/.local/lib/node_modules/@mariozechner/pi-coding-agent",
+  ]);
+  assertEquals(pi.freshCommand("session-3"), [
+    "pi",
+    "--extension",
+    "/nix/store/pagu-pi-extension.ts",
+    "--skill",
+    "/nix/store/pagu-skill/SKILL.md",
+    "--session-id",
+    "session-3",
+  ]);
+  assertEquals(pi.command("session-3"), [
+    "pi",
+    "--extension",
+    "/nix/store/pagu-pi-extension.ts",
+    "--skill",
+    "/nix/store/pagu-skill/SKILL.md",
+    "--session",
+    "session-3",
+  ]);
   assertThrows(
     () => resumeAdapter("unverified"),
     ResumeAdapterNotVerifiedError,
@@ -490,10 +520,17 @@ Deno.test("law: harness state is scoped and deny remains final", () => {
   };
   const codex = composeHarnessState(base, codexResumeAdapter());
   const claude = composeHarnessState(base, claudeResumeAdapter());
+  const pi = composeHarnessState(base, piResumeAdapter());
   assertEquals(codex.fs.rw, ["$HOME/.codex"]);
   assertEquals(claude.fs.rw, ["$HOME/.claude", "$HOME/.claude.json"]);
+  assertEquals(pi.fs.rw, ["$HOME/.pi"]);
+  assertEquals(pi.fs.ro, [
+    "$HOME/.local/lib/node_modules/@earendil-works/pi-coding-agent",
+    "$HOME/.local/lib/node_modules/@mariozechner/pi-coding-agent",
+  ]);
   assertEquals(codex.fs.deny, base.fs.deny);
   assertEquals(claude.fs.deny, base.fs.deny);
+  assertEquals(pi.fs.deny, base.fs.deny);
 
   const ctx: BwrapCompileContext = {
     platform: "linux",

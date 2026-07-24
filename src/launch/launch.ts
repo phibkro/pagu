@@ -4,7 +4,7 @@ import {
   isCategoryProfile,
 } from "../policy/index.ts";
 
-export type HarnessName = "codex" | "claude";
+export type HarnessName = "codex" | "claude" | "pi";
 
 export interface LaunchDefaultsV0 {
   readonly harness: HarnessName;
@@ -74,8 +74,13 @@ export function parseLaunchConfig(value: unknown): LaunchConfigV0 {
   }
   const defaults = record(root.defaults, "launch config defaults");
   exactKeys(defaults, ["harness", "profile"], "launch config defaults");
-  if (defaults.harness !== "codex" && defaults.harness !== "claude") {
-    throw new Error("launch config defaults.harness must be codex or claude");
+  if (
+    defaults.harness !== "codex" && defaults.harness !== "claude" &&
+    defaults.harness !== "pi"
+  ) {
+    throw new Error(
+      "launch config defaults.harness must be codex, claude, or pi",
+    );
   }
   if (
     typeof defaults.profile !== "string" ||
@@ -128,7 +133,7 @@ export async function loadLaunchConfig(
 export function inferHarness(executable: string): HarnessName | null {
   const name = executable.replaceAll("\\", "/").split("/").at(-1)
     ?.toLowerCase().replace(/\.exe$/, "");
-  if (name === "codex" || name === "claude") return name;
+  if (name === "codex" || name === "claude" || name === "pi") return name;
   return null;
 }
 
@@ -145,7 +150,7 @@ export function resolveLaunch(
   }
   if (request.executable && !request.harness && !inferred) {
     throw new Error(
-      "cannot infer harness from wrapped executable; pass --harness codex|claude",
+      "cannot infer harness from wrapped executable; pass --harness codex|claude|pi",
     );
   }
   const harness = request.harness ?? inferred ?? config.defaults.harness;

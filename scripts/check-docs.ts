@@ -30,7 +30,7 @@ const DOCS = [
   "docs/INVARIANTS.md",
 ];
 const INVARIANTS_FILE = "INVARIANTS.md";
-const TEST_DIRS = ["src", "examples", "scripts"]; // where *.test.ts live
+const TEST_DIRS = ["src", "examples", "scripts", "integrations"]; // where *.test.ts live
 
 const basename = (p: string) => p.split("/").pop()!;
 
@@ -133,14 +133,15 @@ export function lawSatisfied(tag: string, testNames: string[]): boolean {
 }
 
 /** Backtick'd repo-path references a doc claims exist — `src/…`, `docs/…`,
- *  `scripts/…`, `examples/…` ending in a file extension or a trailing slash.
+ *  `scripts/…`, `examples/…`, `integrations/…` ending in an extension or `/`.
  *  The char class excludes `<>` so placeholder templates (`<scope>/…`,
  *  `src/skills/<name>/`) and runtime/gitignored paths (`.pagu/…`) don't match.
  *  This is the "done" edge: a doc that says a file implements something must
  *  point at a file that exists — status claims bound to evidence, not prose. */
 export function repoPathRefs(md: string): string[] {
   const out = new Set<string>();
-  const re = /`((?:src|docs|scripts|examples)\/[\w.\/-]*?(?:\.\w+|\/))`/g;
+  const re =
+    /`((?:src|docs|scripts|examples|integrations)\/[\w.\/-]*?(?:\.\w+|\/))`/g;
   for (const m of md.matchAll(re)) out.add(m[1]);
   return [...out];
 }

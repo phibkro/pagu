@@ -10,8 +10,9 @@ may resolve a request.
 
 ## Inside a pagu box
 
-After an actual sandbox denial, use the available `request_read_access` MCP
-tool. Supply:
+After an actual sandbox denial, use the available `request_read_access` tool.
+Codex and Claude receive it through session-local MCP configuration; Pi receives
+the same request core through a session-local native extension. Supply:
 
 - `path`: the exact path that must become readable
 - `need`: the concrete information or artifact needed
@@ -20,9 +21,9 @@ tool. Supply:
 The path must be one exact absolute, `$PWD`, `$HOME`, or `~` path. Do not use
 wildcards, traversal, quotes, or control characters. Never request write
 access, resolve a request, edit gate state, disable the sandbox, or alter
-harness MCP configuration.
+harness tool configuration.
 
-Approval replaces the current box and resumes this harness session. The MCP
+Approval replaces the current box and resumes this harness session. The tool
 call may therefore disconnect. After resume, retry the original read; do not
 assume a grant from narration alone. If the host denies the request, continue
 within the existing boundary.

@@ -24,7 +24,9 @@ launch and request-only agent interface are specified by
 [ADR-0008](docs/decisions/0008-default-launch-surface.md) and
 [ADR-0009](docs/decisions/0009-request-only-agent-interface.md). Nested child
 authority is specified by
-[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md).
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md). Pi's
+assigned-session and native-tool integration is specified by
+[ADR-0012](docs/decisions/0012-pi-native-adapter.md).
 
 ## Platform status
 
@@ -78,12 +80,13 @@ Select another category for one journey:
 pagu --profile proof
 ```
 
-Or wrap a verified harness executable. Pagu infers Codex or Claude from its
+Or wrap a verified harness executable. Pagu infers Codex, Claude, or Pi from its
 basename:
 
 ```sh
 pagu -- claude
 pagu -- /opt/codex/bin/codex
+pagu -- pi
 ```
 
 An opaque wrapper needs an explicit adapter:
@@ -276,30 +279,35 @@ advanced surface for an explicit policy, state path, or existing session.
 
 The relaunch lifecycle requires the gate to own the boxed child. For an existing
 session UUID, the gate identifies Codex from
-`~/.codex/sessions/**/rollout-*-UUID.jsonl` or Claude from
-`~/.claude/projects/*/UUID.jsonl` unless `--harness` overrides inference; both
-and neither fail loud. The selected harness is retained in gate-session v1
-evidence. Codex resumes the exact UUID with its inner approval and sandbox
-layers disabled because the outer box is the enforced boundary. Claude resumes
-the exact UUID with `claude --resume UUID`.
+`~/.codex/sessions/**/rollout-*-UUID.jsonl`, Claude from
+`~/.claude/projects/*/UUID.jsonl`, or Pi from
+`~/.pi/agent/sessions/**/*_UUID.jsonl` unless `--harness` overrides inference.
+Multiple matches and no match fail loud. The selected harness is retained in
+gate-session v1 evidence. Codex resumes the exact UUID with its inner approval
+and sandbox layers disabled because the outer box is the enforced boundary.
+Claude uses `claude --resume UUID`; Pi uses `pi --session UUID`.
 
-For a new agent, supply `--harness codex|claude` and omit `--session` (or add
+For a new agent, supply `--harness codex|claude|pi` and omit `--session` (or add
 `--fresh`). The initial box runs the harness's fresh command with the same
 authenticated state bind. For Codex, the gate adds an inert nonce marker to the
 initial prompt, snapshots existing session IDs, and binds only the new rollout
 whose content contains that marker. Concurrent unrelated rollouts are ignored,
 and an unflushed marker keeps discovery polling. This attribution assumes
 cooperative peers; hostile writers to the shared Codex session store remain
-outside the current boundary. Claude receives a generated UUID through
-`--session-id` and skips discovery entirely. Gate-session v2 records the
+outside the current boundary. Claude and Pi receive a generated UUID through
+`--session-id` and skip discovery entirely. Gate-session v2 records the
 attributed or assigned UUID and fresh initial mode, and every later widen
 resumes that UUID with context.
 
 Immediately before launch, the gate composes only the selected harness's state:
 Codex receives read-write `~/.codex`; Claude receives `~/.claude` and
-`~/.claude.json`. This launch overlay appears in the compiled explanation and
-does not alter the standing policy or its final secret denies. `persist`
-decisions update only the user policy or named-profile grant overlay.
+`~/.claude.json`; Pi receives `~/.pi`. Common user-local npm roots for the
+Earendil and upstream Pi packages are added read-only when present so a
+temporary home can still run the selected launcher. Other Pi layouts need a
+self-contained executable until pagu has a trusted runtime-root configuration.
+This launch overlay appears in the compiled explanation and does not alter the
+standing policy or its final secret denies. `persist` decisions update only the
+user policy or named-profile grant overlay.
 
 ```sh
 SESSION="<codex-session-uuid>"
@@ -341,16 +349,19 @@ private directory such as the `mktemp` result above. Startup rejects symlinks,
 foreign ownership, broad modes, and replaceable non-sticky ancestry.
 
 The gate starts `pagu-box` itself. On an existing session, pass
-`--harness codex|claude` to skip harness inference. `HarnessInferenceError`
-names both failed location checks; `ResumeAdapterNotVerifiedError` remains the
+`--harness codex|claude|pi` to skip harness inference. `HarnessInferenceError`
+names all failed location checks; `ResumeAdapterNotVerifiedError` remains the
 fail-loud behavior for an explicit unverified harness name.
 
-Gate-owned Codex and Claude sessions launched by the packaged `pagu`
-automatically discover one `request_read_access` MCP tool. After an actual
-denied read, the inhabitant supplies the exact path, what it needs, and why. No
-special prompt injection or persistent harness configuration is required. An
-approval stops the current box, so the MCP call may disconnect; after pagu
-resumes the same session, retry the original read.
+Gate-owned Codex, Claude, and Pi sessions launched by the packaged `pagu`
+automatically discover one `request_read_access` tool. Codex and Claude receive
+it through session-local MCP configuration. Pi has no MCP client, so it receives
+an immutable session-local native extension which invokes the same packaged
+request-only adapter. After an actual denied read, the inhabitant supplies the
+exact path, what it needs, and why. No special prompt injection or persistent
+harness configuration is required. An approval stops the current box, so the
+tool call may disconnect; after pagu resumes the same session, retry the
+original read.
 
 The tool is request-only. It cannot resolve a request, choose its scope, inspect
 gate state, persist a grant, or launch a child. The pagu agent guide at
@@ -500,7 +511,7 @@ The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 - strict denial-evidence v1 decoding;
 - the request client, session-bound gate core, and Approver port;
 - the request-only MCP session, tool schema, and stdio adapter;
-- Codex/Claude resume adapters and the gate-owned box lifecycle;
+- Codex/Claude/Pi resume adapters and the gate-owned box lifecycle;
 - queue reads and resolve-only operator submission;
 - retained event-log and capability primitives.
 - category-profile names and the telemetry-v0 collector/projection/formatter.
@@ -536,7 +547,9 @@ The retained request, operator decision, grant, both compiled launches, exact
 policy transition, MCP injection, and final fixture read are checked together.
 Provider credential variables are removed from the tracer environment and no
 model is called. This is the routine regression journey; use a real supported
-harness only when changing that harness's own session or MCP behavior.
+harness only when changing that harness's own session or tool behavior. Pi
+adapter changes should prefer a local Ollama model; remote free tiers remain an
+optional fallback, not CI.
 
 ## Security model and development
 

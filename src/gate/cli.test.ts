@@ -12,6 +12,8 @@ const PARSE_CONTEXT = {
   runtimeDir: "/run/user/1000",
   profileDir: "/profiles",
   mcpCommand: "/nix/store/pagu-mcp/bin/pagu-mcp",
+  piExtension: "/nix/store/pagu-pi-extension.ts",
+  skillPath: "/nix/store/pagu-skill/SKILL.md",
   randomUUID: () => "00000000-0000-0000-0000-000000000013",
 };
 
@@ -52,6 +54,8 @@ Deno.test("pagu alone lowers to a fresh worker Codex journey", () => {
     harness: "codex",
     harnessExecutable: "codex",
     mcpCommand: "/nix/store/pagu-mcp/bin/pagu-mcp",
+    piExtension: "/nix/store/pagu-pi-extension.ts",
+    skillPath: "/nix/store/pagu-skill/SKILL.md",
     box: "pagu-box",
   });
 });
@@ -89,12 +93,23 @@ Deno.test("launch config changes the default harness and profile", () => {
   });
   assertEquals(overridden.profile, "proof");
   assertEquals(overridden.policy, "/profiles/proof.json");
+
+  const pi = rootOptions([], {
+    version: 0,
+    defaults: { harness: "pi", profile: "worker" },
+  });
+  assertEquals(pi.harness, "pi");
+  assertEquals(pi.harnessExecutable, "pi");
 });
 
 Deno.test("pagu infers a harness from the wrapped executable", () => {
   const options = rootOptions(["--", "/opt/claude/bin/claude"]);
   assertEquals(options.harness, "claude");
   assertEquals(options.harnessExecutable, "/opt/claude/bin/claude");
+
+  const pi = rootOptions(["--", "/opt/pi/bin/pi"]);
+  assertEquals(pi.harness, "pi");
+  assertEquals(pi.harnessExecutable, "/opt/pi/bin/pi");
 
   const opaque = rootOptions([
     "--harness",

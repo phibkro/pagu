@@ -27,7 +27,9 @@ request interface is fixed by
 authority and lineage are fixed by
 [ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md). Trusted child
 launch attribution and literal namespace nesting are fixed by
-[ADR-0011](docs/decisions/0011-credential-attested-child-broker.md).
+[ADR-0011](docs/decisions/0011-credential-attested-child-broker.md). Pi's
+assigned-session and native-tool adapter are fixed by
+[ADR-0012](docs/decisions/0012-pi-native-adapter.md).
 
 ## Why the split exists
 
@@ -270,9 +272,9 @@ Bare `pagu` is a user-journey adapter over the existing gate-owned fresh launch,
 not a third security component. The typed resolver in
 [`src/launch/launch.ts`](src/launch/launch.ts) selects the built-in worker/Codex
 default, a trusted user override from strict launch-config v0, or an explicit
-CLI choice. It may infer Codex or Claude from one wrapped executable. The result
-still enters the same gate, verified harness resume port, policy compiler, and
-box.
+CLI choice. It may infer Codex, Claude, or Pi from one wrapped executable. The
+result still enters the same gate, verified harness resume port, policy
+compiler, and box.
 
 The trusted launch file lives outside repository control at the XDG pagu config
 path and names only a checked-in category plus a verified harness adapter. It
@@ -308,9 +310,13 @@ listeners cannot be replaced, and the socket is private to the user.
 over that same channel. It exposes exactly one strict `request_read_access` tool
 and receives only `PAGU_REQUEST_SOCKET`; it cannot resolve, persist, read gate
 state, or launch a child. Fresh and resumed Codex/Claude commands receive the
-server through session-local harness arguments, never a persistent config edit.
-Packaged `pagu mcp` dispatches to the same narrow helper rather than the broader
-host CLI runtime. The bundled skill teaches the same boundary.
+server through session-local harness arguments. Pi, which has no MCP client,
+receives [`integrations/pi/pagu.ts`](integrations/pi/pagu.ts) as an immutable
+session-local native extension; its one tool invokes the same packaged MCP
+process rather than reimplementing the request protocol. No adapter edits
+persistent harness configuration. Packaged `pagu mcp` dispatches to the narrow
+helper rather than the broader host CLI runtime. The bundled skill teaches the
+same boundary.
 
 An approved request intentionally stops the old box, including its MCP child,
 before launching the wider replacement. The call may disconnect rather than
@@ -335,24 +341,29 @@ canonical path, not the mutable alias.
 [`src/gate/relaunch.ts`](src/gate/relaunch.ts) owns the active child. It
 verifies the request gate is reachable, stops the narrower box, and starts
 `pagu-box` with the complete derived policy. Immediately before each initial or
-approved launch it adds only that harness's RW state: `~/.codex`, or `~/.claude`
-plus `~/.claude.json`. This trusted launch overlay leaves the standing/profile
-policy immutable, passes through the same boundary validation and exact
-compiler/evidence path, and retains final secret denies. Session-store inference
-selects exactly one of Codex or Claude; ambiguous and missing matches fail loud,
-while an explicit harness skips inference. Gate-session v1 retains that
+approved launch it adds only that harness's RW state: `~/.codex`; `~/.claude`
+plus `~/.claude.json`; or `~/.pi`. Pi's common user-local installed package
+roots are added read-only when present so a temporary home can execute the
+selected runtime without exposing the rest of home. This trusted launch overlay
+leaves the standing/profile policy immutable, passes through the same boundary
+validation and exact compiler/evidence path, and retains final secret denies.
+Session-store inference selects exactly one of Codex, Claude, or Pi; ambiguous
+and missing matches fail loud, while an explicit harness skips inference.
+Gate-session v1 retains that
 selection for existing-session launches. A fresh launch requires an explicit
 harness and establishes ownership rather than inferring it from file timing.
 Codex receives a generated nonce marker in its inert initial prompt; the gate
 snapshots existing IDs before spawn and polls new rollout contents until that
 exact marker attributes one UUID, ignoring unrelated concurrent sessions and
-waiting through file-before-content flushes. Claude receives a caller-generated
-UUID through `--session-id` and needs no discovery poll. Gate-session v2 retains
-the attributed or assigned UUID and fresh initial mode. Requests arriving during
+waiting through file-before-content flushes. Claude and Pi receive a
+caller-generated UUID through `--session-id` and need no discovery poll.
+Gate-session v2 retains the attributed or assigned UUID and fresh initial mode.
+Requests arriving during
 Codex attribution wait behind the already-mounted socket and cannot enter the
 session-bound gate until attribution completes. Codex uses UUID resume with its
 inner approval/sandbox posture disabled because bubblewrap is the outer
-boundary; Claude uses `claude --resume SESSION_ID`. Versioned box launch
+boundary; Claude uses `claude --resume SESSION_ID`; Pi uses
+`pi --session SESSION_ID`. Versioned box launch
 evidence v1 and the `policy-launch` event bind compiled argv, cwd, and the fresh
 or resume command together. [`src/gate/resume.ts`](src/gate/resume.ts) is the
 harness command/state port; [`src/gate/harness.ts`](src/gate/harness.ts) owns
@@ -370,7 +381,7 @@ isolation is explicitly deferred.
 The existing `pagu-box --evidence` adapter remains the supported launch-evidence
 path for harness integrations. A general arbitrary-harness gate/resume port is
 deferred because it requires a separate boundary design; the current gate's
-Codex and Claude resume adapters are not generalized implicitly.
+Codex, Claude, and Pi resume adapters are not generalized implicitly.
 
 ## Gate state and evidence
 

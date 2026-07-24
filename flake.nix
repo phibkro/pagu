@@ -31,6 +31,15 @@
             name = "pagu-source";
             filter = path: _type: !(nixpkgs.lib.hasSuffix ".test.ts" path);
           };
+          paguSkill = builtins.path {
+            path = ./skills/pagu;
+            name = "pagu-agent-skill";
+          };
+          paguPiExtension = pkgs.writeText "pagu-pi-extension.ts" (
+            builtins.replaceStrings [ "@PAGU_MCP_COMMAND@" ] [ "${paguMcp}/bin/pagu-mcp" ] (
+              builtins.readFile ./integrations/pi/pagu.ts
+            )
+          );
           pagu = pkgs.writeShellApplication {
             name = "pagu";
             # Keep the caller PATH untouched until subcommand dispatch. In
@@ -55,6 +64,8 @@
                 ]
               }:"$PATH"
               PAGU_MCP_COMMAND=${paguMcp}/bin/pagu-mcp \
+                PAGU_PI_EXTENSION=${paguPiExtension} \
+                PAGU_SKILL_PATH=${paguSkill}/SKILL.md \
                 PAGU_PROFILE_DIR=${categoryProfiles} \
                 exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
                 --allow-read --allow-write --allow-env --allow-net --allow-run \

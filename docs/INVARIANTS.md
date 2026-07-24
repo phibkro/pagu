@@ -31,7 +31,7 @@ Enforcement:
 | Rung        | Enforcer                                                                                                                |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
 | runtime     | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket. |
-| agent API   | `src/mcp/server.ts` exposes one strict `request_read_access` tool over that socket and has no operator-resolution port. |
+| agent API   | `src/mcp/server.ts` and `integrations/pi/pagu.ts` expose one strict `request_read_access` tool and no operator-resolution port. |
 | schema      | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.      |
 | pure core   | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.      |
 | persistence | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                         |
@@ -53,6 +53,8 @@ Bound laws:
 - [law: MCP exposes one request-only inhabitant tool]
 - [law: MCP cannot resolve or smuggle authority]
 - [law: MCP services ping while retaining cancelled gate request]
+- [law: Pi extension exposes one request-only native tool]
+- [falsifier: Pi bridge fails loud on a parallel interface]
 - [law: narrowest ancestor remains final across child derivation]
 - [falsifier: child policy cannot regain ancestor filesystem network
   environment]
@@ -107,6 +109,7 @@ Bound laws:
 - [law: Claude relaunch keeps UUID argv and state]
 - [law: harness inference selects unique session location]
 - [law: harness inference fails typed for both or neither]
+- [law: Pi fresh binds assigned session id without discovery]
 - [law: child derivation preserves identity while attenuating every authority]
 - [law: rw parent home may attenuate to explicit child home scopes]
 

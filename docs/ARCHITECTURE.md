@@ -5,7 +5,7 @@ tags: [architecture, reference]
 
 # pagu — architecture
 
-The runtime has two security components, one request-only inhabitant adapter,
+The runtime has two security components, request-only inhabitant transports,
 and one shared typed core:
 
 ```mermaid
@@ -22,6 +22,7 @@ flowchart TB
     end
     subgraph sandbox["OS sandbox"]
         H["any harness"]
+        PI["integrations/pi/pagu.ts\nnative Pi tool"]
         M["src/mcp/server.ts\nrequest_read_access only"]
         C["src/request/channel.ts\nfileRequest client"]
         CH["parent inhabitant\nlaunch-child proposal"]
@@ -34,6 +35,8 @@ flowchart TB
     P -->|"bubblewrap argv + scrubbed env"| BC
     BC --> H
     H --> M
+    H --> PI
+    PI --> M
     M --> C
     C -. "strict Unix request" .-> G
     G -->|"validated grant"| R
@@ -71,7 +74,7 @@ the root command:
 
 - strict launch-config v0 decoding and XDG path discovery;
 - the built-in Codex + worker default;
-- Codex/Claude inference from a single executable basename;
+- Codex/Claude/Pi inference from a single executable basename;
 - pure config/flag/executable resolution.
 
 The CLI lowers that result to `GateOptions`; it does not start a second
@@ -129,7 +132,7 @@ Gate-side adapters export through `src/gate/index.ts`:
 | Module                      | Responsibility                                                                   |
 | --------------------------- | -------------------------------------------------------------------------------- |
 | `src/gate/harness.ts`       | Existing-session inference plus nonce/assigned-ID fresh identity attribution.    |
-| `src/gate/resume.ts`        | Fresh attributed argv and verified UUID-bound Codex/Claude resume commands.      |
+| `src/gate/resume.ts`        | Fresh attributed argv and verified UUID-bound Codex/Claude/Pi resume commands.   |
 | `src/gate/relaunch.ts`      | Gate-owned child replacement, active-gate check, policy artifacts, box evidence. |
 | `src/gate/operator.ts`      | Queue read, ID-bound resolution submission, TTY/file Approver composition.       |
 | `src/gate/boundary.ts`      | Proves operator state/socket stay hidden and user policy stays non-writable.     |
@@ -163,15 +166,17 @@ phase B, and child request adjudication/replacement are phase C.
 `src/mcp/server.ts` owns a connection-local MCP lifecycle and one strict tool.
 It lowers `{path, need, justification}` to the existing `fileRequest` core;
 there is no parallel request schema or adjudicator. `src/gate/resume.ts` adds
-the immutable packaged server to both fresh and resume argv through
-harness-native session-local configuration. The MCP process runs inside the box
-and sees the mounted request socket, while operator projections and resolution
-remain outside.
+the immutable packaged server to Codex/Claude fresh and resume argv through
+harness-native session-local configuration. Pi receives
+`integrations/pi/pagu.ts`, whose one native tool invokes that same exact
+packaged MCP adapter. The request process runs inside the box and sees the
+mounted request socket, while operator projections and resolution remain
+outside.
 
 `skills/pagu/SKILL.md` teaches agents when to request, what an
 approval-triggered disconnect means, and how to retry after resume. It is
-guidance, not authority; the strict MCP/request decoders and box lifecycle
-enforce the boundary.
+guidance, not authority; the strict native-tool/MCP/request decoders and box
+lifecycle enforce the boundary.
 
 ## Event and evidence core
 

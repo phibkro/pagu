@@ -236,7 +236,8 @@ The public functions live behind `src/mod.ts`:
 
 - decode, fold, compile, explain;
 - file a request and serve the gate channel;
-- expose that same request through one request-only stdio MCP tool;
+- expose that same request through one request-only tool (stdio MCP for
+  Codex/Claude; a Pi-native bridge over that adapter);
 - adjudicate and persist through typed ports;
 - apply a bound grant through `GrantApplier` and `ResumeAdapter` ports;
 - read a pending queue and submit an ID-bound operator resolution;
@@ -251,8 +252,9 @@ Human surfaces are thin adapters:
 - `pagu resolve` lets a herdr pane resolve that same port;
 - `pagu telemetry` renders the read-only event projection as a table or JSON.
 
-The agent adapter is `pagu mcp`, injected through harness-native session-local
-configuration. It exposes only the typed request core.
+The agent adapter is `pagu mcp`, injected directly through Codex/Claude
+session-local configuration. Pi's session-local native extension invokes that
+same adapter. Both expose only the typed request core.
 
 An adapter may choose presentation. It may not duplicate policy meaning or
 invent authority.
@@ -262,7 +264,8 @@ invent authority.
 - Schema-v0 enforcement is Linux-only today.
 - macOS retains legacy profiles but has no schema-to-seatbelt lowering yet.
 - Codex resume is verified against `codex-cli 0.144.4`; Claude UUID resume is
-  verified against Claude Code 2.x.
+  verified against Claude Code 2.x; Pi UUID resume and its native tool are
+  verified against Pi 0.80.6 with local Ollama.
 - Opt-in Linux denial evidence covers compiled `fs.deny` for absolute
   `open`/`openat`; full-policy/path-race coverage remains follow-on work.
 - Multi-host cryptographic discharge is outside v0.

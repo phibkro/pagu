@@ -54,3 +54,5 @@ silently drift either.
 - [ADR-0011](0011-credential-attested-child-broker.md) — bind child-host
   authority to per-message sender credentials/PIDFD and exact namespaces while
   launching literally inside the parent.
+- [ADR-0012](0012-pi-native-adapter.md) — assign Pi session IDs and expose the
+  existing request core through a session-local native extension.
