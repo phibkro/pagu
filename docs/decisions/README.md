@@ -47,3 +47,5 @@ silently drift either.
   safe-point box replacement design.
 - [ADR-0008](0008-default-launch-surface.md) — make bare `pagu` the default
   fresh gated journey with strict launch defaults and harness inference.
+- [ADR-0009](0009-request-only-agent-interface.md) — expose one session-local,
+  request-only MCP tool plus the pagu skill to sandbox inhabitants.

@@ -36,11 +36,29 @@
             runtimeInputs = [
               pkgs.deno
               paguBox
+              paguMcp
             ];
             text = ''
-              PAGU_PROFILE_DIR=${categoryProfiles} exec deno run --quiet --no-prompt \
+              if [[ "''${1-}" == "mcp" ]]; then
+                shift
+                exec ${paguMcp}/bin/pagu-mcp "$@"
+              fi
+              PAGU_MCP_COMMAND=${paguMcp}/bin/pagu-mcp \
+                PAGU_PROFILE_DIR=${categoryProfiles} \
+                exec deno run --quiet --no-prompt \
                 --allow-read --allow-write --allow-env --allow-net --allow-run \
                 ${paguSource}/gate/cli.ts "$@"
+            '';
+          };
+          paguMcp = pkgs.writeShellApplication {
+            name = "pagu-mcp";
+            runtimeInputs = [ pkgs.deno ];
+            text = ''
+              exec deno run --quiet --no-prompt \
+                --allow-env=PAGU_REQUEST_SOCKET \
+                --allow-read=/run/pagu/request.sock \
+                --allow-write=/run/pagu/request.sock \
+                ${paguSource}/mcp/cli.ts "$@"
             '';
           };
           paguBox =

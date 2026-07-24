@@ -208,19 +208,23 @@ The public functions live behind `src/mod.ts`:
 
 - decode, fold, compile, explain;
 - file a request and serve the gate channel;
+- expose that same request through one request-only stdio MCP tool;
 - adjudicate and persist through typed ports;
 - apply a bound grant through `GrantApplier` and `ResumeAdapter` ports;
 - read a pending queue and submit an ID-bound operator resolution;
-- read retained events.
+- read retained events;
 - collect and query retained gate events through telemetry v0.
 
-Human surfaces are adapters:
+Human surfaces are thin adapters:
 
 - `pagu-box` maps argv and host facts into the policy compiler;
 - `pagu gate` owns the box and races the Approver port between its TTY and the
   host-only resolution projection;
-- `pagu resolve` lets a herdr pane resolve that same port.
+- `pagu resolve` lets a herdr pane resolve that same port;
 - `pagu telemetry` renders the read-only event projection as a table or JSON.
+
+The agent adapter is `pagu mcp`, injected through harness-native session-local
+configuration. It exposes only the typed request core.
 
 An adapter may choose presentation. It may not duplicate policy meaning or
 invent authority.
@@ -229,9 +233,8 @@ invent authority.
 
 - Schema-v0 enforcement is Linux-only today.
 - macOS retains legacy profiles but has no schema-to-seatbelt lowering yet.
-- Codex resume is verified against `codex-cli 0.144.4`; Claude is a typed
-  not-yet-verified adapter.
-- A new Codex session must currently exist before pagu can resume its UUID.
+- Codex resume is verified against `codex-cli 0.144.4`; Claude UUID resume is
+  verified against Claude Code 2.x.
 - Opt-in Linux denial evidence covers compiled `fs.deny` for absolute
   `open`/`openat`; full-policy/path-race coverage remains follow-on work.
 - Multi-host cryptographic discharge is outside v0.

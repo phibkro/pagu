@@ -21,7 +21,9 @@ explains the durable model. Category profiles and the policy-growth telemetry
 loop are authoritative in
 [ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md). Forward work
 belongs in [ROADMAP.md](ROADMAP.md). The default product entrypoint is fixed by
-[ADR-0008](docs/decisions/0008-default-launch-surface.md).
+[ADR-0008](docs/decisions/0008-default-launch-surface.md). The inhabitant
+request interface is fixed by
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md).
 
 ## Why the split exists
 
@@ -236,6 +238,21 @@ deliberately not general RPC:
 
 Frames and concurrent clients are bounded, incomplete frames time out, active
 listeners cannot be replaced, and the socket is private to the user.
+
+[`src/mcp/server.ts`](src/mcp/server.ts) is the discoverable inhabitant adapter
+over that same channel. It exposes exactly one strict `request_read_access`
+tool and receives only `PAGU_REQUEST_SOCKET`; it cannot resolve, persist, read
+gate state, or launch a child. Fresh and resumed Codex/Claude commands receive
+the server through session-local harness arguments, never a persistent config
+edit. Packaged `pagu mcp` dispatches to the same narrow helper rather than the
+broader host CLI runtime. The bundled skill teaches the same boundary.
+
+An approved request intentionally stops the old box, including its MCP child,
+before launching the wider replacement. The call may disconnect rather than
+return its approval. The resumed harness retries the denied read and treats the
+new enforcement result as evidence. The stdio server remains responsive to
+ping while a request awaits the host. MCP cancellation suppresses a stale tool
+response but does not retract the retained gate request.
 
 [`src/request/adjudicate.ts`](src/request/adjudicate.ts) applies tiers in this
 order:

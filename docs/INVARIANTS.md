@@ -30,12 +30,13 @@ Enforcement:
 
 | Rung        | Enforcer                                                                                                                |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------- |
-| runtime     | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket. |
-| schema      | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.      |
-| pure core   | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.      |
-| persistence | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                         |
-| packaging   | `src/policy/compile.ts` emits the socket mount and `PAGU_REQUEST_SOCKET` only when a gate socket is supplied.           |
-| application | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace. |
+| runtime     | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket.       |
+| agent API   | `src/mcp/server.ts` exposes one strict `request_read_access` tool over that socket and has no operator-resolution port.       |
+| schema      | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.            |
+| pure core   | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.            |
+| persistence | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                               |
+| packaging   | `src/policy/compile.ts` emits the socket mount and `PAGU_REQUEST_SOCKET` only when a gate socket is supplied.                 |
+| application | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace.       |
 
 Bound laws:
 
@@ -45,6 +46,9 @@ Bound laws:
 - [law: fail secure unavailable gate leaves narrower box running]
 - [law: Codex nonce attribution ignores staggered decoy session]
 - [law: fresh widen resumes discovered session id]
+- [law: MCP exposes one request-only inhabitant tool]
+- [law: MCP cannot resolve or smuggle authority]
+- [law: MCP services ping while retaining cancelled gate request]
 
 Review questions:
 

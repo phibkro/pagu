@@ -20,6 +20,11 @@ export interface ResumeAdapter {
   command(session: string): readonly string[];
 }
 
+export interface McpServerCommand {
+  readonly command: string;
+  readonly args?: readonly string[];
+}
+
 export function codexNonceMarker(nonce: string): string {
   return `<<<PAGU_SESSION_NONCE:${nonce}>>>`;
 }
@@ -41,7 +46,24 @@ export function composeHarnessState(
 
 /** The outer pagu box is the enforced boundary, so the inner Codex sandbox and
  * approval gate stand down rather than double-gating the resumed session. */
-export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
+export function codexResumeAdapter(
+  executable = "codex",
+  mcp?: McpServerCommand,
+): ResumeAdapter {
+  const mcpArgs = mcp
+    ? [
+      "-c",
+      `mcp_servers.pagu.command=${JSON.stringify(mcp.command)}`,
+      "-c",
+      `mcp_servers.pagu.args=${JSON.stringify(mcp.args ?? [])}`,
+      "-c",
+      'mcp_servers.pagu.env_vars=["PAGU_REQUEST_SOCKET"]',
+      "-c",
+      'mcp_servers.pagu.enabled_tools=["request_read_access"]',
+      "-c",
+      "mcp_servers.pagu.required=true",
+    ]
+    : [];
   return {
     harness: "codex",
     stateRw: ["$HOME/.codex"],
@@ -51,6 +73,7 @@ export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
       "approval_policy=never",
       "-c",
       "sandbox_mode=danger-full-access",
+      ...mcpArgs,
       "pagu fresh-session attribution marker; no task is requested.\n\n" +
       codexNonceMarker(nonce),
     ],
@@ -62,6 +85,7 @@ export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
       "approval_policy=never",
       "-c",
       "sandbox_mode=danger-full-access",
+      ...mcpArgs,
     ],
   };
 }
@@ -71,20 +95,44 @@ export function codexResumeAdapter(executable = "codex"): ResumeAdapter {
  * intact, while boxed `claude --continue` reports "No conversation found to
  * continue" even under an rw-HOME profile — so UUID resume, not `--continue`,
  * is the reliable in-box form, and it is session-exact across relaunches. */
-export function claudeResumeAdapter(executable = "claude"): ResumeAdapter {
+export function claudeResumeAdapter(
+  executable = "claude",
+  mcp?: McpServerCommand,
+): ResumeAdapter {
+  const mcpArgs = mcp
+    ? [
+      "--mcp-config",
+      JSON.stringify({
+        mcpServers: {
+          pagu: {
+            type: "stdio",
+            command: mcp.command,
+            args: mcp.args ?? [],
+            env: { PAGU_REQUEST_SOCKET: "/run/pagu/request.sock" },
+          },
+        },
+      }),
+    ]
+    : [];
   return {
     harness: "claude",
     stateRw: ["$HOME/.claude", "$HOME/.claude.json"],
-    freshCommand: (session) => [executable, "--session-id", session],
-    command: (session) => [executable, "--resume", session],
+    freshCommand: (session) => [
+      executable,
+      ...mcpArgs,
+      "--session-id",
+      session,
+    ],
+    command: (session) => [executable, ...mcpArgs, "--resume", session],
   };
 }
 
 export function resumeAdapter(
   harness: string,
   executable?: string,
+  mcp?: McpServerCommand,
 ): ResumeAdapter {
-  if (harness === "codex") return codexResumeAdapter(executable);
-  if (harness === "claude") return claudeResumeAdapter(executable);
+  if (harness === "codex") return codexResumeAdapter(executable, mcp);
+  if (harness === "claude") return claudeResumeAdapter(executable, mcp);
   throw new ResumeAdapterNotVerifiedError(harness);
 }

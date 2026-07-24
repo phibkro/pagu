@@ -104,6 +104,11 @@ boxed child. Exercise request → operator resolution → stop → recompile →
 then compare the retained launch evidence with the applied policy. A model stub
 is not a substitute when the changed seam depends on live process behavior.
 
+For an inhabitant MCP change, exercise the packaged `pagu mcp` protocol and
+verify the generated session-local configuration with the actual supported
+harness clients. If request behavior changed, file the request through that
+MCP surface in a real box and confirm that resolution remains host-only.
+
 Security-boundary work should receive an independent-context review. The
 reviewer should try to falsify the claim, not merely restate the diff.
 

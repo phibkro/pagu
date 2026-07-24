@@ -11,6 +11,7 @@ const PARSE_CONTEXT = {
   launchConfig: DEFAULT_LAUNCH_CONFIG,
   runtimeDir: "/run/user/1000",
   profileDir: "/profiles",
+  mcpCommand: "/nix/store/pagu-mcp/bin/pagu-mcp",
   randomUUID: () => "00000000-0000-0000-0000-000000000013",
 };
 
@@ -50,8 +51,13 @@ Deno.test("pagu alone lowers to a fresh worker Codex journey", () => {
     fresh: true,
     harness: "codex",
     harnessExecutable: "codex",
+    mcpCommand: "/nix/store/pagu-mcp/bin/pagu-mcp",
     box: "pagu-box",
   });
+});
+
+Deno.test("pagu mcp selects the request-only programmatic interface", () => {
+  assertEquals(parseArgs(["mcp"], PARSE_CONTEXT), { command: "mcp" });
 });
 
 Deno.test("pagu default UUID generation works without an injected test clock", () => {

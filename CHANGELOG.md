@@ -23,6 +23,13 @@ only forward work.
   Codex/Claude basename, while an opaque wrapper requires `--harness`.
 - Reoriented forward delivery around actor-named end-to-end tracer journeys,
   with MCP/skill access and monotone nested authority as the next slices.
+- Added a dependency-free Deno stdio MCP server with one strict
+  `request_read_access` tool over the existing request socket. Gate-owned Codex
+  and Claude sessions receive it through transient launch/resume arguments;
+  persistent harness configuration is unchanged.
+- Updated the bundled pagu skill for MCP discovery, exact-path request
+  semantics, and the approval-triggered disconnect/resume lifecycle. Operator
+  resolution and gate state remain host-only.
 
 ## Box and gate foundation
 

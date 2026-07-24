@@ -1,31 +1,36 @@
 ---
 name: pagu
-description: Request narrowly scoped read access from inside pagu-box, or review and resolve pagu gate requests from the trusted host.
+description: Use when an agent inside pagu needs one narrowly scoped read path, or when a trusted human host needs to review and resolve a pagu gate request.
 ---
 
-# pagu escalation
+# pagu access requests
 
-Use pagu's installed SDK as the authority on signatures. This skill teaches the
-boundary; it does not duplicate policy logic.
+Preserve the boundary: inhabitants may request access; only the trusted host
+may resolve a request.
 
 ## Inside a pagu box
 
-Only file a request. Never attempt to resolve one or edit gate state.
+After an actual sandbox denial, use the available `request_read_access` MCP
+tool. Supply:
 
-```ts
-import { fileRequest } from "@phibkro/pagu";
+- `path`: the exact path that must become readable
+- `need`: the concrete information or artifact needed
+- `justification`: why the current task requires that exact path
 
-await fileRequest({
-  need: "read the dependency's local source",
-  justification: "compare the adapter with the exact installed API",
-  suggested_rule: { "fs.ro": "/absolute/exact/path" },
-});
-```
+The path must be one exact absolute, `$PWD`, `$HOME`, or `~` path. Do not use
+wildcards, traversal, quotes, or control characters. Never request write
+access, resolve a request, edit gate state, disable the sandbox, or alter
+harness MCP configuration.
 
-The rule must be one exact read-only path: no wildcard, traversal, quote, or
-control character. An approval causes the trusted gate to stop the current box
-and resume the same harness session in a newly compiled box. Do not continue
-work in the old process after requesting access.
+Approval replaces the current box and resumes this harness session. The MCP
+call may therefore disconnect. After resume, retry the original read; do not
+assume a grant from narration alone. If the host denies the request, continue
+within the existing boundary.
+
+If `request_read_access` is absent, report that the pagu integration is
+unavailable. Programmatic clients may use the installed `fileRequest()` SDK as
+a compatibility fallback, but should not ask the user to inject a prompt or
+modify persistent harness configuration.
 
 ## On the trusted host
 

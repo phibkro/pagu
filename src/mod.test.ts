@@ -35,6 +35,13 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "HarnessName", kind: "typeAlias" },
   { name: "LaunchRequest", kind: "interface" },
   { name: "ResolvedLaunch", kind: "interface" },
+  // Request-only inhabitant MCP surface.
+  { name: "createPaguMcpSession", kind: "function" },
+  { name: "servePaguMcpStdio", kind: "function" },
+  { name: "PAGU_MCP_TOOL", kind: "variable" },
+  { name: "PaguMcpSession", kind: "interface" },
+  { name: "PaguMcpMessage", kind: "typeAlias" },
+  { name: "McpServerCommand", kind: "interface" },
   // Event log.
   { name: "Entry", kind: "typeAlias" },
   { name: "parseLog", kind: "function" },

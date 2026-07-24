@@ -19,7 +19,10 @@ box/gate contract are recorded in
 [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) and
 [ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md). Curated
 category profiles and their telemetry loop are specified by
-[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md).
+[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md). The default
+launch and request-only agent interface are specified by
+[ADR-0008](docs/decisions/0008-default-launch-surface.md) and
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md).
 
 ## Platform status
 
@@ -336,7 +339,19 @@ The gate starts `pagu-box` itself. On an existing session, pass
 names both failed location checks; `ResumeAdapterNotVerifiedError` remains the
 fail-loud behavior for an explicit unverified harness name.
 
-The in-sandbox SDK call is:
+Gate-owned Codex and Claude sessions launched by the packaged `pagu`
+automatically discover one `request_read_access` MCP tool. After an actual
+denied read, the inhabitant supplies the exact path, what it needs, and why. No
+special prompt injection or persistent harness configuration is required. An
+approval stops the current box, so the MCP call may disconnect; after pagu
+resumes the same session, retry the original read.
+
+The tool is request-only. It cannot resolve a request, choose its scope, inspect
+gate state, persist a grant, or launch a child. The pagu agent guide at
+[`skills/pagu/SKILL.md`](skills/pagu/SKILL.md) teaches this lifecycle.
+
+Programmatic clients outside an MCP-capable harness can call the same core
+through the SDK:
 
 ```ts
 import { fileRequest } from "./src/mod.ts";
@@ -350,7 +365,8 @@ const decision = await fileRequest({
 
 The mounted endpoint accepts one strict request per Unix-socket connection and
 returns its tied decision. There is no resolution operation in the sandbox
-protocol.
+protocol. `pagu mcp` is the newline-delimited stdio MCP entrypoint used by the
+packaged harness adapters; it is not an operator interface.
 
 Gate tiers:
 
@@ -417,6 +433,7 @@ The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 - pure policy compilation and explanation;
 - strict denial-evidence v1 decoding;
 - the request client, session-bound gate core, and Approver port;
+- the request-only MCP session, tool schema, and stdio adapter;
 - Codex/Claude resume adapters and the gate-owned box lifecycle;
 - queue reads and resolve-only operator submission;
 - retained event-log and capability primitives.
@@ -427,7 +444,7 @@ package is consumed from a checkout today; publication is not claimed.
 
 The agent-facing boundary guide ships at
 [`skills/pagu/SKILL.md`](skills/pagu/SKILL.md). It teaches the request and
-operator seams while treating the installed SDK as signature authority.
+operator seams while treating the installed tool/SDK as signature authority.
 
 ## Security model and development
 

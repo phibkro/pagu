@@ -7,6 +7,7 @@ import {
 import { createBoxLauncher } from "./relaunch.ts";
 import { resumeAdapter } from "./resume.ts";
 import { createFreshSessionPlanner, resolveHarness } from "./harness.ts";
+import { servePaguMcpStdio } from "../mcp/index.ts";
 import {
   createGate,
   type FileRequestInput,
@@ -45,7 +46,12 @@ export interface GateOptions {
   readonly fresh: boolean;
   readonly harness: string | undefined;
   readonly harnessExecutable?: string;
+  readonly mcpCommand?: string;
   readonly box: string;
+}
+
+interface McpOptions {
+  readonly command: "mcp";
 }
 
 interface ResolveOptions {
@@ -63,12 +69,13 @@ interface TelemetryOptions {
   readonly top: number;
 }
 
-type Options = GateOptions | ResolveOptions | TelemetryOptions;
+type Options = GateOptions | McpOptions | ResolveOptions | TelemetryOptions;
 
 export interface CliParseContext {
   readonly launchConfig?: LaunchConfigV0;
   readonly runtimeDir?: string;
   readonly profileDir?: string;
+  readonly mcpCommand?: string;
   readonly randomUUID?: () => string;
 }
 
@@ -80,6 +87,7 @@ function usage(message?: string): never {
       "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
+      "  pagu mcp\n" +
       "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
   );
   Deno.exit(message ? 64 : 0);
@@ -99,6 +107,10 @@ export function parseArgs(
 ): Options {
   if (args[0] === "-h" || args[0] === "--help") usage();
   const command = args[0];
+  if (command === "mcp") {
+    if (args.length !== 1) usage("mcp takes no arguments");
+    return { command };
+  }
   if (command !== "gate" && command !== "resolve" && command !== "telemetry") {
     return parseRootArgs(args, context);
   }
@@ -195,6 +207,7 @@ export function parseArgs(
     fresh,
     harness,
     harnessExecutable: undefined,
+    mcpCommand: context.mcpCommand ?? Deno.env.get("PAGU_MCP_COMMAND"),
     box,
   };
 }
@@ -269,6 +282,7 @@ function parseRootArgs(
     fresh: true,
     harness: launch.harness,
     harnessExecutable: launch.executable,
+    mcpCommand: context.mcpCommand ?? Deno.env.get("PAGU_MCP_COMMAND"),
     box,
   };
 }
@@ -443,7 +457,11 @@ async function gate(options: GateOptions): Promise<void> {
   );
   let reportFatal!: (reason: string) => void;
   const fatal = new Promise<string>((resolve) => reportFatal = resolve);
-  const adapter = resumeAdapter(harness, options.harnessExecutable);
+  const adapter = resumeAdapter(
+    harness,
+    options.harnessExecutable,
+    options.mcpCommand ? { command: options.mcpCommand } : undefined,
+  );
   const launcher = createBoxLauncher({
     box: options.box,
     gateSocket: options.socket,
@@ -549,11 +567,13 @@ async function telemetry(options: TelemetryOptions): Promise<void> {
 export async function main(args = Deno.args): Promise<void> {
   const command = args[0];
   const launchConfig = command === "gate" || command === "resolve" ||
-      command === "telemetry" || command === "-h" || command === "--help"
+      command === "mcp" || command === "telemetry" || command === "-h" ||
+      command === "--help"
     ? undefined
     : await loadLaunchConfig();
   const options = parseArgs(args, { launchConfig });
   if (options.command === "resolve") await resolve(options);
+  else if (options.command === "mcp") await servePaguMcpStdio();
   else if (options.command === "telemetry") await telemetry(options);
   else await gate(options);
 }

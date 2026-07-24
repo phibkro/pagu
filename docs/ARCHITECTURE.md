@@ -5,7 +5,8 @@ tags: [architecture, reference]
 
 # pagu — architecture
 
-The runtime has two independent executables and one shared typed core:
+The runtime has two security components, one request-only inhabitant adapter,
+and one shared typed core:
 
 ```mermaid
 flowchart TB
@@ -20,6 +21,7 @@ flowchart TB
     end
     subgraph sandbox["OS sandbox"]
         H["any harness"]
+        M["src/mcp/server.ts\nrequest_read_access only"]
         C["src/request/channel.ts\nfileRequest client"]
     end
 
@@ -29,7 +31,8 @@ flowchart TB
     BC -->|"thin adapter"| P
     P -->|"bubblewrap argv + scrubbed env"| BC
     BC --> H
-    H --> C
+    H --> M
+    M --> C
     C -. "strict Unix request" .-> G
     G -->|"validated grant"| R
     R -->|"stop + new complete policy"| BC
@@ -45,6 +48,7 @@ flowchart TB
 | `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.                                         |
 | `pagu gate`          | `src/gate/cli.ts`                          | Advanced explicit-policy/session surface over the same request listener, operator adapters, and relaunch lifecycle.      |
 | `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                                                   |
+| `pagu mcp`           | `src/mcp/cli.ts` + `src/mcp/server.ts`     | Request-only stdio MCP adapter injected into gate-owned harness sessions; no operator methods.                           |
 | `pagu telemetry`     | `src/gate/cli.ts` + `src/telemetry/`       | Standalone human/JSON projection over one or many gate event logs.                                                       |
 | SDK                  | `src/mod.ts`                               | Stable front door for launch, policy, request, event, and retained security primitives.                                  |
 | Root flake           | `flake.nix`                                | Builds default `pagu`, compatibility `pagu-box`, formatter, and the Linux development shell.                             |
@@ -124,6 +128,21 @@ Gate-side adapters export through `src/gate/index.ts`:
 
 `src/gate/cli.ts` composes those adapters. The request core does not know about
 terminals, herdr, Codex argv, or process spawning.
+
+## Agent interface
+
+`src/mcp/server.ts` owns a connection-local MCP lifecycle and one strict tool.
+It lowers `{path, need, justification}` to the existing `fileRequest` core;
+there is no parallel request schema or adjudicator. `src/gate/resume.ts` adds
+the immutable packaged server to both fresh and resume argv through
+harness-native session-local configuration. The MCP process runs inside the
+box and sees the mounted request socket, while operator projections and
+resolution remain outside.
+
+`skills/pagu/SKILL.md` teaches agents when to request, what an
+approval-triggered disconnect means, and how to retry after resume. It is
+guidance, not authority; the strict MCP/request decoders and box lifecycle
+enforce the boundary.
 
 ## Event and evidence core
 
@@ -207,6 +226,7 @@ authority path.
 | Gate persistence/evidence   | `src/request/gate.ts` + log/event codecs                 |
 | Telemetry queries/rendering | `src/telemetry/` + versioned gate event entries          |
 | Human approval surface      | adapter over `GateApprover`; do not fork adjudication    |
+| Inhabitant tool surface     | `src/mcp/server.ts`; request only, no operator methods    |
 | Resume syntax               | `src/gate/resume.ts` + live adapter test                 |
 | Grant application           | `src/request/gate.ts` + `src/gate/relaunch.ts`           |
 | Operator resolution         | `src/gate/operator.ts`; keep it outside compiler context |

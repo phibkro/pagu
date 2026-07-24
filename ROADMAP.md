@@ -12,6 +12,8 @@ growth and telemetry governed by
 [ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md) and the default
 launch journey governed by
 [ADR-0008](docs/decisions/0008-default-launch-surface.md).
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md) governs the
+request-only inhabitant interface.
 [CONTEXT.md](CONTEXT.md) owns durable design; this file owns sequence and
 remaining work.
 
@@ -33,7 +35,7 @@ remaining work.
 | 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | ✓ shipped      |
 | 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | ✓ shipped      |
 | 14 — product front door | Bare `pagu`, worker/Codex defaults, strict user launch config, wrapped-executable inference, default Nix package. | ✓ shipped      |
-| 15 — agent interface    | Inhabitant discovers typed request/status tools through MCP plus an in-repo skill; no prompt injection required. | next           |
+| 15 — agent interface    | Inhabitant discovers one typed request tool through MCP plus an in-repo skill; no prompt injection required.    | ✓ shipped      |
 | 16 — nested authority   | Host/inhabitant roles and child pagu attenuation make the narrowest ancestor boundary final.                     | design + spike |
 | 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                          | planned        |
 | runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                | slice 1 parked |
@@ -65,14 +67,18 @@ runtime exercises the same core.
   MCP or the pagu skill, files one typed request, and awaits the gate decision;
   the human host sees and resolves the same request through a human-oriented
   surface.
-- **Tracer:** expose the existing `fileRequest` and read-only session/status SDK
-  through a small Deno MCP server, then make the skill teach those tools and
-  their security meaning.
+- **Tracer:** expose the existing `fileRequest` core through a small Deno stdio
+  MCP server, inject it session-locally into fresh and resumed Codex/Claude
+  commands, then make the skill teach that tool and its replacement lifecycle.
 - **Falsifier:** an inhabitant-facing tool can resolve, persist, mutate gate
   state, enumerate a general control socket, or widen the request beyond the
   exact typed rule.
-- **Deferred from this slice:** grant administration, child hosting, and a
-  general remote control plane.
+- **Delivered boundary:** exactly one `request_read_access` tool; its only
+  effect is the existing append-and-await request socket. Approval may terminate
+  the call while pagu replaces the box; the resumed agent retries the original
+  read.
+- **Deferred from this slice:** status projection, grant administration, child
+  hosting, and a general remote control plane.
 
 ### Slice 16 — safely host a child
 

@@ -177,7 +177,11 @@ Deno.test("operator state directory rejects replaceable ancestry and symlinks", 
 });
 
 Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound", () => {
-  const codex = codexResumeAdapter();
+  const mcp = {
+    command: "/nix/store/pagu-mcp/bin/pagu-mcp",
+    args: [] as const,
+  };
+  const codex = codexResumeAdapter("codex", mcp);
   const nonce = "00000000-0000-0000-0000-000000000099";
   assertEquals(codex.freshCommand(nonce), [
     "codex",
@@ -185,6 +189,16 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     "approval_policy=never",
     "-c",
     "sandbox_mode=danger-full-access",
+    "-c",
+    'mcp_servers.pagu.command="/nix/store/pagu-mcp/bin/pagu-mcp"',
+    "-c",
+    "mcp_servers.pagu.args=[]",
+    "-c",
+    'mcp_servers.pagu.env_vars=["PAGU_REQUEST_SOCKET"]',
+    "-c",
+    'mcp_servers.pagu.enabled_tools=["request_read_access"]',
+    "-c",
+    "mcp_servers.pagu.required=true",
     "pagu fresh-session attribution marker; no task is requested.\n\n" +
     codexNonceMarker(nonce),
   ]);
@@ -196,24 +210,53 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     "approval_policy=never",
     "-c",
     "sandbox_mode=danger-full-access",
+    "-c",
+    'mcp_servers.pagu.command="/nix/store/pagu-mcp/bin/pagu-mcp"',
+    "-c",
+    "mcp_servers.pagu.args=[]",
+    "-c",
+    'mcp_servers.pagu.env_vars=["PAGU_REQUEST_SOCKET"]',
+    "-c",
+    'mcp_servers.pagu.enabled_tools=["request_read_access"]',
+    "-c",
+    "mcp_servers.pagu.required=true",
   ]);
   assertEquals(codex.stateRw, ["$HOME/.codex"]);
   assertEquals(claudeResumeAdapter().stateRw, [
     "$HOME/.claude",
     "$HOME/.claude.json",
   ]);
-  assertEquals(claudeResumeAdapter().command("session-2"), [
+  const claude = claudeResumeAdapter("claude", mcp);
+  const claudeConfig = JSON.stringify({
+    mcpServers: {
+      pagu: {
+        type: "stdio",
+        command: mcp.command,
+        args: [],
+        env: { PAGU_REQUEST_SOCKET: "/run/pagu/request.sock" },
+      },
+    },
+  });
+  assertEquals(claude.command("session-2"), [
     "claude",
+    "--mcp-config",
+    claudeConfig,
     "--resume",
     "session-2",
   ]);
-  assertEquals(claudeResumeAdapter().freshCommand("session-2"), [
+  assertEquals(claude.freshCommand("session-2"), [
     "claude",
+    "--mcp-config",
+    claudeConfig,
     "--session-id",
     "session-2",
   ]);
   assertEquals(
-    claudeResumeAdapter().command("session-2").includes("--continue"),
+    claude.command("session-2").includes("--strict-mcp-config"),
+    false,
+  );
+  assertEquals(
+    claude.command("session-2").includes("--continue"),
     false,
   );
   assertThrows(
