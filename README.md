@@ -508,6 +508,29 @@ The agent-facing boundary guide ships at
 [`skills/pagu/SKILL.md`](skills/pagu/SKILL.md). It teaches the request and
 operator seams while treating the installed tool/SDK as signature authority.
 
+## Test the complete journey without a model
+
+Build the packages, then give the deterministic tracer the absolute `pagu`
+executable path:
+
+```sh
+nix build .#pagu .#pagu-box
+deno task journey:mock /absolute/path/to/result/bin/pagu
+```
+
+`XDG_RUNTIME_DIR` must name the current user's private runtime directory. The
+tracer launches the real packaged `pagu`, `pagu-box`, and `pagu mcp` surfaces. A
+fake Codex-compatible inhabitant creates a fresh attributed session, files one
+inaccessible read through the injected MCP tool, and waits while the host
+resolves it through `pagu resolve`. The first box must stop and the replacement
+must resume the same session before the fixture becomes readable.
+
+The retained request, operator decision, grant, both compiled launches, exact
+policy transition, MCP injection, and final fixture read are checked together.
+Provider credential variables are removed from the tracer environment and no
+model is called. This is the routine regression journey; use a real supported
+harness only when changing that harness's own session or MCP behavior.
+
 ## Security model and development
 
 - Durable boundary and threat model: [CONTEXT.md](CONTEXT.md)
@@ -520,4 +543,5 @@ operator seams while treating the installed tool/SDK as signature authority.
 deno task ci
 deno task check:docs
 nix build .#pagu-box .#pagu
+deno task journey:mock /absolute/path/to/result/bin/pagu
 ```

@@ -53,6 +53,15 @@ person, one desired outcome, and one falsifier. Pure SDK behavior lands before
 its human CLI or agent adapter; the journey is not complete until the packaged
 runtime exercises the same core.
 
+Routine lifecycle regression is now provider-free:
+`deno task journey:mock /absolute/path/to/pagu` drives the packaged root
+command, MCP server, gate, host resolver, and two real boxes with a
+deterministic fake inhabitant. It verifies the retained policy transition and
+makes no model call. Real Codex/Claude checks remain release or adapter-contract
+evidence. When Pi becomes a verified adapter, its routine behavioral smoke
+should use local Ollama; a remote free-tier provider remains an optional
+fallback rather than a CI dependency.
+
 ### Slice 14 — start protected work
 
 - **Journey:** a human host enters a repository and runs `pagu`; a fresh worker

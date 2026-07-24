@@ -99,10 +99,25 @@ nix run . -- --help
 nix run .#pagu-box -- --help
 ```
 
-For gate behavior, give `pagu gate` a real harness session ID so it owns the
-boxed child. Exercise request → operator resolution → stop → recompile → resume,
-then compare the retained launch evidence with the applied policy. A model stub
-is not a substitute when the changed seam depends on live process behavior.
+For ordinary gate behavior, build both packages and run the deterministic
+packaged journey:
+
+```sh
+deno task journey:mock /absolute/path/to/pagu
+```
+
+It uses a fake Codex-compatible inhabitant but not a fake lifecycle: the real
+packaged root command attributes a fresh session, injects the packaged MCP
+server, receives its request, accepts a host-side `pagu resolve`, stops the
+first box, and resumes the same session in a second compiled box. The tracer
+checks retained request/decision/grant/launch evidence and starts with the
+fixture outside the initial policy. It removes provider credentials and makes no
+model call.
+
+Use a real supported harness when the changed seam is that harness's own session
+storage, resume syntax, MCP configuration interpretation, or other
+client-specific behavior. A deterministic inhabitant is not evidence for those
+external contracts.
 
 For an inhabitant MCP change, exercise the packaged `pagu mcp` protocol and
 verify the generated session-local configuration with the actual supported

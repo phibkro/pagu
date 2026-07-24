@@ -236,6 +236,14 @@ ancestry here is a claim about controlled construction, not an inference from
 unequal inode strings alone. Credential attestation and request-linked
 replacement remain the explicit next phases.
 
+`scripts/mock-gate-journey.ts` is the provider-free top-level lifecycle tracer.
+Its fake Codex-compatible inhabitant uses the session-local packaged MCP command
+and deterministic files, while the real `pagu`, gate, box, operator resolver,
+policy compiler, and event store remain in the path. It proves fresh
+attribution, request → operator decision → replacement, exact-session resume,
+and enforced access without calling a model. Client-specific session and MCP
+compatibility still require a real harness check.
+
 ## Retained SDK primitives
 
 These modules survived the pivot and remain exported, but they are not the

@@ -51,6 +51,11 @@ only forward work.
   trusted nested launcher. Darwin rejects them explicitly; the native
   per-message credential/PIDFD frontend, inhabitant adapter, and child
   request/replacement path remain deferred.
+- Added a provider-free packaged journey tracer. A deterministic
+  Codex-compatible inhabitant uses the injected Pagu MCP server to request one
+  initially unavailable fixture; the host resolves it through `pagu resolve`,
+  and the tracer verifies first-box replacement, exact-session resume, the
+  retained policy transition, and final access with zero model calls.
 
 ## Box and gate foundation
 

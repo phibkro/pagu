@@ -1,21 +1,126 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-net
-// Test harness for the packaged gate lifecycle. The filename deliberately
-// exercises the Codex resume adapter's `codex resume SESSION_ID` argv shape.
-import { fileRequest } from "../../../src/request/channel.ts";
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-run
+// Model-free harness for the packaged gate journey. Its filename deliberately
+// exercises the verified Codex fresh/resume argv while its behavior uses only
+// deterministic fixture data and pagu's injected MCP server.
 
-const target = Deno.env.get("PAGU_E2E_TARGET");
-const marker = Deno.env.get("PAGU_E2E_MARKER");
-if (!target || !marker) throw new Error("missing e2e paths");
+interface JourneyConfig {
+  readonly version: 0;
+  readonly target: string;
+  readonly marker: string;
+  readonly session: string;
+}
 
-try {
-  const content = await Deno.readTextFile(`${target}/granted.txt`);
-  await Deno.writeTextFile(marker, content);
-} catch (error) {
-  if (!(error instanceof Deno.errors.NotFound) &&
-    !(error instanceof Deno.errors.PermissionDenied)) throw error;
-  await fileRequest({
-    need: "read the packaged Slice 5 fixture",
-    justification: "prove request, operator decision, relaunch, and resume",
-    suggested_rule: { "fs.ro": target },
-  });
+function parseConfig(value: unknown): JourneyConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("invalid journey config");
+  }
+  const config = value as Record<string, unknown>;
+  const expected = ["marker", "session", "target", "version"];
+  if (
+    Object.keys(config).sort().some((key, index) => key !== expected[index]) ||
+    config.version !== 0 ||
+    typeof config.target !== "string" ||
+    typeof config.marker !== "string" ||
+    typeof config.session !== "string"
+  ) throw new Error("invalid journey config");
+  return config as unknown as JourneyConfig;
+}
+
+function mcpCommand(args: readonly string[]): string {
+  for (let index = 0; index + 1 < args.length; index++) {
+    if (args[index] !== "-c") continue;
+    const setting = args[index + 1];
+    const prefix = "mcp_servers.pagu.command=";
+    if (!setting.startsWith(prefix)) continue;
+    const command = JSON.parse(setting.slice(prefix.length));
+    if (typeof command === "string" && command.startsWith("/")) return command;
+  }
+  throw new Error("pagu MCP command was not injected");
+}
+
+async function writeAll(
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+  value: string,
+): Promise<void> {
+  await writer.write(new TextEncoder().encode(value));
+  await writer.close();
+}
+
+async function requestThroughMcp(
+  command: string,
+  target: string,
+): Promise<never> {
+  const child = new Deno.Command(command, {
+    stdin: "piped",
+    stdout: "null",
+    stderr: "inherit",
+  }).spawn();
+  const messages = [
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "pagu-model-free-harness", version: "0" },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "request_read_access",
+        arguments: {
+          path: target,
+          need: "read the deterministic packaged-journey fixture",
+          justification:
+            "prove MCP request, host decision, box replacement, and resume",
+        },
+      },
+    },
+  ];
+  await writeAll(
+    child.stdin.getWriter(),
+    messages.map((message) => JSON.stringify(message)).join("\n") + "\n",
+  );
+  const status = await child.status;
+  throw new Error(`pagu MCP exited before replacement (${status.code})`);
+}
+
+const config = parseConfig(
+  JSON.parse(await Deno.readTextFile(".pagu-model-free-journey.json")),
+);
+const isResume = Deno.args[0] === "resume";
+const command = mcpCommand(Deno.args);
+
+if (isResume) {
+  if (Deno.args[1] !== config.session) {
+    throw new Error("resumed the wrong harness session");
+  }
+  const content = await Deno.readTextFile(`${config.target}/granted.txt`);
+  await Deno.writeTextFile(config.marker, content);
+} else {
+  const prompt = Deno.args.at(-1) ?? "";
+  const marker = prompt.match(/<<<PAGU_SESSION_NONCE:[^>]+>>>/)?.[0];
+  if (!marker) throw new Error("fresh launch has no attribution marker");
+  const home = Deno.env.get("HOME");
+  if (!home) throw new Error("fresh launch has no HOME");
+  const sessions = `${home}/.codex/sessions/2026/07/24`;
+  await Deno.mkdir(sessions, { recursive: true });
+  await Deno.writeTextFile(
+    `${sessions}/rollout-model-free-${config.session}.jsonl`,
+    JSON.stringify({ marker }) + "\n",
+  );
+  try {
+    await Deno.readTextFile(`${config.target}/granted.txt`);
+    throw new Error("fixture was readable before the host decision");
+  } catch (error) {
+    if (
+      !(error instanceof Deno.errors.NotFound) &&
+      !(error instanceof Deno.errors.PermissionDenied)
+    ) throw error;
+  }
+  await requestThroughMcp(command, config.target);
 }
