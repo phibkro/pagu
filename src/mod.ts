@@ -35,6 +35,9 @@ export {
   sanitizeProjectLayer,
 } from "./config/project-config.ts";
 
+// Human/agent launch defaults and harness inference.
+export * from "./launch/index.ts";
+
 // Event store and addressable event stream.
 export * from "./log/index.ts";
 export { eventStream } from "./events.ts";

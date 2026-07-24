@@ -52,7 +52,7 @@
               throw "pagu-box: unsupported system ${system}";
         in
         {
-          default = paguBox;
+          default = pagu;
           inherit pagu;
           pagu-box = paguBox;
         }

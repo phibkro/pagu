@@ -80,8 +80,11 @@ export function claudeResumeAdapter(executable = "claude"): ResumeAdapter {
   };
 }
 
-export function resumeAdapter(harness: string): ResumeAdapter {
-  if (harness === "codex") return codexResumeAdapter();
-  if (harness === "claude") return claudeResumeAdapter();
+export function resumeAdapter(
+  harness: string,
+  executable?: string,
+): ResumeAdapter {
+  if (harness === "codex") return codexResumeAdapter(executable);
+  if (harness === "claude") return claudeResumeAdapter(executable);
   throw new ResumeAdapterNotVerifiedError(harness);
 }

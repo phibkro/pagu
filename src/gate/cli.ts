@@ -27,6 +27,13 @@ import {
   policyIdentity,
 } from "../policy/index.ts";
 import { collectTelemetry, formatTelemetry } from "../telemetry/index.ts";
+import {
+  DEFAULT_LAUNCH_CONFIG,
+  type HarnessName,
+  type LaunchConfigV0,
+  loadLaunchConfig,
+  resolveLaunch,
+} from "../launch/index.ts";
 
 export interface GateOptions {
   readonly command: "gate";
@@ -37,6 +44,7 @@ export interface GateOptions {
   readonly session: string | undefined;
   readonly fresh: boolean;
   readonly harness: string | undefined;
+  readonly harnessExecutable?: string;
   readonly box: string;
 }
 
@@ -57,10 +65,18 @@ interface TelemetryOptions {
 
 type Options = GateOptions | ResolveOptions | TelemetryOptions;
 
+export interface CliParseContext {
+  readonly launchConfig?: LaunchConfigV0;
+  readonly runtimeDir?: string;
+  readonly profileDir?: string;
+  readonly randomUUID?: () => string;
+}
+
 function usage(message?: string): never {
   if (message) console.error(`pagu: ${message}`);
   console.error(
     "usage:\n" +
+      "  pagu [--profile NAME] [--harness codex|claude] [-- EXECUTABLE]\n" +
       "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
@@ -73,11 +89,18 @@ function value(args: readonly string[], index: number, flag: string): string {
   return args[index + 1] ?? usage(`${flag} requires a value`);
 }
 
-export function parseArgs(args: readonly string[]): Options {
+function randomUUID(context: CliParseContext): string {
+  return context.randomUUID ? context.randomUUID() : crypto.randomUUID();
+}
+
+export function parseArgs(
+  args: readonly string[],
+  context: CliParseContext = {},
+): Options {
   if (args[0] === "-h" || args[0] === "--help") usage();
   const command = args[0];
   if (command !== "gate" && command !== "resolve" && command !== "telemetry") {
-    usage("expected the 'gate', 'resolve', or 'telemetry' command");
+    return parseRootArgs(args, context);
   }
   let policy: string | undefined;
   let profile: string | undefined;
@@ -148,16 +171,16 @@ export function parseArgs(args: readonly string[]): Options {
   if (fresh && session) usage("--fresh and --session are mutually exclusive");
   fresh ||= session === undefined;
   if (fresh && !harness) usage("fresh gate launch requires --harness");
-  const runtime = Deno.env.get("XDG_RUNTIME_DIR");
+  const runtime = context.runtimeDir ?? Deno.env.get("XDG_RUNTIME_DIR");
   if (!stateDir && !runtime) {
     usage("gate requires --state-dir when XDG_RUNTIME_DIR is unset");
   }
-  const stateKey = session ?? `fresh-${harness}-${crypto.randomUUID()}`;
+  const stateKey = session ?? `fresh-${harness}-${randomUUID(context)}`;
   stateDir ??= `${runtime}/pagu/${encodeURIComponent(stateKey)}`;
   if (profile) {
-    const directory = Deno.env.get("PAGU_PROFILE_DIR") ?? decodeURIComponent(
-      new URL("../../profiles", import.meta.url).pathname,
-    );
+    const directory = context.profileDir ??
+      Deno.env.get("PAGU_PROFILE_DIR") ??
+      decodeURIComponent(new URL("../../profiles", import.meta.url).pathname);
     policy = `${directory.replace(/\/+$/, "")}/${
       categoryProfileFilename(profile as CategoryProfileName)
     }`;
@@ -171,6 +194,81 @@ export function parseArgs(args: readonly string[]): Options {
     session,
     fresh,
     harness,
+    harnessExecutable: undefined,
+    box,
+  };
+}
+
+function parseRootArgs(
+  args: readonly string[],
+  context: CliParseContext,
+): GateOptions {
+  let profile: CategoryProfileName | undefined;
+  let harness: HarnessName | undefined;
+  let socket: string | undefined;
+  let stateDir: string | undefined;
+  let box = "pagu-box";
+  let executable: string | undefined;
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--profile") {
+      const candidate = value(args, index++, arg);
+      if (!isCategoryProfile(candidate)) {
+        usage(`unknown category profile ${JSON.stringify(candidate)}`);
+      }
+      profile = candidate;
+    } else if (arg === "--harness") {
+      const candidate = value(args, index++, arg);
+      if (candidate !== "codex" && candidate !== "claude") {
+        usage("--harness must be codex or claude");
+      }
+      harness = candidate;
+    } else if (arg === "--socket") socket = value(args, index++, arg);
+    else if (arg === "--state-dir") stateDir = value(args, index++, arg);
+    else if (arg === "--box") box = value(args, index++, arg);
+    else if (arg === "--") {
+      const wrapped = args.slice(index + 1);
+      if (wrapped.length !== 1) {
+        usage("wrapped launch currently requires exactly one executable");
+      }
+      executable = wrapped[0];
+      break;
+    } else if (arg === "-h" || arg === "--help") usage();
+    else usage(`unknown option ${JSON.stringify(arg)}`);
+  }
+
+  let launch;
+  try {
+    launch = resolveLaunch(
+      context.launchConfig ?? DEFAULT_LAUNCH_CONFIG,
+      { harness, profile, executable },
+    );
+  } catch (error) {
+    usage(error instanceof Error ? error.message : String(error));
+  }
+  const runtime = context.runtimeDir ?? Deno.env.get("XDG_RUNTIME_DIR");
+  if (!stateDir && !runtime) {
+    usage("pagu requires --state-dir when XDG_RUNTIME_DIR is unset");
+  }
+  const stateKey = `fresh-${launch.harness}-${randomUUID(context)}`;
+  stateDir ??= `${runtime}/pagu/${encodeURIComponent(stateKey)}`;
+  const directory = context.profileDir ??
+    Deno.env.get("PAGU_PROFILE_DIR") ??
+    decodeURIComponent(new URL("../../profiles", import.meta.url).pathname);
+  const policy = `${directory.replace(/\/+$/, "")}/${
+    categoryProfileFilename(launch.profile)
+  }`;
+  return {
+    command: "gate",
+    policy,
+    profile: launch.profile,
+    socket: socket ?? `${stateDir}/request.sock`,
+    stateDir,
+    session: undefined,
+    fresh: true,
+    harness: launch.harness,
+    harnessExecutable: launch.executable,
     box,
   };
 }
@@ -345,7 +443,7 @@ async function gate(options: GateOptions): Promise<void> {
   );
   let reportFatal!: (reason: string) => void;
   const fatal = new Promise<string>((resolve) => reportFatal = resolve);
-  const adapter = resumeAdapter(harness);
+  const adapter = resumeAdapter(harness, options.harnessExecutable);
   const launcher = createBoxLauncher({
     box: options.box,
     gateSocket: options.socket,
@@ -449,7 +547,12 @@ async function telemetry(options: TelemetryOptions): Promise<void> {
 }
 
 export async function main(args = Deno.args): Promise<void> {
-  const options = parseArgs(args);
+  const command = args[0];
+  const launchConfig = command === "gate" || command === "resolve" ||
+      command === "telemetry" || command === "-h" || command === "--help"
+    ? undefined
+    : await loadLaunchConfig();
+  const options = parseArgs(args, { launchConfig });
   if (options.command === "resolve") await resolve(options);
   else if (options.command === "telemetry") await telemetry(options);
   else await gate(options);

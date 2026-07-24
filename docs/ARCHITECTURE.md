@@ -10,7 +10,8 @@ The runtime has two independent executables and one shared typed core:
 ```mermaid
 flowchart TB
     subgraph operator["trusted host"]
-        GC["src/gate/cli.ts\npagu gate"]
+        LC["src/launch/\ndefaults + inference"]
+        GC["src/gate/cli.ts\npagu · pagu gate"]
         R["src/gate/relaunch.ts\nchild ownership + resume"]
         G["src/request/gate.ts\nPA state + adjudication"]
         P["src/policy/\nschema · fold · compile"]
@@ -22,6 +23,7 @@ flowchart TB
         C["src/request/channel.ts\nfileRequest client"]
     end
 
+    LC --> GC
     GC --> G
     GC --> R
     BC -->|"thin adapter"| P
@@ -37,18 +39,34 @@ flowchart TB
 
 ## Entrypoints and packages
 
-| Surface              | Source                                     | Current role                                                                                                          |
-| -------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.                                      |
-| `pagu gate`          | `src/gate/cli.ts`                          | Starts fresh or resumes a harness session, then owns its request listener, operator surfaces, and relaunch lifecycle. |
-| `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                                                |
-| `pagu telemetry`     | `src/gate/cli.ts` + `src/telemetry/`       | Standalone human/JSON projection over one or many gate event logs.                                                    |
-| SDK                  | `src/mod.ts`                               | Stable front door for policy, request, event, and retained security primitives.                                       |
-| Root flake           | `flake.nix`                                | Builds `pagu-box`, `pagu`, formatter, and the Linux development shell.                                                |
-| Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                                                    |
+| Surface              | Source                                     | Current role                                                                                                             |
+| -------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `pagu`               | `src/launch/` + `src/gate/cli.ts`          | Default fresh gated journey; resolves user defaults and a wrapped verified harness into the existing gate lifecycle.     |
+| `pagu-box`           | `box/src/linux.nix` / `box/src/darwin.nix` | Process wrapper. Legacy profiles on Linux/macOS; schema-v0 enforcement on Linux.                                         |
+| `pagu gate`          | `src/gate/cli.ts`                          | Advanced explicit-policy/session surface over the same request listener, operator adapters, and relaunch lifecycle.      |
+| `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                                                   |
+| `pagu telemetry`     | `src/gate/cli.ts` + `src/telemetry/`       | Standalone human/JSON projection over one or many gate event logs.                                                       |
+| SDK                  | `src/mod.ts`                               | Stable front door for launch, policy, request, event, and retained security primitives.                                  |
+| Root flake           | `flake.nix`                                | Builds default `pagu`, compatibility `pagu-box`, formatter, and the Linux development shell.                             |
+| Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                                                       |
 
-The default root package is `pagu-box`. A unified `pagu box` command is planned
-but not implemented.
+`pagu` is the default root package. A future `pagu box` subcommand may expose
+direct enforcement beneath the product name; `pagu-box` remains available
+until compatibility callers migrate.
+
+## Launch resolution
+
+[`src/launch/launch.ts`](../src/launch/launch.ts) provides the typed core behind
+the root command:
+
+- strict launch-config v0 decoding and XDG path discovery;
+- the built-in Codex + worker default;
+- Codex/Claude inference from a single executable basename;
+- pure config/flag/executable resolution.
+
+The CLI lowers that result to `GateOptions`; it does not start a second
+lifecycle. The selected category still resolves to a complete policy, and the
+selected harness still passes through its verified fresh/resume adapter.
 
 ## Policy core
 

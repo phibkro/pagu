@@ -31,6 +31,27 @@ deno task test
 Preserve unrelated working-tree changes. Pick the next bounded slice from
 `ROADMAP.md`, and state the behavior that will prove it is done.
 
+## Deliver a user journey, not a component
+
+Every feature slice starts with a short journey:
+
+1. name the actor as a human host, agent host, or pagu inhabitant;
+2. state the outcome in language that actor can observe;
+3. trace one path through the typed SDK, human or agent adapter, gate, and box;
+4. name the falsifier that would disprove either the outcome or its authority
+   boundary;
+5. explicitly defer variants that do not need to cross that tracer.
+
+Write the pure SDK test first. Then add the thinnest CLI, MCP, skill, or other
+adapter needed by the actor. A component-only unit may support the slice, but it
+does not complete it. Completion requires the packaged journey, retained
+evidence where applicable, and documentation written from the actor's point of
+view.
+
+This keeps the workflow compatible with the architecture: human and agent
+surfaces share one typed core, while box enforcement and gate adjudication stay
+separate. A journey may cross both planes without merging their authority.
+
 ## Build from the policy boundary outward
 
 The dependency direction is deliberate:
@@ -73,8 +94,9 @@ deno task ci
 For box behavior, also build and exercise the real Nix package:
 
 ```sh
-nix build .#pagu-box
-./result/bin/pagu-box --help
+nix build .#pagu .#pagu-box
+nix run . -- --help
+nix run .#pagu-box -- --help
 ```
 
 For gate behavior, give `pagu gate` a real harness session ID so it owns the

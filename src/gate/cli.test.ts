@@ -4,6 +4,15 @@ import {
   type GateOptions,
   parseArgs,
 } from "./cli.ts";
+import { resumeAdapter } from "./resume.ts";
+import { DEFAULT_LAUNCH_CONFIG, type LaunchConfigV0 } from "../launch/index.ts";
+
+const PARSE_CONTEXT = {
+  launchConfig: DEFAULT_LAUNCH_CONFIG,
+  runtimeDir: "/run/user/1000",
+  profileDir: "/profiles",
+  randomUUID: () => "00000000-0000-0000-0000-000000000013",
+};
 
 function gateOptions(args: readonly string[]): GateOptions {
   const options = parseArgs([
@@ -13,10 +22,89 @@ function gateOptions(args: readonly string[]): GateOptions {
     "--state-dir",
     "/run/user/1000/pagu/test",
     ...args,
-  ]);
+  ], PARSE_CONTEXT);
   if (options.command !== "gate") throw new Error("expected gate options");
   return options;
 }
+
+function rootOptions(
+  args: readonly string[],
+  launchConfig: LaunchConfigV0 = DEFAULT_LAUNCH_CONFIG,
+): GateOptions {
+  const options = parseArgs(args, { ...PARSE_CONTEXT, launchConfig });
+  if (options.command !== "gate") throw new Error("expected gate options");
+  return options;
+}
+
+Deno.test("pagu alone lowers to a fresh worker Codex journey", () => {
+  const options = rootOptions([]);
+  assertEquals(options, {
+    command: "gate",
+    policy: "/profiles/worker.json",
+    profile: "worker",
+    socket:
+      "/run/user/1000/pagu/fresh-codex-00000000-0000-0000-0000-000000000013/request.sock",
+    stateDir:
+      "/run/user/1000/pagu/fresh-codex-00000000-0000-0000-0000-000000000013",
+    session: undefined,
+    fresh: true,
+    harness: "codex",
+    harnessExecutable: "codex",
+    box: "pagu-box",
+  });
+});
+
+Deno.test("pagu default UUID generation works without an injected test clock", () => {
+  const options = parseArgs([], {
+    launchConfig: DEFAULT_LAUNCH_CONFIG,
+    runtimeDir: "/run/user/1000",
+    profileDir: "/profiles",
+  });
+  if (options.command !== "gate") throw new Error("expected gate options");
+  assertEquals(
+    options.stateDir.startsWith("/run/user/1000/pagu/fresh-codex-"),
+    true,
+  );
+});
+
+Deno.test("launch config changes the default harness and profile", () => {
+  const options = rootOptions([], {
+    version: 0,
+    defaults: { harness: "claude", profile: "advisor" },
+  });
+  assertEquals(options.harness, "claude");
+  assertEquals(options.harnessExecutable, "claude");
+  assertEquals(options.profile, "advisor");
+  assertEquals(options.policy, "/profiles/advisor.json");
+
+  const overridden = rootOptions(["--profile", "proof"], {
+    version: 0,
+    defaults: { harness: "claude", profile: "advisor" },
+  });
+  assertEquals(overridden.profile, "proof");
+  assertEquals(overridden.policy, "/profiles/proof.json");
+});
+
+Deno.test("pagu infers a harness from the wrapped executable", () => {
+  const options = rootOptions(["--", "/opt/claude/bin/claude"]);
+  assertEquals(options.harness, "claude");
+  assertEquals(options.harnessExecutable, "/opt/claude/bin/claude");
+
+  const opaque = rootOptions([
+    "--harness",
+    "codex",
+    "--",
+    "/opt/company/agent-wrapper",
+  ]);
+  assertEquals(opaque.harness, "codex");
+  assertEquals(opaque.harnessExecutable, "/opt/company/agent-wrapper");
+  assertEquals(
+    resumeAdapter(opaque.harness!, opaque.harnessExecutable).command(
+      "session-13",
+    )[0],
+    "/opt/company/agent-wrapper",
+  );
+});
 
 Deno.test("gate CLI forks explicitly between resume and fresh launch", () => {
   const resumed = gateOptions([

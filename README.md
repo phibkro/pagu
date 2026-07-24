@@ -8,9 +8,10 @@ pagu wraps any coding-agent harness in two security components:
   adjudicate them, and retain the decision evidence.
 
 The hermit-crab model is literal: any harness is the crab, `pagu-box` is the
-borrowed shell, and `pagu gate` controls the shell's aperture. A grant never
-mutates a live sandbox: the gate stops its owned child, recompiles the complete
-policy, and resumes the same harness session in a new box.
+borrowed shell, and the gate controls the shell's aperture. The ordinary `pagu`
+command owns both components. A grant never mutates a live sandbox: the gate
+stops its owned child, recompiles the complete policy, and resumes the same
+harness session in a new box.
 
 The former integrated harness is preserved on branch `archive/harness` and at
 tag `harness-final`. It is not part of the live architecture. The pivot and the
@@ -43,12 +44,69 @@ nix build .#pagu-box .#pagu
 Or run either flake package directly:
 
 ```sh
+nix run . -- --help
+nix run .#pagu
 nix run .#pagu-box -- --help
-nix run .#pagu -- gate --help
 ```
 
-The default flake package is the `pagu-box` compatibility executable. A unified
-`pagu box` subcommand is planned; it is not shipped yet.
+The default flake package is `pagu`. `pagu-box` remains the direct-enforcement
+and compatibility executable.
+
+## Start a protected agent
+
+The default journey is intentionally one command:
+
+```sh
+pagu
+```
+
+It starts a fresh Codex session under the `worker` category, with the gate
+outside the sandbox and the harness inside it. No profile argument or config
+file is required. On first launch, pagu creates private session state below
+`$XDG_RUNTIME_DIR/pagu`; when that environment variable is unavailable, pass
+`--state-dir` explicitly.
+
+Select another category for one journey:
+
+```sh
+pagu --profile proof
+```
+
+Or wrap a verified harness executable. Pagu infers Codex or Claude from its
+basename:
+
+```sh
+pagu -- claude
+pagu -- /opt/codex/bin/codex
+```
+
+An opaque wrapper needs an explicit adapter:
+
+```sh
+pagu --harness claude -- /opt/company/agent-wrapper
+```
+
+The fresh/resume adapter owns harness arguments so the same session can be
+reproduced after a grant. This first tracer therefore accepts exactly one
+wrapped executable, not arbitrary trailing arguments.
+
+Persistent user defaults live at `$XDG_CONFIG_HOME/pagu/launch.json`, or
+`~/.config/pagu/launch.json` when `XDG_CONFIG_HOME` is unset:
+
+```json
+{
+  "version": 0,
+  "defaults": {
+    "harness": "claude",
+    "profile": "proof"
+  }
+}
+```
+
+The file is optional and strict: unknown fields, harnesses, profiles, or schema
+versions fail before launch. Command-line choices override configured defaults.
+This trusted launch file is separate from project policy; repository content
+cannot select broader authority.
 
 ## Policy v0
 
@@ -202,7 +260,10 @@ nix run .#pagu-box -- --profile=paranoid --no-net -- claude
 Run `pagu-box --help` for the complete compatibility surface. Legacy policy
 flags cannot be combined with `--policy` or a category profile.
 
-## Run a gate-owned harness session
+## Operate a gate-owned harness session directly
+
+Bare `pagu` is the normal fresh-session path. The `gate` subcommand below is the
+advanced surface for an explicit policy, state path, or existing session.
 
 The relaunch lifecycle requires the gate to own the boxed child. For an existing
 session UUID, the gate identifies Codex from
@@ -349,6 +410,8 @@ requests remain deferred by ADR-0006.
 
 The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 
+- strict launch-config decoding, config discovery, harness inference, and launch
+  resolution;
 - strict policy and grant decoding;
 - trusted-user plus narrow-only project policy folding;
 - pure policy compilation and explanation;

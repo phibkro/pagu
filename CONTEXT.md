@@ -20,7 +20,8 @@ interface boundary are authoritative in
 explains the durable model. Category profiles and the policy-growth telemetry
 loop are authoritative in
 [ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md). Forward work
-belongs in [ROADMAP.md](ROADMAP.md).
+belongs in [ROADMAP.md](ROADMAP.md). The default product entrypoint is fixed by
+[ADR-0008](docs/decisions/0008-default-launch-surface.md).
 
 ## Why the split exists
 
@@ -195,6 +196,29 @@ of scope. See the
 Nix-built `pagu-box` launcher. Linux schema-policy compilation is implemented.
 The macOS schema compiler fails with a typed unsupported-platform error; the
 legacy seatbelt profiles remain separate compatibility behavior.
+
+## Product launch surface
+
+Bare `pagu` is a user-journey adapter over the existing gate-owned fresh launch,
+not a third security component. The typed resolver in
+[`src/launch/launch.ts`](src/launch/launch.ts) selects the built-in worker/Codex
+default, a trusted user override from strict launch-config v0, or an explicit
+CLI choice. It may infer Codex or Claude from one wrapped executable. The result
+still enters the same gate, verified harness resume port, policy compiler, and
+box.
+
+The trusted launch file lives outside repository control at the XDG pagu config
+path and names only a checked-in category plus a verified harness adapter. It
+does not define policy fields, grant authority to a project, or enter the
+sandbox. A missing file selects built-in defaults; a malformed, unknown-field,
+or unsupported version fails before launch. The historical integrated-harness
+`config.json` remains a distinct pre-pivot SDK seam, so the new file is named
+`launch.json`.
+
+Direct `pagu gate` operation remains for explicit policies and existing
+sessions. `pagu-box` remains the direct PEP compatibility surface. The root Nix
+package launches `pagu`, making the product journey the default without
+removing either expert surface.
 
 ## Escalation loop
 

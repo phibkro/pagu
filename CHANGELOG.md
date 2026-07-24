@@ -9,6 +9,21 @@ pagu is pre-v1 and has no release ledger yet. This is the human-readable shipped
 history; the Conventional Commit log is authoritative, and `ROADMAP.md` contains
 only forward work.
 
+## Product launch surface
+
+- Made bare `pagu` start a fresh gate-owned worker Codex session and made
+  `pagu` the root flake's default package. The direct `pagu gate` and
+  compatibility `pagu-box` surfaces remain available.
+- Added strict, versioned user launch defaults in XDG
+  `pagu/launch.json`. The file may select one checked-in category and verified
+  Codex/Claude adapter; absence uses built-in defaults and malformed or unknown
+  fields fail before launch.
+- Added typed SDK functions for launch-config decoding/discovery, harness
+  inference, and launch resolution. `pagu -- EXECUTABLE` infers a recognized
+  Codex/Claude basename, while an opaque wrapper requires `--harness`.
+- Reoriented forward delivery around actor-named end-to-end tracer journeys,
+  with MCP/skill access and monotone nested authority as the next slices.
+
 ## Box and gate foundation
 
 - Archived the earlier integrated assistant product on its preservation branch

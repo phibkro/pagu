@@ -37,3 +37,13 @@ silently drift either.
   single source of truth; no external issue tracker.
 - [ADR-0003](0003-per-project-config.md) — per-project `.pagu/config.json`, with
   repo-mode structurally gating its permission grants (implemented).
+- [ADR-0004](0004-pivot-to-sandbox-plus-gate.md) — archive the integrated
+  harness and make pagu the sandbox + gate product.
+- [ADR-0005](0005-grant-schema-and-gate-boundary.md) — version the policy/grant
+  family and preserve the box/gate authority split.
+- [ADR-0006](0006-profiles-growth-and-telemetry.md) — curated category profiles,
+  sparse growth overlays, and evidence-derived telemetry.
+- [ADR-0007](0007-runtime-reload.md) — bounded gate runtime handoff and
+  safe-point box replacement design.
+- [ADR-0008](0008-default-launch-surface.md) — make bare `pagu` the default
+  fresh gated journey with strict launch defaults and harness inference.

@@ -9,7 +9,9 @@ The live product is the box + gate pair defined by
 [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) and
 [ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md), with profile
 growth and telemetry governed by
-[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md).
+[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md) and the default
+launch journey governed by
+[ADR-0008](docs/decisions/0008-default-launch-surface.md).
 [CONTEXT.md](CONTEXT.md) owns durable design; this file owns sequence and
 remaining work.
 
@@ -30,17 +32,85 @@ remaining work.
 | 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                         | ✓ verified     |
 | 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | ✓ shipped      |
 | 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | ✓ shipped      |
-| runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                | slice 1        |
+| 14 — product front door | Bare `pagu`, worker/Codex defaults, strict user launch config, wrapped-executable inference, default Nix package. | ✓ shipped      |
+| 15 — agent interface    | Inhabitant discovers typed request/status tools through MCP plus an in-repo skill; no prompt injection required. | next           |
+| 16 — nested authority   | Host/inhabitant roles and child pagu attenuation make the narrowest ancestor boundary final.                     | design + spike |
+| 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                          | planned        |
+| runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                | slice 1 parked |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | operator-gated |
+
+## Product journey sequence
+
+Every product feature advances as a thin end-to-end tracer with one named
+person, one desired outcome, and one falsifier. Pure SDK behavior lands before
+its human CLI or agent adapter; the journey is not complete until the packaged
+runtime exercises the same core.
+
+### Slice 14 — start protected work
+
+- **Journey:** a human host enters a repository and runs `pagu`; a fresh worker
+  agent starts under the gate without selecting an implementation component or
+  profile.
+- **Variants:** the host selects a category, configures trusted defaults, or
+  wraps one Codex/Claude executable whose harness is inferred.
+- **Falsifier:** default/configured/wrapped invocations lower to a different
+  lifecycle or authority than the equivalent explicit fresh gate launch.
+- **Boundary:** the CLI adds no policy field and no new process authority. It
+  selects a checked-in category and verified adapter, then delegates to the
+  existing gate.
+
+### Slice 15 — ask for help from inside
+
+- **Journey:** an inhabitant encounters a denied read, discovers pagu through
+  MCP or the pagu skill, files one typed request, and awaits the gate decision;
+  the human host sees and resolves the same request through a human-oriented
+  surface.
+- **Tracer:** expose the existing `fileRequest` and read-only session/status SDK
+  through a small Deno MCP server, then make the skill teach those tools and
+  their security meaning.
+- **Falsifier:** an inhabitant-facing tool can resolve, persist, mutate gate
+  state, enumerate a general control socket, or widen the request beyond the
+  exact typed rule.
+- **Deferred from this slice:** grant administration, child hosting, and a
+  general remote control plane.
+
+### Slice 16 — safely host a child
+
+- **Journey:** a host agent inside pagu launches a nested pagu for a child. The
+  child can perform normal work inside the inherited boundary and request help
+  from the outer host, but neither parent inhabitant nor child can grant itself
+  more than the narrowest ancestor allowed.
+- **Tracer:** model actor/box lineage and pure policy attenuation first; prove a
+  two-level worker → child launch using real bubblewrap before adding deeper
+  orchestration.
+- **Falsifier:** any nested launch regains a filesystem, network, environment,
+  state, resolution, or control capability removed by an ancestor.
+- **Design gate:** specify authority provenance, host-vs-inhabitant identity,
+  request routing, state placement, and evidence linkage in a new ADR before
+  implementation. Do not mount a general control socket.
+
+### Slice 17 — use one product name for expert control
+
+- **Journey:** a human who needs direct static enforcement runs
+  `pagu box …`; existing automation may continue to invoke `pagu-box`.
+- **Falsifier:** the new subcommand compiles or launches differently from the
+  compatibility executable for the same policy and argv.
+
+The runtime stays Deno. Effect v4 earns introduction only where typed context,
+resource lifetime, interruption, or concurrent failure semantics materially
+simplify a tracer; it is not a default dependency. The current CLI/gate needs no
+web framework. A future network server should justify that surface before
+choosing an HTTP framework.
 
 ## Runtime reload
 
 The frozen design and proposed decision are
 [`docs/runtime-reload-design.md`](docs/runtime-reload-design.md) and
 [`ADR-0007`](docs/decisions/0007-runtime-reload.md). Implementation proceeds by
-its eight falsifier-bound slices. Slice 1 publishes strict checkpoint and reload
-evidence shapes plus pure adoption/evidence-chain laws; it does not yet transfer
-an FD or alter a running gate.
+its eight falsifier-bound slices. Slice 1 publishes strict checkpoint and
+reload evidence shapes plus pure adoption/evidence-chain laws; it does not yet
+transfer an FD or alter a running gate. Further runtime-reload work is parked
+behind the user and agent journey slices above.
 
 ## Slice 13 fresh-launch boundary
 
@@ -195,7 +265,6 @@ These items follow the complete Slice 5 lifecycle:
 - reviewed overlay-to-profile promotion and unused-allow pruning tooling;
 - reconciliation UX for a once grant conservatively spent by a process crash;
 - schema-v0 lowering for macOS seatbelt;
-- a unified `pagu box` command while retaining the compatibility executable;
 - grant listing and revocation UX over the retained derivation data;
 - tested policy fixtures carried beside operator policies;
 - optional flow integration above the standalone gate;
