@@ -30,6 +30,10 @@ only forward work.
 - Updated the bundled pagu skill for MCP discovery, exact-path request
   semantics, and the approval-triggered disconnect/resume lifecycle. Operator
   resolution and gate state remain host-only.
+- Expanded the bundled pagu skill into a provider-neutral operating guide for
+  host and inhabitant agents: default launch, profiles, trusted configuration,
+  direct-box inspection, exact read requests, host resolution, and nested
+  boundary limits now share one concise workflow.
 - Added strict child-policy derivation and relative actor/box lineage to the
   public SDK. Child identity may change, while filesystem, home, network,
   environment, auto-escalation, deny, and refusal authority can only attenuate

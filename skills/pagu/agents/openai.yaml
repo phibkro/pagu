@@ -1,7 +1,7 @@
 interface:
-  display_name: "Pagu Access"
-  short_description: "Request exact read access through pagu"
-  default_prompt: "Use $pagu to request the exact read path needed after this sandbox denial."
+  display_name: "Pagu"
+  short_description: "Run agents through Pagu with clear role boundaries"
+  default_prompt: "Use $pagu to start or operate this agent journey through the appropriate Pagu role and profile."
 
 policy:
   allow_implicit_invocation: true

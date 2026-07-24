@@ -173,10 +173,11 @@ packaged MCP adapter. The request process runs inside the box and sees the
 mounted request socket, while operator projections and resolution remain
 outside.
 
-`skills/pagu/SKILL.md` teaches agents when to request, what an
-approval-triggered disconnect means, and how to retry after resume. It is
-guidance, not authority; the strict native-tool/MCP/request decoders and box
-lifecycle enforce the boundary.
+`skills/pagu/SKILL.md` is the provider-neutral operating guide for host and
+inhabitant agents. It teaches the default launch, profile selection, direct-box
+inspection, exact read requests, host resolution, replacement/resume, and the
+current nested-child limit. It is guidance, not authority; the strict
+native-tool/MCP/request decoders and box lifecycle enforce the boundary.
 
 ## Event and evidence core
 
