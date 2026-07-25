@@ -59,3 +59,6 @@ silently drift either.
 - [ADR-0013](0013-named-harness-launch-grammar.md) — name the harness as a bare
   positional, make bare `pagu` print usage, and vendor the packaged CLI's
   dependencies into the store.
+- [ADR-0014](0014-gated-egress-and-credential-broker.md) — compose Claw Patrol
+  as the outside egress plane, require a gateway rather than silently falling
+  back to open network, and widen egress without stopping the box.
