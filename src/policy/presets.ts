@@ -1,5 +1,11 @@
 // pure: legacy box profiles generated as schema-v0 policy values.
-import { BUILTIN_SECRET_DENY, type PolicyV0 } from "./schema.ts";
+import {
+  BUILTIN_SECRET_DENY,
+  NET_HOST,
+  NET_OFF,
+  type PolicyNetV0,
+  type PolicyV0,
+} from "./schema.ts";
 import { CATEGORY_SECRET_FLOOR } from "./profiles.ts";
 
 export type LegacyPolicyProfile =
@@ -19,7 +25,7 @@ const DEFAULT_DENY = CATEGORY_SECRET_FLOOR;
 function preset(
   name: LegacyPolicyProfile,
   home: "rw" | "tmpfs",
-  net: boolean,
+  net: PolicyNetV0,
   deny: readonly string[],
 ): PolicyV0 {
   return {
@@ -42,8 +48,8 @@ function preset(
 export const LEGACY_POLICY_PRESETS: Readonly<
   Record<LegacyPolicyProfile, PolicyV0>
 > = {
-  default: preset("default", "rw", true, DEFAULT_DENY),
-  strict: preset("strict", "tmpfs", true, []),
-  paranoid: preset("paranoid", "tmpfs", false, []),
-  loose: preset("loose", "rw", true, ["~/.ssh", "~/.gnupg"]),
+  default: preset("default", "rw", NET_HOST, DEFAULT_DENY),
+  strict: preset("strict", "tmpfs", NET_HOST, []),
+  paranoid: preset("paranoid", "tmpfs", NET_OFF, []),
+  loose: preset("loose", "rw", NET_HOST, ["~/.ssh", "~/.gnupg"]),
 };

@@ -6,7 +6,10 @@ import {
   childLaunchEntry,
   type ChildLaunchEvidenceV0,
   createChildBroker,
+  NET_HOST,
+  NET_OFF,
   parseChildLaunchFrame,
+  type PolicyNetV0,
   rootLineage,
 } from "../mod.ts";
 
@@ -14,7 +17,7 @@ function policy(fields: {
   subject?: { agent: string; label: string };
   rw?: string[];
   ro?: string[];
-  net?: boolean;
+  net?: PolicyNetV0;
   pass?: string[];
 } = {}) {
   return {
@@ -26,7 +29,7 @@ function policy(fields: {
       ro: fields.ro ?? [],
       deny: [],
     },
-    net: fields.net ?? false,
+    net: fields.net ?? NET_OFF,
     env: { pass: fields.pass ?? [] },
     escalation: { auto: [], refuse: [] },
   };
@@ -177,7 +180,7 @@ function broker(input = harness()) {
           kind: "human",
           id: "operator",
         }),
-        policy: policy({ rw: ["/work"], net: false }),
+        policy: policy({ rw: ["/work"], net: NET_OFF }),
         namespace: ROOT_NS,
         requestRoute: "request:root",
         cwd: "/work",
@@ -375,7 +378,7 @@ Deno.test("falsifier: child network namespace must implement derived net policy"
         kind: "human" as const,
         id: "operator",
       }),
-      policy: policy({ rw: ["/work"], net: true }),
+      policy: policy({ rw: ["/work"], net: NET_HOST }),
       namespace: ROOT_NS,
       requestRoute: "request:root",
       cwd: "/work",
@@ -388,7 +391,7 @@ Deno.test("falsifier: child network namespace must implement derived net policy"
           frame(policy({
             subject: { agent: "claude", label: "network-child" },
             rw: ["/work/child"],
-            net: true,
+            net: NET_HOST,
           })),
         ),
       Error,

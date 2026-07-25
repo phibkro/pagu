@@ -35,7 +35,7 @@ Deno.test("law: published profile grant v0 contract matches box policy decoder",
   assertEquals(properties.version, { const: 0 });
   assertEquals(properties.subject, { "$ref": "#/$defs/subject" });
   assertEquals(properties.fs, { "$ref": "#/$defs/fs" });
-  assertEquals(properties.net, { type: "boolean" });
+  assertEquals(properties.net, { "$ref": "#/$defs/net" });
   assertEquals(properties.env, { "$ref": "#/$defs/env" });
   assertEquals(properties.escalation, { "$ref": "#/$defs/escalation" });
 
@@ -44,7 +44,35 @@ Deno.test("law: published profile grant v0 contract matches box policy decoder",
     type: "array",
     items: { type: "string" },
   };
+  // The lattice is published as a discriminated union, so a consumer cannot
+  // encode a destination-carrying policy the decoder would reject.
+  const netUnion = {
+    oneOf: [
+      {
+        type: "object",
+        required: ["mode"],
+        additionalProperties: false,
+        properties: { mode: { const: "off" } },
+      },
+      {
+        type: "object",
+        required: ["mode", "allow"],
+        additionalProperties: false,
+        properties: {
+          mode: { const: "gated" },
+          allow: { type: "array", items: { type: "string" } },
+        },
+      },
+      {
+        type: "object",
+        required: ["mode"],
+        additionalProperties: false,
+        properties: { mode: { const: "host" } },
+      },
+    ],
+  };
   assertEquals(defs, {
+    net: netUnion,
     subject: {
       type: "object",
       additionalProperties: false,

@@ -1,6 +1,6 @@
 // pure: strict child-policy derivation from an effective parent authority.
 import { type CapabilityPathContext, narrowCapabilityPath } from "./path.ts";
-import { parsePolicy, type PolicyV0 } from "./schema.ts";
+import { meetNet, netWithin, parsePolicy, type PolicyV0 } from "./schema.ts";
 
 export interface ChildPolicyContext extends CapabilityPathContext {}
 
@@ -66,8 +66,10 @@ export function deriveChildPolicy(
     return [narrowed];
   });
 
-  if (!parent.net && child.net) {
-    violations.push("net=true would regain ancestor network");
+  if (!netWithin(child.net, parent.net)) {
+    violations.push(
+      `net=${child.net.mode} would regain ancestor network authority`,
+    );
   }
 
   for (const name of child.env.pass) {
@@ -111,7 +113,7 @@ export function deriveChildPolicy(
       ro,
       deny: union(parent.fs.deny, child.fs.deny),
     },
-    net: parent.net && child.net,
+    net: meetNet(parent.net, child.net),
     env: { pass: child.env.pass },
     escalation: {
       auto,

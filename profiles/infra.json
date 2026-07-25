@@ -22,7 +22,7 @@
       "~/.python_history"
     ]
   },
-  "net": true,
+  "net": { "mode": "host" },
   "env": {
     "pass": [
       "ANTHROPIC_API_KEY",

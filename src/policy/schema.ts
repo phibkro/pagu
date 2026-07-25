@@ -37,14 +37,65 @@ export interface PolicyEscalationV0 {
   readonly refuse: readonly string[];
 }
 
+/**
+ * Network authority as a lattice rather than a boolean (ADR-0014).
+ *
+ * A boolean cannot name a destination, so it cannot express "may reach exactly
+ * these hosts, through a gateway that holds the credentials". `gated` is the
+ * mode that makes a destination-bound credential representable at all.
+ *
+ *   off  ⊏  gated(A)  ⊏  gated(B)  ⊏  host        where A ⊆ B
+ *
+ * `gated` is narrower than `host`: it reaches a subset of destinations and is
+ * observed on the wire. It is *not* self-enforcing — pagu owns the namespace,
+ * an outside gateway owns what may leave it — so a gated policy must prove the
+ * gateway is present before launch. See `requireGateway`.
+ */
+export type PolicyNetV0 =
+  | { readonly mode: "off" }
+  | { readonly mode: "gated"; readonly allow: readonly string[] }
+  | { readonly mode: "host" };
+
+/** The two ungated poles, named so callers do not restate the tag literal. */
+export const NET_OFF: PolicyNetV0 = { mode: "off" };
+export const NET_HOST: PolicyNetV0 = { mode: "host" };
+
 /** Standing policy artifact (ADR-0005 schema v0). */
 export interface PolicyV0 {
   readonly version: 0;
   readonly subject: PolicySubjectV0;
   readonly fs: PolicyFsV0;
-  readonly net: boolean;
+  readonly net: PolicyNetV0;
   readonly env: PolicyEnvV0;
   readonly escalation: PolicyEscalationV0;
+}
+
+/**
+ * Greatest lower bound on the network lattice — the one narrowing primitive
+ * shared by project composition and child derivation, mirroring how
+ * `src/policy/path.ts` is the one containment primitive for both folds. Two
+ * copies of "narrow the network" would be two places to get it wrong.
+ */
+// pure:
+export function meetNet(a: PolicyNetV0, b: PolicyNetV0): PolicyNetV0 {
+  if (a.mode === "off" || b.mode === "off") return { mode: "off" };
+  if (a.mode === "host") return b;
+  if (b.mode === "host") return a;
+  const wider = new Set(b.allow);
+  return { mode: "gated", allow: a.allow.filter((host) => wider.has(host)) };
+}
+
+/** True when `candidate` grants no more network authority than `ceiling`. */
+// pure:
+export function netWithin(
+  candidate: PolicyNetV0,
+  ceiling: PolicyNetV0,
+): boolean {
+  const met = meetNet(candidate, ceiling);
+  return met.mode === candidate.mode &&
+    (met.mode !== "gated" ||
+      met.allow.length === (candidate as { allow: readonly string[] }).allow
+          .length);
 }
 
 /** Attempt-scoped grant artifact. Grants are gate-derived, never handwritten. */
@@ -71,7 +122,7 @@ export const EMPTY_POLICY: PolicyV0 = {
   version: 0,
   subject: { agent: "", label: "" },
   fs: { home: "tmpfs", rw: [], ro: [], deny: BUILTIN_SECRET_DENY },
-  net: false,
+  net: NET_OFF,
   env: { pass: [] },
   escalation: { auto: [], refuse: [] },
 };
@@ -218,6 +269,38 @@ function pathCovered(parent: string, child: string): boolean {
   return c === p || c.startsWith(`${p}/`);
 }
 
+/**
+ * The retired boolean is rejected rather than coerced. `net: true` used to mean
+ * "share the launching namespace", which is `host` when launched bare and
+ * `gated` when launched inside a gateway — the same artifact denoting two
+ * different authorities depending on how it was invoked. Silently mapping it to
+ * either one would preserve exactly the ambiguity this lattice exists to end.
+ */
+function netAt(value: unknown): PolicyNetV0 {
+  if (typeof value === "boolean") {
+    throw new PolicyValidationError(
+      'the boolean form is retired; use {"mode":"off"|"gated"|"host"}',
+      "policy.net",
+    );
+  }
+  const net = objectAt(value, "policy.net");
+  requireKeys(net, ["mode"], "policy.net");
+  const mode = stringAt(net.mode, "policy.net.mode");
+  if (mode === "off" || mode === "host") {
+    rejectUnknown(net, ["mode"], "policy.net");
+    return { mode };
+  }
+  if (mode !== "gated") {
+    throw new PolicyValidationError(
+      `unknown mode ${JSON.stringify(mode)} (expected off, gated, or host)`,
+      "policy.net.mode",
+    );
+  }
+  rejectUnknown(net, ["mode", "allow"], "policy.net");
+  requireKeys(net, ["allow"], "policy.net");
+  return { mode, allow: stringsAt(net.allow, "policy.net.allow") };
+}
+
 function policyFields(value: JsonObject): PolicyV0 {
   requireKeys(
     value,
@@ -227,9 +310,7 @@ function policyFields(value: JsonObject): PolicyV0 {
   if (value.version !== 0) {
     throw new PolicyValidationError("unsupported version (expected 0)");
   }
-  if (typeof value.net !== "boolean") {
-    throw new PolicyValidationError("expected a boolean", "policy.net");
-  }
+  const net = netAt(value.net);
   const fs = fsAt(value.fs);
   const escalation = escalationAt(value.escalation);
   for (const refused of escalation.refuse) {
@@ -244,7 +325,7 @@ function policyFields(value: JsonObject): PolicyV0 {
     version: 0,
     subject: subjectAt(value.subject),
     fs,
-    net: value.net,
+    net,
     env: envAt(value.env),
     escalation,
   };

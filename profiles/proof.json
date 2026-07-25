@@ -22,7 +22,7 @@
       "~/.python_history"
     ]
   },
-  "net": false,
+  "net": { "mode": "off" },
   "env": { "pass": ["NIX_REMOTE"] },
   "escalation": {
     "auto": [{ "fs.ro": "/srv/share/projects/**", "scope": "session" }],

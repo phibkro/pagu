@@ -6,6 +6,7 @@ import {
   type ChildBroker,
   childLaunchEntry,
   createChildBroker,
+  NET_OFF,
   parseBoxLaunchEvidence,
   parseLog,
   type PolicyV0,
@@ -41,7 +42,7 @@ function policy(
     version: 0,
     subject,
     fs: { home: "tmpfs", rw: [...rw], ro: [], deny: [] },
-    net: false,
+    net: NET_OFF,
     env: { pass: [] },
     escalation: { auto: [], refuse: [] },
   };

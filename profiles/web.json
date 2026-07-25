@@ -22,7 +22,7 @@
       "~/.python_history"
     ]
   },
-  "net": true,
+  "net": { "mode": "host" },
   "env": { "pass": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"] },
   "escalation": {
     "auto": [{ "fs.ro": "/srv/share/projects/**", "scope": "session" }],

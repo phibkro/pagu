@@ -19,6 +19,7 @@ import {
 import {
   type BwrapCompileContext,
   compilePolicy,
+  NET_OFF,
   policyIdentity,
 } from "../policy/index.ts";
 import { parseLog } from "../log/index.ts";
@@ -38,7 +39,7 @@ function policy(overrides: {
       ro: overrides.ro ?? [],
       deny: overrides.deny ?? ["~/.ssh", "~/.gnupg"],
     },
-    net: false,
+    net: NET_OFF,
     env: { pass: [] },
     escalation: {
       auto: overrides.auto ?? [],

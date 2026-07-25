@@ -255,7 +255,9 @@ function compile(
     }
   }
   args.push("--unshare-all", "--die-with-parent");
-  if (policy.net) args.push("--share-net");
+  // `gated` inherits the gateway-owned namespace exactly as `host` inherits the
+  // launcher's; the difference is what may leave it, which pagu does not lower.
+  if (policy.net.mode !== "off") args.push("--share-net");
   const writablePaths = dedupe([
     ...(policy.fs.home === "rw" ? [ctx.home] : []),
     ...boundRw,

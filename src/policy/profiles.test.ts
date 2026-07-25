@@ -4,6 +4,8 @@ import {
   CATEGORY_PROFILE_NAMES,
   CATEGORY_SECRET_FLOOR,
   compilePolicy,
+  NET_HOST,
+  NET_OFF,
   parsePolicy,
   PolicyCompileError,
   type PolicyV0,
@@ -97,7 +99,7 @@ Deno.test("category profiles: role axes stay distinct", async () => {
   assertEquals(values.advisor.fs.home, "tmpfs");
   assertEquals(values.advisor.fs.rw, []);
   assertEquals(values.advisor.fs.ro, ["$PWD"]);
-  assertEquals(values.advisor.net, true);
+  assertEquals(values.advisor.net, NET_HOST);
 
   for (const name of ["worker", "proof", "web", "orchestrator"]) {
     assert(values[name].fs.rw.includes("$PWD"), `${name} needs repo RW`);
@@ -105,11 +107,11 @@ Deno.test("category profiles: role axes stay distinct", async () => {
   }
   assert(values.worker.fs.rw.includes("/nix/var/nix/daemon-socket"));
   assert(values.proof.fs.rw.includes("/nix/var/nix/daemon-socket"));
-  assertEquals(values.proof.net, false);
-  assertEquals(values.worker.net, true);
-  assertEquals(values.web.net, true);
-  assertEquals(values.infra.net, true);
-  assertEquals(values.orchestrator.net, true);
+  assertEquals(values.proof.net, NET_OFF);
+  assertEquals(values.worker.net, NET_HOST);
+  assertEquals(values.web.net, NET_HOST);
+  assertEquals(values.infra.net, NET_HOST);
+  assertEquals(values.orchestrator.net, NET_HOST);
 
   const daemonProfiles = Object.entries(values)
     .filter(([, policy]) => policy.fs.rw.includes("/nix/var/nix/daemon-socket"))

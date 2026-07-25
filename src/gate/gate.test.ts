@@ -4,6 +4,7 @@ import {
   type BwrapCompileContext,
   compilePolicy,
   explain,
+  NET_OFF,
   type PolicyV0,
 } from "../policy/index.ts";
 import {
@@ -52,7 +53,7 @@ function policy(ro: readonly string[] = []): PolicyV0 {
       ro,
       deny: ["~/.ssh", "~/.gnupg"],
     },
-    net: false,
+    net: NET_OFF,
     env: { pass: [] },
     escalation: { auto: [], refuse: [] },
   };

@@ -1,5 +1,11 @@
 // pure: trusted-user policy folded with an untrusted narrow-only project layer.
-import { EMPTY_POLICY, parsePolicy, type PolicyV0 } from "./schema.ts";
+import {
+  EMPTY_POLICY,
+  meetNet,
+  netWithin,
+  parsePolicy,
+  type PolicyV0,
+} from "./schema.ts";
 import {
   type CapabilityPathContext,
   capabilityPathCovered,
@@ -75,7 +81,9 @@ function narrowProject(
     return [narrowed];
   });
 
-  if (!user.net && project.net) warn("ignored net=true widening");
+  if (!netWithin(project.net, user.net)) {
+    warn(`ignored net=${project.net.mode} widening`);
+  }
 
   const pass = project.env.pass.filter((name) => {
     const allowed = user.env.pass.includes(name);
@@ -114,7 +122,7 @@ function narrowProject(
         ro,
         deny: union(user.fs.deny, project.fs.deny),
       },
-      net: user.net && project.net,
+      net: meetNet(user.net, project.net),
       env: { pass },
       escalation: {
         auto,

@@ -120,11 +120,7 @@ For box/gate capability work, also run a real packaged journey:
 
 ## Commits
 
-Use Conventional Commits with a why-focused body and this exact trailer:
-
-```text
-Co-Authored-By: GPT 5.6 Sol via Codex
-```
+Use Conventional Commits with a why-focused body.
 
 Repository identity:
 

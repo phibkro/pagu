@@ -23,7 +23,7 @@
       "~/.config/herdr"
     ]
   },
-  "net": true,
+  "net": { "mode": "host" },
   "env": {
     "pass": [
       "ANTHROPIC_API_KEY",

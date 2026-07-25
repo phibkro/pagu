@@ -1,4 +1,5 @@
 export * from "./schema.ts";
+export * from "./gateway.ts";
 export * from "./child.ts";
 export * from "./lineage.ts";
 export * from "./load.ts";

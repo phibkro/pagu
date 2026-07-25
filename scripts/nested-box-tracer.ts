@@ -3,6 +3,9 @@
 import {
   ChildPolicyAttenuationError,
   deriveChildPolicy,
+  NET_HOST,
+  NET_OFF,
+  type PolicyNetV0,
   type PolicyV0,
 } from "../src/policy/index.ts";
 
@@ -24,7 +27,7 @@ function policy(fields: {
   readonly subject: { readonly agent: string; readonly label: string };
   readonly rw?: readonly string[];
   readonly ro?: readonly string[];
-  readonly net?: boolean;
+  readonly net?: PolicyNetV0;
   readonly pass?: readonly string[];
 }): PolicyV0 {
   return {
@@ -36,7 +39,7 @@ function policy(fields: {
       ro: fields.ro ?? [],
       deny: [],
     },
-    net: fields.net ?? false,
+    net: fields.net ?? NET_OFF,
     env: { pass: fields.pass ?? [] },
     escalation: { auto: [], refuse: [] },
   };
@@ -127,7 +130,7 @@ try {
     subject: { agent: "hostile", label: "bypass-attempt" },
     rw: [childWork],
     ro: [hidden, state, control],
-    net: true,
+    net: NET_HOST,
     pass: ["PAGU_NESTED_SECRET"],
   });
   let rejected: ChildPolicyAttenuationError | undefined;

@@ -11,11 +11,16 @@ import {
   decodeDenialEvidence,
   EMPTY_POLICY,
   explain,
+  GatewayUnavailableError,
   LEGACY_POLICY_PRESETS,
   loadPolicy,
+  NET_HOST,
+  NET_OFF,
   parseGrant,
   parsePolicy,
+  type PolicyNetV0,
   PolicyValidationError,
+  requireGateway,
   UnsupportedPlatformError,
 } from "./index.ts";
 
@@ -81,7 +86,7 @@ function completePolicy(
       ro?: string[];
       deny?: string[];
     };
-    net?: boolean;
+    net?: PolicyNetV0;
     env?: { pass: string[] };
     escalation?: {
       auto: { "fs.ro": string; scope: "session" }[];
@@ -99,7 +104,7 @@ function completePolicy(
       deny: [],
       ...fields.fs,
     },
-    net: fields.net ?? false,
+    net: fields.net ?? NET_OFF,
     env: fields.env ?? { pass: [] },
     escalation: fields.escalation ?? { auto: [], refuse: [] },
   };
@@ -359,7 +364,7 @@ Deno.test("falsifier 3: project policy cannot widen user authority", () => {
         ro: ["/srv/share"],
         deny: ["~/.ssh"],
       },
-      net: false,
+      net: NET_OFF,
       env: { pass: ["ANTHROPIC_API_KEY"] },
       escalation: {
         auto: [{ "fs.ro": "/srv/share/**", scope: "session" }],
@@ -375,7 +380,7 @@ Deno.test("falsifier 3: project policy cannot widen user authority", () => {
         ro: ["/srv/share/subdir", "/root"],
         deny: ["~/.gnupg"],
       },
-      net: true,
+      net: NET_HOST,
       env: { pass: ["OPENAI_API_KEY"] },
       escalation: {
         auto: [{ "fs.ro": "/root/**", scope: "session" }],
@@ -389,7 +394,7 @@ Deno.test("falsifier 3: project policy cannot widen user authority", () => {
   assertEquals(policy.fs.rw, []);
   assertEquals(policy.fs.ro, ["/srv/share/subdir"]);
   assertEquals(policy.fs.deny, ["~/.ssh", "~/.gnupg"]);
-  assertEquals(policy.net, false);
+  assertEquals(policy.net, NET_OFF);
   assertEquals(policy.env.pass, []);
   assertEquals(policy.escalation.auto, []);
   assertEquals(policy.escalation.refuse, ["~/.ssh/**", "~/.gnupg/**"]);
@@ -936,4 +941,84 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+// --- Slice 20: gated egress (ADR-0014) ---------------------------------------
+
+const gatedAllowing = (...allow: string[]) =>
+  completePolicy({ net: { mode: "gated", allow } });
+
+Deno.test("net is a lattice, not a boolean: off < gated < host", () => {
+  assertEquals(parsePolicy(completePolicy({ net: NET_OFF })).net, NET_OFF);
+  assertEquals(parsePolicy(completePolicy({ net: NET_HOST })).net, NET_HOST);
+  assertEquals(parsePolicy(gatedAllowing("api.github.com")).net, {
+    mode: "gated",
+    allow: ["api.github.com"],
+  });
+});
+
+Deno.test("net rejects the retired boolean and malformed modes", () => {
+  // The boolean is rejected, not coerced: `net: true` meant "share the
+  // launching namespace", which is `host` bare and `gated` inside a gateway —
+  // one artifact denoting two authorities. That ambiguity is what the lattice
+  // exists to end, so silently mapping it would preserve the bug.
+  for (
+    const bad of [true, false, { mode: "open" }, { mode: "gated" }, {}]
+  ) {
+    assertThrows(
+      () => parsePolicy(completePolicy({ net: bad as never })),
+      PolicyValidationError,
+    );
+  }
+});
+
+Deno.test("falsifier: a project layer cannot widen egress", () => {
+  const user = gatedAllowing("api.github.com", "api.deno.com");
+
+  const toHost = loadPolicy({
+    user,
+    project: completePolicy({ net: NET_HOST }),
+  });
+  assertEquals(toHost.policy.net.mode, "gated");
+  assert(toHost.warnings.some((w) => w.includes("net")));
+
+  // An unauthorized destination is dropped, never merged in.
+  const wider = loadPolicy({ user, project: gatedAllowing("evil.example") });
+  assertEquals(wider.policy.net, { mode: "gated", allow: [] });
+
+  const narrower = loadPolicy({ user, project: gatedAllowing("api.deno.com") });
+  assertEquals(narrower.policy.net, { mode: "gated", allow: ["api.deno.com"] });
+
+  // Attenuation to bottom always remains available.
+  const off = loadPolicy({ user, project: completePolicy({ net: NET_OFF }) });
+  assertEquals(off.policy.net, NET_OFF);
+});
+
+Deno.test("falsifier: gated egress requires an observed gateway", () => {
+  const gated = parsePolicy(gatedAllowing("api.github.com")).net;
+  // Evidence, not narration: sharing the gateway's exact network namespace is
+  // the proof. A missing or foreign gateway must fail loud rather than let
+  // --share-net inherit whatever namespace the launcher happened to be in.
+  assertThrows(
+    () => requireGateway(gated, { gatewayNetns: null, netns: "net:[1]" }),
+    GatewayUnavailableError,
+  );
+  assertThrows(
+    () => requireGateway(gated, { gatewayNetns: "net:[9]", netns: "net:[1]" }),
+    GatewayUnavailableError,
+  );
+  requireGateway(gated, { gatewayNetns: "net:[7]", netns: "net:[7]" });
+  // Ungated modes state their authority completely and need no proof.
+  requireGateway(NET_OFF, { gatewayNetns: null, netns: "net:[1]" });
+  requireGateway(NET_HOST, { gatewayNetns: null, netns: "net:[1]" });
+});
+
+Deno.test("gated egress lowers to an inherited network namespace", () => {
+  // The gateway owns the namespace pagu launches into, so the box inherits it
+  // rather than unsharing. What may leave that namespace is the gateway's
+  // concern; pagu lowers only the sharing decision.
+  const gated = parsePolicy(gatedAllowing("api.github.com"));
+  assert(compileToBwrapArgs(gated, CTX).includes("--share-net"));
+  const off = parsePolicy(completePolicy({ net: NET_OFF }));
+  assert(!compileToBwrapArgs(off, CTX).includes("--share-net"));
 });

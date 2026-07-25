@@ -3,6 +3,9 @@ import {
   ChildPolicyAttenuationError,
   deriveChildLineage,
   deriveChildPolicy,
+  NET_HOST,
+  NET_OFF,
+  type PolicyNetV0,
   rootLineage,
 } from "./index.ts";
 
@@ -12,7 +15,7 @@ function policy(fields: {
   rw?: string[];
   ro?: string[];
   deny?: string[];
-  net?: boolean;
+  net?: PolicyNetV0;
   pass?: string[];
   auto?: { "fs.ro": string; scope: "session" }[];
   refuse?: string[];
@@ -26,7 +29,7 @@ function policy(fields: {
       ro: fields.ro ?? [],
       deny: fields.deny ?? [],
     },
-    net: fields.net ?? false,
+    net: fields.net ?? NET_OFF,
     env: { pass: fields.pass ?? [] },
     escalation: {
       auto: fields.auto ?? [],
@@ -45,7 +48,7 @@ Deno.test("law: child derivation preserves identity while attenuating every auth
       rw: ["/work"],
       ro: ["/share"],
       deny: ["/work/private"],
-      net: true,
+      net: NET_HOST,
       pass: ["TOKEN", "SAFE"],
       auto: [{ "fs.ro": "/share/**", scope: "session" }],
       refuse: ["/work/private/**"],
@@ -56,7 +59,7 @@ Deno.test("law: child derivation preserves identity while attenuating every auth
       rw: ["/work/child"],
       ro: ["/work/reference", "/share/docs"],
       deny: ["/work/child/secret"],
-      net: false,
+      net: NET_OFF,
       pass: ["SAFE"],
       auto: [{ "fs.ro": "/share/docs/**", scope: "session" }],
       refuse: ["/work/child/secret/**"],
@@ -74,7 +77,7 @@ Deno.test("law: child derivation preserves identity while attenuating every auth
     "/work/private",
     "/work/child/secret",
   ]);
-  assertEquals(child.net, false);
+  assertEquals(child.net, NET_OFF);
   assertEquals(child.env.pass, ["SAFE"]);
   assertEquals(child.escalation.auto, [{
     "fs.ro": "/share/docs/**",
@@ -94,7 +97,7 @@ Deno.test("falsifier: child policy cannot regain ancestor filesystem network env
           home: "tmpfs",
           rw: ["/work"],
           ro: ["/share"],
-          net: false,
+          net: NET_OFF,
           pass: ["SAFE"],
           auto: [{ "fs.ro": "/share/**", scope: "session" }],
         }),
@@ -103,7 +106,7 @@ Deno.test("falsifier: child policy cannot regain ancestor filesystem network env
           home: "rw",
           rw: ["/etc"],
           ro: ["/root"],
-          net: true,
+          net: NET_HOST,
           pass: ["SECRET"],
           auto: [{ "fs.ro": "/root/**", scope: "session" }],
         }),
@@ -117,7 +120,7 @@ Deno.test("falsifier: child policy cannot regain ancestor filesystem network env
       "fs.home=rw",
       'fs.rw widening "/etc"',
       'fs.ro widening "/root"',
-      "net=true",
+      "net=host",
       'env.pass widening "SECRET"',
       "escalation.auto widening",
     ]
@@ -129,14 +132,14 @@ Deno.test("falsifier: child policy cannot regain ancestor filesystem network env
 Deno.test("law: narrowest ancestor remains final across child derivation", () => {
   const root = policy({
     rw: ["/authority"],
-    net: true,
+    net: NET_HOST,
     pass: ["A", "B"],
   });
   const child = deriveChildPolicy(
     root,
     policy({
       rw: ["/authority/team"],
-      net: false,
+      net: NET_OFF,
       pass: ["A"],
     }),
     IDENTITY_CONTEXT,
@@ -148,7 +151,7 @@ Deno.test("law: narrowest ancestor remains final across child derivation", () =>
         child,
         policy({
           rw: ["/authority/other"],
-          net: true,
+          net: NET_HOST,
           pass: ["B"],
         }),
         IDENTITY_CONTEXT,
@@ -156,7 +159,7 @@ Deno.test("law: narrowest ancestor remains final across child derivation", () =>
     ChildPolicyAttenuationError,
   );
   assertStringIncludes(error.message, 'fs.rw widening "/authority/other"');
-  assertStringIncludes(error.message, "net=true");
+  assertStringIncludes(error.message, "net=host");
   assertStringIncludes(error.message, 'env.pass widening "B"');
 });
 

@@ -211,10 +211,12 @@ function assertRelation(
       throw new Error(`${kind} namespace is unrelated`);
     }
   }
-  if (policy.net && relation.network !== "same") {
+  // Both non-`off` modes inherit the parent's network namespace; they differ in
+  // what may leave it, which is the gateway's concern and not observable here.
+  if (policy.net.mode !== "off" && relation.network !== "same") {
     throw new Error("network namespace did not share parent");
   }
-  if (!policy.net && relation.network !== "different") {
+  if (policy.net.mode === "off" && relation.network !== "different") {
     throw new Error("network namespace did not isolate");
   }
 }

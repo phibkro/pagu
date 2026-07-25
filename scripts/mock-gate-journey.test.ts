@@ -1,6 +1,6 @@
 import { assertThrows } from "@std/assert";
 import type { Entry } from "../src/log/index.ts";
-import { parsePolicy } from "../src/policy/index.ts";
+import { NET_OFF, parsePolicy } from "../src/policy/index.ts";
 import { assertMockGateJourney } from "./mock-gate-journey.ts";
 
 const target = "/tmp/model-free-fixture";
@@ -13,7 +13,7 @@ function policy(ro: readonly string[]) {
     version: 0,
     subject: { agent: "test", label: "model-free journey" },
     fs: { home: "tmpfs", rw: ["/workspace"], ro, deny: [] },
-    net: false,
+    net: NET_OFF,
     env: { pass: [] },
     escalation: { auto: [], refuse: [] },
   });
