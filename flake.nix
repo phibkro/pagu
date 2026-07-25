@@ -17,6 +17,36 @@
       forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f system nixpkgs.legacyPackages.${system});
       devSystem = "x86_64-linux";
       devPkgs = nixpkgs.legacyPackages.${devSystem};
+      /*
+        Claw Patrol is the outside egress plane pagu composes with (ADR-0014).
+        It is not in nixpkgs yet, so this pins the upstream release binary.
+
+        The hash is the one *upstream publishes* in SHA256SUMS beside the
+        asset, not one computed locally from whatever the network returned —
+        the point of pinning a credential-handling gateway is to bind to the
+        publisher's claim, and re-hashing our own download would only certify
+        that we downloaded it consistently.
+
+        Dev-shell only: pagu neither builds nor ships this. `gateway:
+        "required"` refuses a launch when no gateway is observed, so a missing
+        binary is a loud launch failure, never a silent fallback to open
+        network.
+      */
+      clawpatrol = devPkgs.stdenvNoCC.mkDerivation rec {
+        pname = "clawpatrol";
+        version = "0.5.8";
+        src = devPkgs.fetchurl {
+          url = "https://github.com/denoland/clawpatrol/releases/download/v${version}/clawpatrol-linux-amd64";
+          hash = "sha256-DTFx7UQTw+24xbPHd50m+nogdPnNNrywpiWn/6JE/tc=";
+        };
+        dontUnpack = true;
+        nativeBuildInputs = [ devPkgs.autoPatchelfHook ];
+        installPhase = ''
+          install -Dm755 $src $out/bin/clawpatrol
+        '';
+        meta.mainProgram = "clawpatrol";
+      };
+
     in
     {
       packages = forEachSystem (
@@ -146,17 +176,19 @@
         # test` in an outer bwrap would nest user namespaces and break the
         # runner's OWN bwrap. pagu's isolation is its runtime design, not a
         # dev-command wrapper.
-        packages = with devPkgs; [
-          deno
-          git-cliff
-          bubblewrap
-          git
+        packages = [
+          devPkgs.deno
+          devPkgs.git-cliff
+          devPkgs.bubblewrap
+          devPkgs.git
+          clawpatrol
         ];
 
         shellHook = ''
           echo "[pagu] deno $(deno --version | head -1 | cut -d' ' -f2) · git-cliff $(git-cliff --version | cut -d' ' -f2) · bwrap $(bwrap --version | cut -d' ' -f2)"
           echo "  deno task ci   — full gate (fmt · lint · check · layers · docs · test)"
           echo "  deno task test — suite (spawns bwrap for the real cage/runner)"
+          echo "  clawpatrol run -- pagu HARNESS — gated-egress journey (ADR-0014)"
         '';
       };
     };
