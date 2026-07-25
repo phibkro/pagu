@@ -56,3 +56,6 @@ silently drift either.
   launching literally inside the parent.
 - [ADR-0012](0012-pi-native-adapter.md) — assign Pi session IDs and expose the
   existing request core through a session-local native extension.
+- [ADR-0013](0013-named-harness-launch-grammar.md) — name the harness as a bare
+  positional, make bare `pagu` print usage, and vendor the packaged CLI's
+  dependencies into the store.

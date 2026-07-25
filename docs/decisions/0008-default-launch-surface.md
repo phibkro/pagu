@@ -1,6 +1,7 @@
 # ADR-0008: `pagu` is the default gated launch surface
 
-- Status: Accepted
+- Status: Accepted; decisions 1 and 3 superseded by
+  [ADR-0013](0013-named-harness-launch-grammar.md)
 - Date: 2026-07-24
 
 ## Context

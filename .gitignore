@@ -18,3 +18,8 @@ result-*
 
 # macOS Finder metadata (created in any directory).
 .DS_Store
+
+# Deno materializes npm test deps (fast-check) here on demand. Build
+# artifact, never source. `vendor/` is deliberately NOT ignored: the flake
+# ships it into the store so the packaged CLI resolves deps offline.
+node_modules/

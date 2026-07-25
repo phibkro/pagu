@@ -268,13 +268,34 @@ legacy seatbelt profiles remain separate compatibility behavior.
 
 ## Product launch surface
 
-Bare `pagu` is a user-journey adapter over the existing gate-owned fresh launch,
-not a third security component. The typed resolver in
-[`src/launch/launch.ts`](src/launch/launch.ts) selects the built-in worker/Codex
-default, a trusted user override from strict launch-config v0, or an explicit
-CLI choice. It may infer Codex, Claude, or Pi from one wrapped executable. The
-result still enters the same gate, verified harness resume port, policy
-compiler, and box.
+`pagu HARNESS` is a user-journey adapter over the existing gate-owned fresh
+launch, not a third security component. The typed resolver in
+[`src/launch/launch.ts`](src/launch/launch.ts) selects the built-in worker
+category, a trusted user override from strict launch-config v0, or an explicit
+CLI choice. It may infer Codex, Claude, or Pi from one named executable's
+basename. The result still enters the same gate, verified harness resume port,
+policy compiler, and box.
+
+A launch states its intent: the harness is a bare positional (`pagu claude`),
+and `--` is needed only when the executable would otherwise parse as an option.
+Bare `pagu` — the empty command line — prints usage and launches nothing,
+because the thing inferred from silence would be which policy gets enforced.
+Configured `launch.json` defaults still complete any launch the caller has
+otherwise stated, so `pagu --profile proof` remains valid. This grammar is fixed
+by [ADR-0013](docs/decisions/0013-named-harness-launch-grammar.md), which
+supersedes the bare-launch and `--`-separated forms in ADR-0008.
+
+A gated launch wraps exactly one executable and takes no trailing arguments,
+because the adapter must reproduce that argv when an approved grant stops the
+box and resumes the session. Arbitrary commands — including a harness run
+headlessly, which never resumes — belong to `pagu box`, and the refusal names it
+with the caller's own argv shell-quoted.
+
+Argv tokenisation is delegated to `@std/cli`; every decision downstream of it
+stays hand-owned, because those decisions select which policy is enforced. The
+packaged CLI runs `--cached-only` against a store-resident `vendor/`, so a
+missing module fails loudly at launch rather than fetching over the network
+inside a process holding `--allow-net --allow-write --allow-run`.
 
 The trusted launch file lives outside repository control at the XDG pagu config
 path and names only a checked-in category plus a verified harness adapter. It

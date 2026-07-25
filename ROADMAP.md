@@ -40,14 +40,20 @@ remaining work.
 | 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                          | ✓ verified     |
 | 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                                | ✓ shipped      |
 | 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                 | ✓ shipped      |
-| 14 — product front door | Bare `pagu`, worker/Codex defaults, strict user launch config, wrapped-executable inference, default Nix package. | ✓ shipped      |
+| 14 — product front door | Single-command front door, worker defaults, strict user launch config, executable inference, default Nix package. | ✓ shipped¹     |
 | 15 — agent interface    | Inhabitant discovers one typed request tool through MCP plus an in-repo skill; no prompt injection required.      | ✓ shipped      |
 | 16 — nested authority   | Host/inhabitant roles and strict child attenuation make the narrowest ancestor boundary final.                    | core + proof ✓ |
 | 16b — child lifecycle   | Narrow trusted launch/request routing, replacement, and lineage-linked evidence without a control socket.         | phase A ✓      |
 | 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                           | ✓ shipped      |
 | 18 — Pi adapter         | Infer Pi, preserve exact sessions, and expose the request core through a native extension verified on local Ollama. | ✓ shipped      |
+| 19 — launch grammar     | Name the harness as a bare positional, make bare `pagu` print usage, and vendor the packaged CLI's dependencies.   | ✓ shipped      |
 | runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                 | slice 1 parked |
 | homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                  | operator-gated |
+
+¹ Slice 14's bare-`pagu` launch and `--`-separated executable form were replaced
+by Slice 19; see
+[ADR-0013](docs/decisions/0013-named-harness-launch-grammar.md). Its
+launch-config, inference, and packaging decisions remain in force.
 
 ## Product journey sequence
 
@@ -168,6 +174,25 @@ CI dependency.
 - **Boundary:** Pi's extension is transport glue over the Slice 15 core. It has
   no resolution, persistence, state, or child-host method. Provider-free mock
   remains routine CI; remote free tiers remain optional.
+
+### Slice 19 — state which harness you are launching
+
+- **Journey:** a human host runs `pagu claude` in a repository and gets a fresh
+  gated session; a host who runs bare `pagu` gets usage rather than a silently
+  chosen adapter; a host who reaches for `pagu` to run an ordinary command is
+  told to use `pagu box`, with their own argv quoted back as a runnable line.
+- **Falsifier:** an empty command line launches an enforcing box; a named
+  harness lowers to different authority than the equivalent explicit gate
+  launch; configured `launch.json` defaults stop completing an otherwise-stated
+  launch; or the packaged CLI fetches a dependency over the network at startup.
+- **Delivered:** bare-positional harness naming with `--` reserved for
+  option-shaped executables; `@std/cli` tokenisation with all policy-selecting
+  decisions still hand-owned; `--harness` validated on both parse paths;
+  order-independent `--deny`; and a committed, store-shipped `vendor/` behind
+  `--cached-only`.
+- **Boundary:** grammar only. No policy field, process authority, adjudication
+  path, or request-lifecycle change. ADR-0013 supersedes ADR-0008 decisions 1
+  and 3 and leaves the rest in force.
 
 The runtime stays Deno. Effect v4 earns introduction only where typed context,
 resource lifetime, interruption, or concurrent failure semantics materially

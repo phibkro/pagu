@@ -62,17 +62,23 @@ The default flake package is `pagu`. Direct enforcement lives at `pagu box`;
 
 ## Start a protected agent
 
-The default journey is intentionally one command:
+Name the harness. No `--` separator is needed:
 
 ```sh
-pagu
+pagu claude
+pagu codex
+pagu pi
 ```
 
-It starts a fresh Codex session under the `worker` category, with the gate
-outside the sandbox and the harness inside it. No profile argument or config
-file is required. On first launch, pagu creates private session state below
-`$XDG_RUNTIME_DIR/pagu`; when that environment variable is unavailable, pass
-`--state-dir` explicitly.
+That starts a fresh session under the `worker` category, with the gate outside
+the sandbox and the harness inside it. On first launch, pagu creates private
+session state below `$XDG_RUNTIME_DIR/pagu`; when that environment variable is
+unavailable, pass `--state-dir` explicitly.
+
+Bare `pagu` prints usage and exits. Which policy gets enforced is not something
+to infer from an empty command line, so launching always states its intent —
+through a named harness, through flags, or through the configured defaults
+below.
 
 Select another category for one journey:
 
@@ -80,24 +86,42 @@ Select another category for one journey:
 pagu --profile proof
 ```
 
-Or wrap a verified harness executable. Pagu infers Codex, Claude, or Pi from its
-basename:
+A path works the same way — pagu infers Codex, Claude, or Pi from the basename:
 
 ```sh
-pagu -- claude
-pagu -- /opt/codex/bin/codex
-pagu -- pi
+pagu /opt/codex/bin/codex
 ```
 
-An opaque wrapper needs an explicit adapter:
+Use `--` only when the executable would otherwise parse as an option. An opaque
+wrapper needs an explicit adapter:
 
 ```sh
 pagu --harness claude -- /opt/company/agent-wrapper
 ```
 
-The fresh/resume adapter owns harness arguments so the same session can be
-reproduced after a grant. This first tracer therefore accepts exactly one
-wrapped executable, not arbitrary trailing arguments.
+### Arbitrary commands go in the box
+
+A gated launch wraps exactly one executable and accepts no trailing arguments.
+That is not parser strictness: widening a policy stops the box and relaunches
+the same session, so the adapter must be able to reproduce the harness argv, and
+caller-supplied arguments cannot be merged into a resume invocation.
+
+To sandbox any other command — including a harness run headlessly, which never
+resumes — use the box directly, which does take arbitrary arguments:
+
+```sh
+pagu box --policy ./policy.json -- claude -p "$prompt"
+pagu box --profile worker -- rsync -a ./src ./dst
+```
+
+`pagu` tells you this when you hit it:
+
+```console
+$ pagu claude -p "fix it"
+pagu: a gated launch wraps exactly one executable, because the harness adapter
+owns the argv it replays on resume.
+  to sandbox an arbitrary command instead: pagu box -- claude -p 'fix it'
+```
 
 Persistent user defaults live at `$XDG_CONFIG_HOME/pagu/launch.json`, or
 `~/.config/pagu/launch.json` when `XDG_CONFIG_HOME` is unset:

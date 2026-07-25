@@ -11,6 +11,22 @@ only forward work.
 
 ## Product launch surface
 
+- Changed the launch grammar so a launch names its harness: `pagu claude`,
+  `pagu codex`, `pagu pi`, or a path whose basename infers one. `--` is now
+  reserved for executables that would otherwise parse as an option, and bare
+  `pagu` prints usage instead of launching a guessed adapter. Configured
+  `launch.json` defaults still complete any otherwise-stated launch. Supersedes
+  the bare-launch and `--`-separated forms below (ADR-0013).
+- Pointed the failure modes at the tool that fits: wrapping a command with
+  arguments, or an executable no adapter recognizes, now names `pagu box` and
+  quotes the caller's own argv as a runnable line.
+- Moved argv tokenisation to `@std/cli` while keeping every policy-selecting
+  decision hand-owned. `--harness` is validated on both parse paths, and
+  `--deny` beats an approval scope regardless of argument order.
+- Made the packaged CLI hermetic: `vendor/` is committed and shipped into the
+  Nix store, and `--cached-only` fails a missing module loudly at launch rather
+  than fetching it over the network inside a process holding `--allow-net
+  --allow-write --allow-run`.
 - Made bare `pagu` start a fresh gate-owned worker Codex session and made `pagu`
   the root flake's default package. The direct `pagu gate` and compatibility
   `pagu-box` surfaces remain available.

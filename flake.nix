@@ -26,10 +26,35 @@
             path = ./profiles;
             name = "pagu-category-profiles-v0";
           };
+          /*
+            The store copy carries `deno.json`, `deno.lock`, and `vendor/`
+            alongside `src/`, so the packaged CLI resolves every dependency
+            from the store instead of fetching it at first run. Before this,
+            the gate CLI happened to import nothing external, so hermeticity
+            was true by accident; one stdlib import would have turned startup
+            into a network call with no integrity check, inside a process
+            already holding --allow-net --allow-write --allow-run.
+
+            Paired with `--cached-only` in the wrapper below, a missing
+            vendored module fails loudly at launch rather than silently
+            reaching the network.
+          */
           paguSource = builtins.path {
-            path = ./src;
+            path = ./.;
             name = "pagu-source";
-            filter = path: _type: !(nixpkgs.lib.hasSuffix ".test.ts" path);
+            filter =
+              path: _type:
+              let
+                rel = nixpkgs.lib.removePrefix (toString ./. + "/") (toString path);
+                keep =
+                  rel == "deno.json"
+                  || rel == "deno.lock"
+                  || rel == "src"
+                  || nixpkgs.lib.hasPrefix "src/" rel
+                  || rel == "vendor"
+                  || nixpkgs.lib.hasPrefix "vendor/" rel;
+              in
+              keep && !(nixpkgs.lib.hasSuffix ".test.ts" path);
           };
           paguSkill = builtins.path {
             path = ./skills/pagu;
@@ -68,8 +93,9 @@
                 PAGU_SKILL_PATH=${paguSkill}/SKILL.md \
                 PAGU_PROFILE_DIR=${categoryProfiles} \
                 exec ${pkgs.deno}/bin/deno run --quiet --no-prompt \
+                --cached-only --config ${paguSource}/deno.json \
                 --allow-read --allow-write --allow-env --allow-net --allow-run \
-                ${paguSource}/gate/cli.ts "$@"
+                ${paguSource}/src/gate/cli.ts "$@"
             '';
           };
           paguMcp = pkgs.writeShellApplication {
@@ -77,10 +103,11 @@
             runtimeInputs = [ pkgs.deno ];
             text = ''
               exec deno run --quiet --no-prompt \
+                --cached-only --config ${paguSource}/deno.json \
                 --allow-env=PAGU_REQUEST_SOCKET \
                 --allow-read=/run/pagu/request.sock \
                 --allow-write=/run/pagu/request.sock \
-                ${paguSource}/mcp/cli.ts "$@"
+                ${paguSource}/src/mcp/cli.ts "$@"
             '';
           };
           paguBox =

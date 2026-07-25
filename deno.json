@@ -17,11 +17,21 @@
     "check:layers": "deno run --allow-read=src scripts/check-layers.ts",
     "ci": "deno fmt src scripts integrations profiles deno.json README.md && deno lint src scripts integrations && deno check src integrations && deno run --allow-read=src scripts/check-layers.ts && deno task check:docs && deno task test"
   },
-  "fmt": { "lineWidth": 80 },
-  "lint": { "rules": { "tags": ["recommended"] } },
+  "fmt": {
+    "lineWidth": 80
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    }
+  },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1",
     "@std/path": "jsr:@std/path@^1",
-    "fast-check": "npm:fast-check@^3"
-  }
+    "fast-check": "npm:fast-check@^3",
+    "@std/cli": "jsr:@std/cli@^1.0.32"
+  },
+  "vendor": true
 }

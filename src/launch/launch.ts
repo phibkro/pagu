@@ -149,8 +149,12 @@ export function resolveLaunch(
     );
   }
   if (request.executable && !request.harness && !inferred) {
+    // The likeliest cause is reaching for the gated journey to sandbox an
+    // ordinary command, so name the tool that actually does that.
     throw new Error(
-      "cannot infer harness from wrapped executable; pass --harness codex|claude|pi",
+      `cannot infer a harness from ${JSON.stringify(request.executable)}.\n` +
+        "  it is a coding harness: pass --harness codex|claude|pi\n" +
+        `  it is an ordinary command: pagu box -- ${request.executable}`,
     );
   }
   const harness = request.harness ?? inferred ?? config.defaults.harness;

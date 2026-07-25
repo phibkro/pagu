@@ -39,8 +39,8 @@ function rootOptions(
   return options;
 }
 
-Deno.test("pagu alone lowers to a fresh worker Codex journey", () => {
-  const options = rootOptions([]);
+Deno.test("a named harness lowers to a fresh worker journey", () => {
+  const options = rootOptions(["codex"]);
   assertEquals(options, {
     command: "gate",
     policy: "/profiles/worker.json",
@@ -65,7 +65,7 @@ Deno.test("pagu mcp selects the request-only programmatic interface", () => {
 });
 
 Deno.test("pagu default UUID generation works without an injected test clock", () => {
-  const options = parseArgs([], {
+  const options = parseArgs(["codex"], {
     launchConfig: DEFAULT_LAUNCH_CONFIG,
     runtimeDir: "/run/user/1000",
     profileDir: "/profiles",
@@ -77,8 +77,35 @@ Deno.test("pagu default UUID generation works without an injected test clock", (
   );
 });
 
-Deno.test("launch config changes the default harness and profile", () => {
-  const options = rootOptions([], {
+Deno.test("a bare executable needs no `--` separator", () => {
+  const named = rootOptions(["claude"]);
+  assertEquals(named.harness, "claude");
+  assertEquals(named.harnessExecutable, "claude");
+  assertEquals(named.policy, "/profiles/worker.json");
+
+  const path = rootOptions(["/opt/claude/bin/claude"]);
+  assertEquals(path.harness, "claude");
+  assertEquals(path.harnessExecutable, "/opt/claude/bin/claude");
+
+  // Flags stay order-independent around the bare executable.
+  const before = rootOptions(["--profile", "proof", "pi"]);
+  assertEquals(before.harness, "pi");
+  assertEquals(before.profile, "proof");
+
+  const after = rootOptions(["pi", "--profile", "proof"]);
+  assertEquals(after.harness, "pi");
+  assertEquals(after.profile, "proof");
+
+  // An opaque wrapper still resolves through an explicit --harness.
+  const opaque = rootOptions(["--harness", "codex", "/opt/company/wrapper"]);
+  assertEquals(opaque.harness, "codex");
+  assertEquals(opaque.harnessExecutable, "/opt/company/wrapper");
+});
+
+Deno.test("launch config fills in whatever the caller left unspecified", () => {
+  // Bare `pagu` prints help, so configured defaults are exercised by an
+  // invocation that names something else and leaves harness/profile open.
+  const options = rootOptions(["--state-dir", "/run/user/1000/pagu/test"], {
     version: 0,
     defaults: { harness: "claude", profile: "advisor" },
   });
@@ -91,10 +118,19 @@ Deno.test("launch config changes the default harness and profile", () => {
     version: 0,
     defaults: { harness: "claude", profile: "advisor" },
   });
+  assertEquals(overridden.harness, "claude");
   assertEquals(overridden.profile, "proof");
   assertEquals(overridden.policy, "/profiles/proof.json");
 
-  const pi = rootOptions([], {
+  // An explicitly named harness wins over the configured default.
+  const named = rootOptions(["codex"], {
+    version: 0,
+    defaults: { harness: "claude", profile: "advisor" },
+  });
+  assertEquals(named.harness, "codex");
+  assertEquals(named.profile, "advisor");
+
+  const pi = rootOptions(["--state-dir", "/run/user/1000/pagu/test"], {
     version: 0,
     defaults: { harness: "pi", profile: "worker" },
   });
