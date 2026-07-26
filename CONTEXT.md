@@ -310,6 +310,45 @@ sessions. `pagu-box` remains the direct PEP compatibility surface. The root Nix
 package launches `pagu`, making the product journey the default without removing
 either expert surface.
 
+## Build provenance
+
+A host and an inhabitant can resolve two different pagu executables under one
+name. The box replaces `$HOME`, so a user-profile install vanishes inside the
+sandbox and a system-profile one answers instead — with a different command
+surface and no signal that the substitution happened. Provenance reporting makes
+that observable.
+
+`pagu --version` is a report, never a journey. It reads no launch
+configuration, creates no state, and runs under no filesystem, network, process,
+or environment authority; the version test proves this by running the real
+entrypoint with an empty Deno permission set. Widening sandbox or environment
+authority to expose a build identity would trade the boundary for a diagnostic,
+so nothing is widened: the fact travels inside the artifact.
+
+One fact, one home. The flake's own `self` is the only thing in the build that
+can prove which tree produced an executable, so `flake.nix` derives the record
+there once and writes it over
+[`src/provenance/build.json`](src/provenance/build.json) in the store copy of
+the source. Both packaged Deno entrypoints — `pagu` and `pagu-mcp` — execute
+from that copy, which is the derivation edge: they are structurally incapable of
+disagreeing, because there is no second place a revision may be stated. The
+release lives in `deno.json` and is read from there, so the MCP server's
+advertised version is derived rather than copied.
+
+Honesty is structural, not remembered:
+
+- the record's type pairs a proven state with a revision and forbids that
+  pairing for `unknown`, so a fabricated revision does not typecheck;
+- a development checkout reports `unknown` because nothing proves its source; it
+  is never approximated from the working tree's git state;
+- a dirty packaged build keeps its base revision *and* says `dirty`, carrying the
+  exact nix source hash — there, the revision alone does not determine behavior;
+- a malformed injection fails loud rather than degrading to `unknown`, which
+  would hide the packaging drift the value exists to expose;
+- parity refuses two `unknown` observations. Absence of a proven difference is
+  not proof of sameness, and that case is exactly the stale install this check
+  is for.
+
 ## Escalation loop
 
 The request schema in [`src/request/schema.ts`](src/request/schema.ts) permits
@@ -488,7 +527,11 @@ Claims about enforcement bind to executable evidence:
 - category profile and telemetry projections:
   [`src/policy/profiles.test.ts`](src/policy/profiles.test.ts) and
   [`src/telemetry/telemetry.test.ts`](src/telemetry/telemetry.test.ts);
-- public SDK floor: [`src/mod.test.ts`](src/mod.test.ts).
+- public SDK floor: [`src/mod.test.ts`](src/mod.test.ts);
+- build provenance, honest unknown, and one-source injection:
+  [`src/provenance/provenance.test.ts`](src/provenance/provenance.test.ts), plus
+  the packaged host-versus-inhabitant
+  [`scripts/provenance-parity-journey.ts`](scripts/provenance-parity-journey.ts).
 
 The complete invariant catalog and enforcement tiers live in
 [docs/INVARIANTS.md](docs/INVARIANTS.md).

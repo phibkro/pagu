@@ -183,6 +183,8 @@ Enforcement:
 | profile wire | `schemas/profile-grant-v0.schema.json` publishes the box-accepted `PolicyV0` shape; `parsePolicy` retains semantic checks.       |
 | grant wire   | `schemas/grant-v0.schema.json` publishes the strict gate GrantV0 shape; `parseGrant` retains semantic checks.                    |
 | reload wire  | `src/gate/reload-schema.ts` strictly binds checkpoint adoption and prepare → handoff → active evidence.                          |
+| provenance   | `src/provenance/build.json` is the only place a build identity enters the program; `flake.nix` writes it once from `self` into the store source both packaged entrypoints run from. |
+| provenance type | `src/provenance/provenance.ts` pairs a proven state with a revision by construction and forbids that pairing for `unknown`, so a fabricated or degraded provenance cannot typecheck. |
 
 Bound laws:
 
@@ -212,6 +214,17 @@ Bound laws:
 - [law: reload adoption rejects mismatched session policy event digest]
 - [law: reload checkpoint binds request seccomp state typed fd roles]
 - [law: reload evidence cannot activate without exact prepare handoff]
+- [law: packaged version surfaces derive from one injected build provenance
+  fact]
+- [law: packaging injects the build provenance fact into every packaged
+  entrypoint]
+- [law: unknown build provenance is honest and never a plausible revision]
+- [law: malformed injected build provenance fails loud instead of degrading]
+- [law: build provenance parity refuses to prove unknown observations equal]
+- [law: boxed position is proven by a distinct mount namespace]
+- [law: provenance probe refuses a shadowing install that reports no
+  provenance]
+- [falsifier: build provenance parity fails with both observed revisions]
 
 Review questions:
 
@@ -219,6 +232,10 @@ Review questions:
 - Can a decision or grant exist without a retained event?
 - Is a mutable JSON projection being treated as canonical history?
 - Did an event shape change without codec, wire-floor, and API review?
+- Did a new surface state a version, revision, or build identity of its own
+  instead of deriving the injected one?
+- Can an unprovable provenance reach a caller as a plausible value, or two
+  unknown observations be reported as matching?
 
 ## Cross-invariant boundary
 

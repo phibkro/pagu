@@ -65,3 +65,6 @@ export * from "./gate/index.ts";
 
 // Versioned read-only projection over gate event logs.
 export * from "./telemetry/index.ts";
+
+// Packaged build provenance and the host/inhabitant parity law.
+export * from "./provenance/index.ts";

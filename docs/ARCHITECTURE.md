@@ -58,6 +58,7 @@ flowchart TB
 | `pagu resolve`       | `src/gate/cli.ts`                          | Thin host-only adapter that resolves one currently pending request ID.                                               |
 | `pagu mcp`           | `src/mcp/cli.ts` + `src/mcp/server.ts`     | Request-only stdio MCP adapter injected into gate-owned harness sessions; no operator methods.                       |
 | `pagu telemetry`     | `src/gate/cli.ts` + `src/telemetry/`       | Standalone human/JSON projection over one or many gate event logs.                                                   |
+| `pagu --version`     | `src/gate/cli.ts` + `src/provenance/`      | Packaging-injected build provenance for humans and automation; reads no configuration and starts no journey.          |
 | SDK                  | `src/mod.ts`                               | Stable front door for launch, policy, request, event, and retained security primitives.                              |
 | Root flake           | `flake.nix`                                | Builds default `pagu`, compatibility `pagu-box`, formatter, and the Linux development shell.                         |
 | Standalone box flake | `box/flake.nix`                            | Preserved imported box package and module surface.                                                                   |
@@ -256,6 +257,38 @@ compatibility still require a real harness check.
 It compares `pagu box` with `pagu-box` for help, schema explanation, and a real
 boxed launch. The child prints its effective `PATH`, making parent-wrapper
 environment drift observable alongside stdout, stderr, and exit status.
+
+`scripts/provenance-parity-journey.ts` is the installation-identity tracer. It
+runs the built `pagu --version --json` on the host and again through the built
+`pagu-box`, and refuses to call that second observation an inhabitant unless its
+mount namespace differs from the host's — otherwise a box invocation that
+silently ran on the host would report perfect parity while proving nothing. A
+mismatch fails with both observed records, and `--shadow PATH` additionally
+proves a known-different installation is refused rather than tolerated.
+
+## Build provenance
+
+| Module                                    | Responsibility                                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `src/provenance/build.json`               | The injected fact. Packaging overwrites it in the store source; the checked-in value is the honest unknown. |
+| `src/provenance/build.ts`                 | Widens the injected import to `unknown` so no caller can trust it without the strict decoder.               |
+| `src/provenance/provenance.ts`            | Versioned record, strict decoders, canonical JSON/human projections, and the observation parity law.        |
+| `scripts/provenance-parity-journey.ts`    | Probes the built `pagu` from the host and from inside a real `pagu-box`, with mount-namespace evidence.     |
+| `src/provenance/provenance.test.ts`       | Zero-permission version run, honest-unknown, fail-loud injection, one-source, and parity falsifiers.        |
+
+```text
+flake.nix (self.rev | self.dirtyRev + self.narHash)
+  └─ pagu-build-provenance.json
+       └─ pagu-source/src/provenance/build.json
+            ├─ ${paguSource}/src/gate/cli.ts   (pagu)
+            └─ ${paguSource}/src/mcp/cli.ts    (pagu-mcp)
+```
+
+That edge is the whole mechanism: one write site into the one store copy both
+packaged entrypoints execute from. `deno.json` remains the single home of the
+release, read directly, so the MCP server's advertised version is derived rather
+than copied. A missing injection target fails the source derivation instead of
+leaving the unknown default in a shipped artifact.
 
 ## Retained SDK primitives
 

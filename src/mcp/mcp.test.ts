@@ -6,6 +6,7 @@ import {
   type PaguMcpResponse,
   servePaguMcpStdio,
 } from "./index.ts";
+import { buildProvenance } from "../provenance/index.ts";
 import {
   fileRequest,
   type FileRequestInput,
@@ -50,7 +51,8 @@ Deno.test("law: MCP exposes one request-only inhabitant tool", async () => {
         capabilities: { tools: {} },
         serverInfo: {
           name: "pagu",
-          version: "0.1.0",
+          // The one packaging-injected release, never a copy of it.
+          version: buildProvenance().release,
           description: "Request-only access to the enclosing pagu gate",
         },
       },
