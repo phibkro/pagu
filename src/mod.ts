@@ -55,6 +55,8 @@ export type { SandboxKind, SandboxScope } from "./runner/sandbox.ts";
 
 // Versioned standing policy / grant schema and pure policy compiler.
 export * from "./policy/index.ts";
+// Frozen probe over project-controlled repository metadata.
+export { createRepositoryMetadataContext } from "./policy/repository-fs.ts";
 
 // Credential/namespace-aware child-host broker core.
 export * from "./child/index.ts";

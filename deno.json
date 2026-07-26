@@ -10,6 +10,7 @@
     "test": "deno test --allow-run --allow-read --allow-write --allow-env --allow-net",
     "journey:mock": "deno run -A scripts/mock-gate-journey.ts",
     "journey:box": "deno run -A scripts/box-command-journey.ts",
+    "journey:worktree": "deno run -A scripts/worktree-journey.ts",
     "check": "deno check src integrations",
     "lint": "deno lint src scripts integrations",
     "fmt": "deno fmt src scripts integrations profiles deno.json README.md",

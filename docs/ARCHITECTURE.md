@@ -84,6 +84,9 @@ selected harness still passes through its verified fresh/resume adapter.
 ## Policy core
 
 All policy core files are pure and exported through `src/policy/index.ts`.
+The two effectful members are named as such: `src/policy/cli.ts` is the box
+adapter, and `src/policy/repository-fs.ts` is the frozen repository probe it
+hands to compilation.
 
 | Module                                 | Responsibility                                                                                                    |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -95,6 +98,8 @@ All policy core files are pure and exported through `src/policy/index.ts`.
 | `schemas/grant-v0.schema.json`         | Published strict structural contract for downstream gate GrantV0 consumers.                                       |
 | `src/policy/load.ts`                   | Trusted-user plus narrow-only project fold; warnings for widening; canonical child validation.                    |
 | `src/policy/compile.ts`                | Explicit-context policy lowering to Linux bubblewrap argv and scrubbed environment; exact explanation projection. |
+| `src/policy/worktree.ts`               | Total linked-worktree Git authority derivation from frozen repository facts; refusal is a value, not a throw.     |
+| `src/policy/repository-fs.ts`          | Effectful frozen probe over project-controlled repository metadata, bounded in size and memoized per launch.      |
 | `src/policy/identity.ts`               | Canonical SHA-256 identity binding grants to complete policy authority.                                           |
 | `src/policy/presets.ts`                | Schema representations of the four legacy profile baselines used for equivalence testing.                         |
 | `src/policy/profiles.ts`               | Stable curated category names, filenames, and the shared secret-floor assertion data.                             |
@@ -102,6 +107,7 @@ All policy core files are pure and exported through `src/policy/index.ts`.
 | `src/policy/policy.test.ts`            | Schema, project attenuation, canonicalization, legacy equivalence, explain, and adapter falsifiers.               |
 | `src/policy/child.test.ts`             | Child authority, transitive ancestor, symlink, deny/refusal, identity, and lineage laws.                          |
 | `src/policy/profiles.test.ts`          | Cross-profile secret, write, journal, Herdr, and compiled-deny assertions.                                        |
+| `src/policy/worktree.test.ts`          | Linked-worktree derivation laws, hostile-pointer falsifiers, lowering order, and the real-git probe seam.         |
 
 Dependency direction:
 
@@ -109,7 +115,9 @@ Dependency direction:
 schema/path.ts <- load.ts
 schema/path.ts <- child.ts
 schema.ts <- compile.ts
-schema/load/child/compile <- cli.ts
+path.ts <- worktree.ts <- compile.ts
+worktree.ts <- repository-fs.ts
+schema/load/child/compile/repository-fs <- cli.ts
 ```
 
 The shell launcher calls the adapter; policy logic is not duplicated in Nix or
@@ -291,6 +299,7 @@ authority path.
 | User/project attenuation    | `src/policy/load.ts` + policy falsifiers                 |
 | Parent/child attenuation    | `src/policy/child.ts` + child laws + nested tracer       |
 | Linux enforcement lowering  | `src/policy/compile.ts` + explain/adapter tests          |
+| Git worktree derivation     | `src/policy/worktree.ts` + worktree laws + `journey:worktree` |
 | Box CLI flags               | `box/src/linux.nix` and `box/src/darwin.nix`             |
 | Request wire shape          | `src/request/schema.ts` + real channel tests             |
 | Adjudication tiers          | `src/request/adjudicate.ts`                              |

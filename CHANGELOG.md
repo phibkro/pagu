@@ -9,6 +9,33 @@ pagu is pre-v1 and has no release ledger yet. This is the human-readable shipped
 history; the Conventional Commit log is authoritative, and `ROADMAP.md` contains
 only forward work.
 
+## Box enforcement
+
+- Fixed `fatal: not a git repository: (null)` when a journey is launched from a
+  Git linked worktree. A linked worktree's `.git` is a pointer file, so the
+  repository lives outside every `$PWD`-scoped mount. `src/policy/worktree.ts`
+  now derives the exact metadata mounts from repository facts that are probed,
+  validated, and frozen before bubblewrap starts.
+- Bounded that derivation instead of widening the box: the access mode mirrors
+  the profile's authority on the launch directory, the Git common root stays
+  read-only, and only the object store, ref store, common reflog directory, and
+  this worktree's own administrative directory become writable — parents first,
+  so a writable child overlays the read-only parent. `git config --local`,
+  `pack-refs`, `gc`, `repack`, `worktree add/prune`, and `FETCH_HEAD` writes stay
+  refused.
+- Made repository pointers prove themselves rather than be believed: the
+  administrative directory must carry the `gitdir` back pointer naming this
+  worktree, `commondir` must resolve to the exact parent of `worktrees/<name>`,
+  and every derived path must sit inside a trusted root the trusted policy layer
+  already names and inside no denied root. Traversal, symlink aliases, rewritten
+  `commondir` values, submodules, and `--separate-git-dir` layouts are refused
+  before launch with stable diagnostics; ordinary checkouts and bare repositories
+  are unchanged.
+- Added `deno task journey:worktree`, a real bubblewrap journey over the shipped
+  advisor and worker profiles: writer status/stage/commit with packed refs and
+  reflog, advisor refused at the index, refs, objects, and reflog, and both a
+  forged and a genuine-but-untrusted pointer refused before launch.
+
 ## Product launch surface
 
 - Changed the launch grammar so a launch names its harness: `pagu claude`,

@@ -544,6 +544,8 @@ Deno.test("law: harness state is scoped and deny remains final", () => {
     sslCertFile: "/etc/ssl/certs/ca-certificates.crt",
     environment: {},
     pathKind: (path) => path.endsWith(".json") ? "file" : "directory",
+    canonicalize: (path) => path,
+    readRepositoryFile: () => null,
     environmentMode: "process",
   };
   const argv = explain(codex, ctx).argv;
@@ -796,6 +798,8 @@ Deno.test("falsifier 5: widened launch evidence uses the explained compiled argv
       sslCertFile: "/etc/ssl/certs/ca-certificates.crt",
       environment: {},
       pathKind: (path) => path === granted ? "directory" : "missing",
+      canonicalize: (path) => path,
+      readRepositoryFile: () => null,
       environmentMode: "process",
     };
     const gate = await createGate({

@@ -242,12 +242,65 @@ Security-relevant properties:
 - network remains isolated unless `net` is true;
 - the optional request socket and its environment name exist only when `--gate`
   is supplied;
+- a linked worktree's Git metadata is derived, validated, and frozen before
+  launch, and an unsafe or unsupported repository shape aborts compilation
+  instead of producing a box where Git silently fails;
 - binding `/nix/var/nix/daemon-socket` adds `NIX_REMOTE=daemon` to the compiled
   environment and explanation; without the bind it is absent;
 - `--explain` is a projection of the exact compiled result and omits secret
   values;
 - gate-owned launches use `--evidence` to persist that spawned result's argv,
   environment names, command, and PID.
+
+### Linked-worktree metadata is derived, not configured
+
+A Git linked worktree keeps no repository inside the working directory: `.git` is
+a pointer file naming an administrative directory under the main repository's
+common directory, outside every mount a `$PWD`-scoped profile grants. So the box
+needs a mount the policy does not name, derived from material the project
+controls. [`src/policy/worktree.ts`](src/policy/worktree.ts) derives it, and
+[`src/policy/repository-fs.ts`](src/policy/repository-fs.ts) probes and freezes
+the facts once per launch, before bubblewrap starts.
+
+The derivation grants nothing on the repository's word. It takes authority only
+from what the repository can prove, and every check is a refusal, never a
+downgrade:
+
+- the pointer must name a directory whose own `gitdir` back pointer canonically
+  names this launch worktree — a foreign or invented target cannot satisfy that
+  without already holding write access to it;
+- `commondir` must resolve to the exact parent of `worktrees/<name>`, which is
+  Git's own linked-worktree layout, so rewriting it cannot select an unrelated
+  directory;
+- every resulting path must sit inside a trusted ceiling — the standing
+  filesystem authority plus the pre-authorized session-auto read scopes of the
+  *trusted* layer, which a project can only narrow — and inside no denied root;
+- the access mode mirrors the profile's authority on the launch directory, so an
+  advisor derives read-only metadata and a writer derives no more than it already
+  holds on `$PWD`;
+- canonical paths carry no symlinks, so a pointer or alias swapped after the
+  probe cannot redirect a mount.
+
+The supported Git-operation contract is deliberately narrower than "the
+repository is writable". The common directory root stays read-only; only the
+object store, the ref store, the common reflog directory, and this worktree's own
+administrative directory become writable, in specificity order so each overlays
+the read-only parent instead of being erased by it. That covers the ordinary
+journey — status, diff, log, stage, commit, branch and reflog updates, including
+branches that exist only in `packed-refs`. It excludes operations that rewrite
+the common root itself: `git config --local`, `pack-refs`, `gc`, `repack`,
+`worktree add/prune`, and anything writing `FETCH_HEAD`. Those fail loudly inside
+the box on a read-only filesystem rather than being granted for convenience. An
+absent common reflog directory is reported on stderr, not silently dropped.
+
+Submodules and `--separate-git-dir` layouts have no per-worktree back pointer, so
+they are refused before launch with a stable diagnostic rather than trusted on a
+weaker check. Ordinary checkouts and bare repositories derive nothing at all:
+whatever Git needs is already inside `$PWD`.
+
+An advisor or writer launched in a linked worktree can therefore read the main
+repository's object and ref store — the history is exactly what Git inspection
+needs — but reaches no working tree other than its own.
 
 On Linux, `--observe-denials FILE` opts a schema-policy launch into the seccomp
 user-notif supervisor in [`box/src/denial-spike.c`](box/src/denial-spike.c). The

@@ -212,6 +212,31 @@ example, advisor launched with `$PWD=$HOME`), Linux lowering fails loud: the
 host could create that path after the check, while bubblewrap cannot install a
 new mask mountpoint below the RO destination. Use a narrower repository root.
 
+### Git linked worktrees
+
+A linked worktree's `.git` is a pointer file, so the repository itself lives
+outside `$PWD`. Launching from one used to produce
+`fatal: not a git repository: (null)`. pagu now derives those mounts, at the
+same access the profile already grants on the launch directory and no wider:
+
+| Path                               | Advisor   | Writer profiles |
+| ---------------------------------- | --------- | --------------- |
+| Git common directory root          | read-only | read-only       |
+| `objects`, `refs`, `logs`          | read-only | read-write      |
+| this worktree's `worktrees/<name>` | read-only | read-write      |
+
+Supported: status, diff, log, stage, commit, branch and reflog updates,
+including branches that exist only in `packed-refs`. Refused, because the common
+root is never writable: `git config --local`, `pack-refs`, `gc`, `repack`,
+`worktree add/prune`, and anything writing `FETCH_HEAD`.
+
+The derived paths must lie inside a trusted root the _trusted_ policy layer
+already names — a standing `fs.rw`/`fs.ro` mount or an `escalation.auto` read
+scope. A repository pointer that resolves outside every one of them, or that
+cannot prove it belongs to this worktree, aborts the launch with a diagnostic
+instead of being mounted. Submodules and `--separate-git-dir` layouts are
+refused for that reason. Ordinary checkouts and bare repositories are untouched.
+
 ## Run a boxed harness
 
 ```sh
@@ -558,7 +583,15 @@ deno task journey:mock /absolute/path/to/result/bin/pagu
 deno task journey:box \
   /absolute/path/to/result/bin/pagu \
   /absolute/path/to/result-1/bin/pagu-box
+deno task journey:worktree /absolute/path/to/result-1/bin/pagu-box
 ```
+
+`journey:worktree` builds real Git fixtures and runs the shipped advisor and
+worker profiles in real bubblewrap: writer status/stage/commit with packed refs,
+advisor refused at the index, refs, objects and reflog, ordinary checkouts and
+bare repositories preserved, and both a forged and a genuine-but-untrusted
+pointer refused before launch. Its fixture roots must be outside `/tmp` and
+`$HOME`, which the box replaces.
 
 `XDG_RUNTIME_DIR` must name the current user's private runtime directory. The
 tracer launches the real packaged `pagu`, `pagu-box`, and `pagu mcp` surfaces. A

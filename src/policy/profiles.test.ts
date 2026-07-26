@@ -47,6 +47,8 @@ const context: BwrapCompileContext = {
       path === "/etc/machine-id"
       ? "file"
       : "directory",
+  canonicalize: (path) => path,
+  readRepositoryFile: () => null,
   environmentMode: "process",
 };
 

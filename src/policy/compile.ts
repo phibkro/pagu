@@ -1,5 +1,11 @@
 // pure: schema-v0 policy lowering to Linux bubblewrap argv.
 import type { PolicyV0 } from "./schema.ts";
+import { capabilityPathCovered, normalizeCapabilityPath } from "./path.ts";
+import {
+  deriveGitWorktreeAuthority,
+  type GitAuthorityMode,
+  type GitWorktreeAuthority,
+} from "./worktree.ts";
 
 export type PolicyPlatform = "linux" | "darwin";
 export type PolicyPathKind = "directory" | "file" | "missing";
@@ -16,6 +22,12 @@ export interface BwrapCompileContext {
   readonly sslCertFile: string;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly pathKind: (path: string) => PolicyPathKind;
+  /** Canonical path of an absolute path; null fails closed. Containment on an
+   * authority path is decided canonically, never by a lexical prefix. */
+  readonly canonicalize: (path: string) => string | null;
+  /** Reader for project-controlled repository metadata (`.git`, `commondir`).
+   * Required so a caller cannot silently lose linked-worktree derivation. */
+  readonly readRepositoryFile: (path: string) => string | null;
   /** Legacy-only compatibility knobs. Schema-policy launches omit these so an
    * empty policy cannot reach the host Nix daemon. */
   readonly nixDaemonSocket?: string;
@@ -53,6 +65,9 @@ export interface CompiledPolicy {
   }[];
   /** Host roots actually mounted read-write, used by outside evidence guards. */
   readonly writablePaths: readonly string[];
+  /** Derived-metadata facts an adapter must surface. Non-fatal by definition:
+   * anything unsafe or unsupported throws instead of warning. */
+  readonly warnings: readonly string[];
 }
 
 export class UnsupportedPlatformError extends Error {
@@ -148,6 +163,92 @@ function contains(parent: string, child: string): boolean {
   return c === p || c.startsWith(p === "/" ? p : `${p}/`);
 }
 
+/** Authority the profile already holds on the launch directory. Derived Git
+ * metadata mirrors it and can never exceed it. */
+function launchDirectoryMode(
+  policy: PolicyV0,
+  ctx: BwrapCompileContext,
+  rw: readonly string[],
+  ro: readonly string[],
+): GitAuthorityMode | null {
+  const covers = (roots: readonly string[]) =>
+    roots.some((root) => capabilityPathCovered(root, ctx.pwd, ctx));
+  if (covers([...(policy.fs.home === "rw" ? [ctx.home] : []), ...rw])) {
+    return "rw";
+  }
+  return covers(ro) ? "ro" : null;
+}
+
+/**
+ * Roots the trusted layer has already named as places repository material may
+ * live: standing filesystem authority plus pre-authorized read scopes. The
+ * project cannot contribute here — `src/policy/load.ts` only ever narrows these
+ * fields — so a repository pointer can select *within* this ceiling, never
+ * beyond it.
+ */
+function repositoryCeiling(
+  policy: PolicyV0,
+  ctx: BwrapCompileContext,
+  rw: readonly string[],
+  ro: readonly string[],
+): string[] {
+  return dedupe([
+    ...(policy.fs.home === "rw" ? [ctx.home] : []),
+    ...rw,
+    ...ro,
+    ...policy.escalation.auto.flatMap((rule) => {
+      const root = normalizeCapabilityPath(rule["fs.ro"], "pattern");
+      if (root === null) return [];
+      try {
+        return [expandPath(root, ctx)];
+      } catch {
+        // An auto scope pagu cannot expand narrows the ceiling instead of
+        // failing a launch that never needed the derivation. The refusal
+        // diagnostic lists the roots that were considered, so this stays
+        // visible rather than becoming a silent widening.
+        return [];
+      }
+    }),
+  ]);
+}
+
+function deriveGitAuthority(
+  policy: PolicyV0,
+  ctx: BwrapCompileContext,
+  rw: readonly string[],
+  ro: readonly string[],
+  denyPaths: readonly string[],
+): GitWorktreeAuthority | undefined {
+  const derivation = deriveGitWorktreeAuthority({
+    worktree: ctx.pwd,
+    mode: launchDirectoryMode(policy, ctx, rw, ro),
+    ceiling: repositoryCeiling(policy, ctx, rw, ro),
+    deny: denyPaths,
+    context: {
+      canonicalize: ctx.canonicalize,
+      readRepositoryFile: ctx.readRepositoryFile,
+      pathKind: ctx.pathKind,
+    },
+  });
+  if (derivation.kind === "unsupported") {
+    throw new PolicyCompileError(derivation.diagnostic);
+  }
+  if (derivation.kind === "none") return undefined;
+  // Gate authority stays outside every sandbox-visible root, including one
+  // derived from repository metadata rather than written in the policy.
+  const socket = ctx.requestSocket?.hostPath;
+  if (socket !== undefined) {
+    for (const bind of derivation.authority.binds) {
+      if (capabilityPathCovered(bind.path, socket, ctx)) {
+        throw new PolicyCompileError(
+          `derived git root ${bind.path} would expose the gate request socket ${socket}`,
+        );
+      }
+    }
+  }
+  return derivation.authority;
+}
+
 function compile(
   policy: PolicyV0,
   ctx: BwrapCompileContext,
@@ -181,6 +282,23 @@ function compile(
   for (const path of boundRw) args.push("--bind", path, path);
   for (const path of boundRo) args.push("--ro-bind", path, path);
 
+  // Denies are expanded before the Git derivation so a derived path inside a
+  // denied root is refused rather than mounted and then masked.
+  const denyPaths = dedupe(
+    policy.fs.deny.map((item) => expandPath(item, ctx)),
+  );
+  // A linked worktree's repository lives outside `$PWD`. The derivation is
+  // probed, validated, and frozen here — before launch — and lowered in
+  // specificity order so each writable child overlays the read-only common root.
+  const git = deriveGitAuthority(policy, ctx, rw, ro, denyPaths);
+  for (const bind of git?.binds ?? []) {
+    args.push(
+      bind.access === "rw" ? "--bind" : "--ro-bind",
+      bind.path,
+      bind.path,
+    );
+  }
+
   const pwdVisible = [...rw, ...ro].some((path) => contains(path, ctx.pwd)) ||
     (policy.fs.home === "rw" && contains(ctx.home, ctx.pwd));
   args.push("--chdir", pwdVisible ? ctx.pwd : "/tmp");
@@ -188,9 +306,6 @@ function compile(
   // Denies are emitted after every allow so they cannot be overlaid by a later
   // bind. Missing targets become empty directories: conservative and stable if
   // the underlying RW home gains that path during the run.
-  const denyPaths = dedupe(
-    policy.fs.deny.map((item) => expandPath(item, ctx)),
-  );
   const denyMaterial = denyPaths.map((path) => ({
     path,
     kind: ctx.pathKind(path),
@@ -261,8 +376,18 @@ function compile(
   const writablePaths = dedupe([
     ...(policy.fs.home === "rw" ? [ctx.home] : []),
     ...boundRw,
+    ...(git?.binds ?? []).flatMap((bind) =>
+      bind.access === "rw" ? [bind.path] : []
+    ),
   ]);
-  return { argv: args, environment, denyPaths, denialRules, writablePaths };
+  return {
+    argv: args,
+    environment,
+    denyPaths,
+    denialRules,
+    writablePaths,
+    warnings: git?.notes ?? [],
+  };
 }
 
 /** Canonical compilation used by the enforcement adapter. Process-mode output

@@ -9,6 +9,7 @@ import {
   PolicyValidationError,
   UnsupportedPlatformError,
 } from "./index.ts";
+import { createRepositoryMetadataContext } from "./repository-fs.ts";
 
 interface Options {
   readonly policyFile?: string;
@@ -198,21 +199,14 @@ async function supervisorLost(pid: number): Promise<void> {
   while (Deno.ppid === pid) await delay(100);
 }
 
-function pathKind(path: string): "directory" | "file" | "missing" {
-  try {
-    const info = Deno.statSync(path);
-    return info.isDirectory ? "directory" : "file";
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return "missing";
-    throw error;
-  }
-}
-
 function context(gate?: string): BwrapCompileContext {
   const environment = Deno.env.toObject();
   const home = environment.HOME;
   if (!home) throw new PolicyCompileError("HOME is not set");
   const platform = Deno.build.os === "darwin" ? "darwin" : "linux";
+  // One frozen probe for the whole launch: the filesystem facts that are
+  // validated are the facts that get compiled into mounts.
+  const repository = createRepositoryMetadataContext();
   return {
     platform,
     home,
@@ -225,7 +219,9 @@ function context(gate?: string): BwrapCompileContext {
       environment.NIX_SSL_CERT_FILE ??
       "/etc/ssl/certs/ca-certificates.crt",
     environment,
-    pathKind,
+    pathKind: repository.pathKind,
+    canonicalize: repository.canonicalize,
+    readRepositoryFile: repository.readRepositoryFile,
     environmentMode: "process",
     requestSocket: gate
       ? {
@@ -244,10 +240,18 @@ async function main(): Promise<number> {
   for (const warning of loaded.warnings) console.error(`pagu-box: ${warning}`);
   const ctx = context(options.gate);
   if (options.explainOnly) {
+    // Derivation warnings belong on stderr in both modes; the frozen probe makes
+    // this compilation identical to the one `explain` projects from.
+    for (const warning of compilePolicy(loaded.policy, ctx).warnings) {
+      console.error(`pagu-box: ${warning}`);
+    }
     console.log(JSON.stringify(explain(loaded.policy, ctx)));
     return 0;
   }
   const compiled = compilePolicy(loaded.policy, ctx);
+  for (const warning of compiled.warnings) {
+    console.error(`pagu-box: ${warning}`);
+  }
   if (options.observeDenials) {
     assertDenialLogBoundary(options.observeDenials, compiled.writablePaths);
     const ambiguous = compiled.denialRules.find((rule) =>

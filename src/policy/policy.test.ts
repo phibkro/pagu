@@ -67,6 +67,8 @@ const CTX: BwrapCompileContext = {
     OPENAI_API_KEY: "openai-test",
   },
   pathKind: (path) => pathKinds.get(path) ?? "missing",
+  canonicalize: (path) => path,
+  readRepositoryFile: () => null,
   environmentMode: "process",
 };
 

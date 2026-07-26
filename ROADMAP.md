@@ -49,7 +49,7 @@ design; this file owns sequence and remaining work.
 | 20 — gated egress       | Prove the Claw Patrol composition and make a missing gateway fail loud instead of yielding the open internet.       | next           |
 | 21 — credential channel | Destination-bound credential names in policy, placeholders inside, real values only on the wire.                    | after 20       |
 | 22 — egress approval    | Route a blocked call into the existing gate queue and widen it without stopping the box.                            | after 21       |
-| worktree visibility     | Recognize a git worktree and mount its exact common git directory read-only, or fail with a diagnostic.             | queued         |
+| worktree visibility     | Derive a linked worktree's exact Git metadata at profile authority under a trusted ceiling, or refuse.              | ✓ shipped      |
 | `pagu doctor`           | Read-only orientation report: position, profile, harness, git visibility, request tool, toolchain.                  | queued         |
 | playwright regression   | Root-cause heavy-page browser death inside the worker profile; `/dev/shm` and nested-userns both falsified.         | open           |
 | runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                   | slice 1 parked |
@@ -237,12 +237,18 @@ CI dependency.
 Three items from observed delegation journeys, independent of the egress
 sequence:
 
-- **Worktree visibility.** A git worktree's `.git` points outside the mounted
-  directory, so every git command inside the box fails with
-  `not a git
-  repository`. Worktrees are the natural isolation primitive for
-  concurrent delegated tabs, so this blocks the delegation story. Mount the
-  exact common git directory read-only, or fail early with a diagnostic.
+- **Worktree visibility — shipped.** A git worktree's `.git` pointed outside the
+  mounted directory, so every git command inside the box failed with
+  `not a git repository: (null)`. Worktrees are the natural isolation primitive
+  for concurrent delegated tabs, so this blocked the delegation story.
+  [`src/policy/worktree.ts`](src/policy/worktree.ts) now derives the exact
+  metadata mounts at the profile's own authority on the launch directory,
+  bounded by a trusted ceiling, and refuses unsafe or unsupported shapes before
+  launch. See `CONTEXT.md` → Linked-worktree metadata is derived. Deliberately
+  still refused, not deferred silently: submodule and `--separate-git-dir`
+  layouts (no per-worktree back pointer can prove the pointer genuine), and the
+  operations that rewrite the common root (`git config --local`, `pack-refs`,
+  `gc`, `repack`, `worktree add/prune`, `FETCH_HEAD`).
 - **`pagu doctor`.** One read-only report: host versus inhabitant position,
   selected profile and harness, whether permission bypass is harness-owned,
   repository and worktree visibility, request-tool availability, and visible

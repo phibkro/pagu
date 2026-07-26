@@ -91,6 +91,7 @@ Enforcement:
 | fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.                         |
 | child derivation   | `src/policy/child.ts` unions ancestor/child denies and refusals after checking every positive capability.            |
 | compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                                           |
+| derived mounts     | `src/policy/compile.ts` refuses a derived Git path inside a denied root and emits derived binds parents-first, so a writable child overlays its read-only parent. |
 | observer           | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.                        |
 | category profiles  | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts. |
 | retained primitive | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                                         |
@@ -112,6 +113,10 @@ Bound laws:
 - [law: Pi fresh binds assigned session id without discovery]
 - [law: child derivation preserves identity while attenuating every authority]
 - [law: rw parent home may attenuate to explicit child home scopes]
+- [law: derived writable git children overlay read only common parent]
+- [falsifier: derived git path inside denied root aborts before launch]
+- [falsifier: derived git mount cannot overlay the launch worktree]
+- [falsifier: missing derived git path aborts instead of dropping the bind]
 
 Review questions:
 
@@ -137,6 +142,8 @@ Enforcement:
 | fold          | `src/policy/load.ts` treats the project policy as attenuation of user authority and returns warnings for widening attempts.          |
 | child path    | `src/policy/path.ts` requires canonical containment for nested child scopes; null or escape rejects the complete derivation.         |
 | path boundary | Project children and auto requests require canonical containment; grant application requires the same target at relaunch.            |
+| derivation    | `src/policy/worktree.ts` takes Git metadata authority only from a back pointer the repository cannot forge, inside a trusted ceiling and never above the profile's authority on the launch directory. |
+| frozen probe  | `src/policy/repository-fs.ts` answers each repository fact once per launch, so the material validated is the material mounted.        |
 | gate          | `src/request/adjudicate.ts` never uses `need` or `justification` as authority; only the typed rule and standing policy affect tiers. |
 | operator seam | `GateApprover` receives the full request but returns only deny or an explicit decision scope.                                        |
 
@@ -150,11 +157,22 @@ Bound laws:
 - [falsifier: child canonical path cannot escape parent through symlink]
 - [falsifier: literal filesystem wildcard cannot become its parent directory]
 - [falsifier 3: project filesystem wildcard is a literal path]
+- [law: linked worktree derives git metadata at profile authority]
+- [law: advisor linked worktree git metadata stays read only]
+- [law: ordinary checkout and bare repository derive no git metadata]
+- [law: real git linked worktree probe freezes canonical metadata]
+- [falsifier: hostile git pointer outside trusted ceiling aborts before launch]
+- [falsifier: git pointer traversal or symlink alias cannot acquire authority]
+- [falsifier: rewritten commondir pointer cannot acquire authority]
+- [falsifier: git directory without worktree back pointer is refused]
+- [falsifier: derived git root cannot expose the gate request socket]
 
 Review questions:
 
 - Did prose, repository metadata, or a display field become a policy input?
 - Is a nested path accepted without canonical containment?
+- Can a repository-controlled pointer select a mount outside the trusted ceiling,
+  or above the profile's authority on the launch directory?
 - Can project data select a broader network, environment, home, or auto scope?
 
 ### #4 — Evidence outranks reports
@@ -172,6 +190,7 @@ Enforcement:
 | Rung         | Enforcer                                                                                                                         |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
 | compiler     | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                                                |
+| derived evidence | The same `CompiledPolicy` carries derived writable roots and derivation warnings, so `--explain` and the outside guards see the mounts that were compiled. |
 | event codec  | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define versioned session metadata and retained wire entries. |
 | stream       | `src/events.ts` addresses the append-only entry array by stable offset.                                                          |
 | writer       | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence.             |
@@ -187,6 +206,9 @@ Enforcement:
 Bound laws:
 
 - [law: explain argv exactly compiled argv]
+- [law: explain proves no broad git parent became writable]
+- [law: normal checkout compilation is unchanged by git derivation]
+- [falsifier: unsupported repository shape stops compilation before launch]
 - [law: event wire schema every entry kind round trips]
 - [law: child launch evidence binds lineage policies route and material]
 - [falsifier: namespace or durable evidence failure stops provisional child]
