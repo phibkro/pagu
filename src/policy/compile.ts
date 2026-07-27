@@ -324,17 +324,29 @@ function compile(
     path,
     match: kind === "file" ? "exact" as const : "subtree" as const,
   }));
+  // Derived git mounts are a THIRD mount source, emitted above alongside `rw`
+  // and `ro`. The tmpfs-HOME skip below reasons about whether any explicit mount
+  // re-exposes a denied path, so it must consider every mount that is actually
+  // emitted; testing only `rw`/`ro` let a derived read-only bind of a common git
+  // directory under $HOME punch through the tmpfs mask that was skipped as
+  // redundant, re-exposing a deny (invariant 2: adding an allow never removes a
+  // deny).
+  const derivedRw = (git?.binds ?? []).filter((bind) => bind.access === "rw")
+    .map((bind) => bind.path);
+  const derivedAll = (git?.binds ?? []).map((bind) => bind.path);
+  const mountedRw = [...rw, ...derivedRw];
+  const mountedAll = [...rw, ...ro, ...derivedAll];
+
   for (const { path, kind } of denyMaterial) {
     // A tmpfs HOME makes a nested deny redundant only while no explicit mount
     // overlaps it. `$PWD` may itself be HOME or a denied child; those later
     // mounts would otherwise re-expose the host subtree after the HOME mask.
-    const overlapsRw = rw.some((allowed) =>
+    const overlapsRw = mountedRw.some((allowed) =>
       contains(allowed, path) || contains(path, allowed)
     );
-    const overlapsRo = ro.some((allowed) =>
+    const overlapsAllow = mountedAll.some((allowed) =>
       contains(allowed, path) || contains(path, allowed)
     );
-    const overlapsAllow = overlapsRw || overlapsRo;
     if (
       policy.fs.home === "tmpfs" && contains(ctx.home, path) && !overlapsAllow
     ) continue;

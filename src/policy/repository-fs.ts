@@ -23,8 +23,16 @@ function absent(error: unknown): boolean {
  *
  * Every answer is memoized, so the derivation that was validated is the
  * derivation that gets compiled into mounts: a repository cannot rewrite `.git`
- * or `commondir` between the check and the bind. Canonical paths carry no
- * symlinks, so a symlink swapped after the probe cannot redirect a mount either.
+ * or `commondir` between the check and the bind.
+ *
+ * That is ALL the freeze buys. It does not close the compile-to-exec race:
+ * bubblewrap resolves every bind source when it runs, so a path component
+ * replaced by a symlink between this probe and the launch redirects that mount.
+ * Only `commonDir` and `adminDir` are canonicalized here — the writable members
+ * below them are built by concatenation, and restored paths are the policy's own
+ * strings. Derived mounts therefore carry exactly the same residual assumption
+ * as ordinary policy mounts, no better and no worse. See CONTEXT.md, "What the
+ * frozen probe does and does not buy".
  */
 export function createRepositoryMetadataContext(): RepositoryMetadataContext {
   const canonical = new Map<string, string | null>();

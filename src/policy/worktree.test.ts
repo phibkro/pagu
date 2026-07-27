@@ -803,3 +803,80 @@ Deno.test("law: real git linked worktree probe freezes canonical metadata", asyn
     await Deno.remove(root, { recursive: true });
   }
 });
+
+Deno.test("[falsifier: a derived git mount cannot re-expose a deny masked by a tmpfs home]", () => {
+  // A repository living under $HOME. `fs.home: "tmpfs"` normally makes a deny
+  // nested under HOME redundant — the tmpfs already hides the whole host home —
+  // and compilation skips emitting that mask. But a derived git mount is a
+  // THIRD mount source that lands INSIDE the masked home, so skipping the deny
+  // there re-exposes the host path the operator explicitly denied. Deny wins
+  // (invariant 2), so the mask must be emitted whenever any mount overlaps it.
+  const homeRoot = `${HOME}/repos`;
+  const main = `${homeRoot}/main`;
+  const common = `${main}/.git`;
+  const admin = `${common}/worktrees/wt`;
+  const worktree = `${homeRoot}/wt`;
+  const secret = `${common}/config`;
+
+  const repository: FakeRepository = {
+    kinds: new Map<string, "directory" | "file">([
+      [HOME, "directory"],
+      [homeRoot, "directory"],
+      [main, "directory"],
+      [common, "directory"],
+      [`${common}/objects`, "directory"],
+      [`${common}/refs`, "directory"],
+      [`${common}/logs`, "directory"],
+      [secret, "file"],
+      [`${common}/worktrees`, "directory"],
+      [admin, "directory"],
+      [`${admin}/gitdir`, "file"],
+      [`${admin}/commondir`, "file"],
+      [worktree, "directory"],
+      [`${worktree}/.git`, "file"],
+      [ROOT, "directory"],
+    ]),
+    files: new Map<string, string>([
+      [`${worktree}/.git`, `gitdir: ${admin}\n`],
+      [`${admin}/gitdir`, `${worktree}/.git\n`],
+      [`${admin}/commondir`, "../..\n"],
+    ]),
+    aliases: new Map<string, string>(),
+  };
+
+  const denyingPolicy = parsePolicy({
+    version: 0,
+    subject: { agent: "category", label: "test" },
+    fs: {
+      home: "tmpfs",
+      rw: ["$PWD"],
+      ro: [],
+      deny: [secret],
+      derive: [`${homeRoot}/**`],
+    },
+    net: { mode: "host" },
+    env: { pass: [] },
+    escalation: { auto: [], refuse: [] },
+  });
+
+  const compiled = compilePolicy(
+    denyingPolicy,
+    compileContext(repository, { pwd: worktree }),
+  );
+
+  // The derived read-only bind of the common directory is present...
+  assert(
+    compiled.argv.includes(common),
+    "the derived common git directory should be mounted",
+  );
+  // ...so the deny below it must be concealed, not skipped as redundant.
+  const denyIndex = compiled.argv.lastIndexOf(secret);
+  assert(
+    denyIndex > 0,
+    `denied path ${secret} was never concealed: a derived mount re-exposed it`,
+  );
+  assertEquals(compiled.argv[denyIndex - 1], "/dev/null");
+  assertEquals(compiled.argv[denyIndex - 2], "--bind");
+  // And the concealment comes after the mount it must overlay.
+  assert(denyIndex > compiled.argv.indexOf(common));
+});

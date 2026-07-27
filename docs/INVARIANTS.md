@@ -177,6 +177,8 @@ Bound laws:
 - [law: real git fetch writes FETCH_HEAD inside the writable admin directory]
 - [falsifier: forged pointer into a trusted root cannot acquire write access]
 - [falsifier: an auto read scope alone cannot place a derived git mount]
+- [falsifier: a derived git mount cannot re-expose a deny masked by a tmpfs
+  home]
 
 Review questions:
 
