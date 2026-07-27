@@ -85,16 +85,17 @@ archaeology.
 
 Enforcement:
 
-| Rung               | Enforcer                                                                                                                                                          |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| schema             | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`.                                                                |
-| fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.                                                                      |
-| child derivation   | `src/policy/child.ts` unions ancestor/child denies and refusals after checking every positive capability.                                                         |
-| compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                                                                                        |
-| derived mounts     | `src/policy/compile.ts` refuses a derived Git path inside a denied root and emits derived binds parents-first, so a writable child overlays its read-only parent. |
-| observer           | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.                                                                     |
-| category profiles  | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts.                                              |
-| retained primitive | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                                                                                      |
+| Rung                | Enforcer                                                                                                                                                                                              |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema              | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`.                                                                                                    |
+| fold                | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.                                                                                                          |
+| child derivation    | `src/policy/child.ts` unions ancestor/child denies and refusals after checking every positive capability.                                                                                             |
+| compiler            | `src/policy/compile.ts` emits denies after read-write and read-only binds.                                                                                                                            |
+| derived mounts      | `src/policy/compile.ts` refuses a derived Git path inside a denied root and emits derived binds parents-first, so a writable child overlays its read-only parent.                                     |
+| derived composition | `src/policy/worktree.ts` emits only what the effective policy does not already supply, and restores every granted writable root inside a composed read-only parent, so derivation can never subtract. |
+| observer            | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.                                                                                                         |
+| category profiles   | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts.                                                                                  |
+| retained primitive  | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                                                                                                                          |
 
 Bound laws:
 
@@ -117,6 +118,11 @@ Bound laws:
 - [falsifier: derived git path inside denied root aborts before launch]
 - [falsifier: derived git mount cannot overlay the launch worktree]
 - [falsifier: missing derived git path aborts instead of dropping the bind]
+- [law: derivation emits nothing when policy already grants every git path]
+- [law: derivation never narrows a policy root that already covers the
+  repository]
+- [falsifier: derived read only common parent cannot shadow a granted writable
+  child]
 
 Review questions:
 
@@ -137,15 +143,16 @@ the request trustworthy.
 
 Enforcement:
 
-| Rung          | Enforcer                                                                                                                                                                                              |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| fold          | `src/policy/load.ts` treats the project policy as attenuation of user authority and returns warnings for widening attempts.                                                                           |
-| child path    | `src/policy/path.ts` requires canonical containment for nested child scopes; null or escape rejects the complete derivation.                                                                          |
-| path boundary | Project children and auto requests require canonical containment; grant application requires the same target at relaunch.                                                                             |
-| derivation    | `src/policy/worktree.ts` takes Git metadata authority only from a back pointer the repository cannot forge, inside a trusted ceiling and never above the profile's authority on the launch directory. |
-| frozen probe  | `src/policy/repository-fs.ts` answers each repository fact once per launch, so the material validated is the material mounted.                                                                        |
-| gate          | `src/request/adjudicate.ts` never uses `need` or `justification` as authority; only the typed rule and standing policy affect tiers.                                                                  |
-| operator seam | `GateApprover` receives the full request but returns only deny or an explicit decision scope.                                                                                                         |
+| Rung          | Enforcer                                                                                                                                                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fold          | `src/policy/load.ts` treats the project policy as attenuation of user authority and returns warnings for widening attempts.                                                                                                         |
+| child path    | `src/policy/path.ts` requires canonical containment for nested child scopes; null or escape rejects the complete derivation.                                                                                                        |
+| path boundary | Project children and auto requests require canonical containment; grant application requires the same target at relaunch.                                                                                                           |
+| derivation    | `src/policy/worktree.ts` takes Git metadata authority only from a back pointer the repository cannot forge, inside a trusted ceiling and never above the profile's authority on the launch directory.                               |
+| placement     | `src/policy/compile.ts` grades the derivation ceiling by access: only `fs.derive` and roots the policy already mounts read-write may hold a derived writable mount. `escalation.auto` is a gate read scope and grants no placement. |
+| frozen probe  | `src/policy/repository-fs.ts` answers each repository fact once per launch, so the material validated is the material mounted.                                                                                                      |
+| gate          | `src/request/adjudicate.ts` never uses `need` or `justification` as authority; only the typed rule and standing policy affect tiers.                                                                                                |
+| operator seam | `GateApprover` receives the full request but returns only deny or an explicit decision scope.                                                                                                                                       |
 
 Bound laws:
 
@@ -166,6 +173,10 @@ Bound laws:
 - [falsifier: rewritten commondir pointer cannot acquire authority]
 - [falsifier: git directory without worktree back pointer is refused]
 - [falsifier: derived git root cannot expose the gate request socket]
+- [law: a read-only placement root cannot host a writable derived mount]
+- [law: real git fetch writes FETCH_HEAD inside the writable admin directory]
+- [falsifier: forged pointer into a trusted root cannot acquire write access]
+- [falsifier: an auto read scope alone cannot place a derived git mount]
 
 Review questions:
 
@@ -173,6 +184,7 @@ Review questions:
 - Is a nested path accepted without canonical containment?
 - Can a repository-controlled pointer select a mount outside the trusted
   ceiling, or above the profile's authority on the launch directory?
+- Can a read-only rule of any kind become the source of a writable mount?
 - Can project data select a broader network, environment, home, or auto scope?
 
 ### #4 — Evidence outranks reports

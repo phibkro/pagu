@@ -6,6 +6,11 @@
 // pre-authorized repository scope the curated profiles already declare, and the
 // journey runs the *shipped* profiles unmodified — an adjusted profile would only
 // prove a profile this journey wrote itself.
+//
+// Two cases are the exception, and they have to be: no shipped profile is wider
+// than `$PWD`, so composing with an already-writable repository root cannot be
+// expressed by one. Those cases start from the shipped worker profile and change
+// exactly one field, which the case title names.
 
 export interface Observation {
   readonly code: number;
@@ -316,6 +321,50 @@ async function main(args = Deno.args): Promise<void> {
     ["sh", "-c", 'echo entry >> "$(git rev-parse --git-dir)/logs/HEAD"'],
   );
 
+  // --- fetch: FETCH_HEAD is per-worktree, so it lands in a writable mount --
+  await Deno.remove(`${repository.adminDir}/FETCH_HEAD`).catch(() => undefined);
+  const defaultBranch = await git(repository.main, "branch", "--show-current");
+  await observe(
+    "writer fetches and writes FETCH_HEAD",
+    "succeeds",
+    worker,
+    repository.worktree,
+    [
+      "sh",
+      "-c",
+      `git fetch "$(git rev-parse --path-format=absolute --git-common-dir)" ` +
+      `${defaultBranch} && cat "$(git rev-parse --git-dir)/FETCH_HEAD"`,
+    ],
+    defaultBranch,
+  );
+  requireClaim(
+    await Deno.stat(`${repository.adminDir}/FETCH_HEAD`).then((info) =>
+      info.isFile
+    ).catch(() => false),
+    `the boxed fetch did not write ${repository.adminDir}/FETCH_HEAD`,
+  );
+
+  // --- shared refs are real cross-worktree authority ----------------------
+  // Working-tree isolation is not ref isolation. This is documented behavior,
+  // so it is observed rather than assumed.
+  await observe(
+    "writer moves a ref the whole repository sees",
+    "succeeds",
+    worker,
+    repository.worktree,
+    ["git", "branch", "--force", "journey-shared-ref", "HEAD"],
+  );
+  const shared = await git(
+    repository.main,
+    "rev-parse",
+    "--verify",
+    "journey-shared-ref",
+  );
+  requireClaim(
+    shared.length === 40,
+    `the host did not observe the boxed branch (saw ${JSON.stringify(shared)})`,
+  );
+
   // --- preserved and refused shapes --------------------------------------
   await observe(
     "ordinary checkout still commits",
@@ -352,6 +401,97 @@ async function main(args = Deno.args): Promise<void> {
     worker,
     repository.worktree,
     ["git", "config", "--local", "user.name", "attacker"],
+  );
+
+  // --- composition with authority the profile already granted -------------
+  // The shipped profiles are `$PWD`-scoped, so no shipped profile can express
+  // an `infra`-style write root that already holds the whole repository. These
+  // two are the shipped worker profile with exactly one field changed, and the
+  // change is named in the case titles so nothing is proved by a profile this
+  // journey invented wholesale. They live outside the fixture root, which one
+  // of them mounts read-write.
+  const shipped = JSON.parse(await Deno.readTextFile(worker)) as {
+    fs: { rw: string[]; derive: string[] };
+  };
+  const policyDir = `${root}-policies`;
+  await Deno.mkdir(policyDir, { recursive: true });
+  const writeProfile = async (
+    name: string,
+    value: unknown,
+  ): Promise<string> => {
+    const path = `${policyDir}/${name}.json`;
+    await Deno.writeTextFile(path, JSON.stringify(value, null, 2));
+    return path;
+  };
+  const wideWorker = await writeProfile("worker-wide-rw", {
+    ...shipped,
+    fs: { ...shipped.fs, rw: [...shipped.fs.rw, root] },
+  });
+  const noDeriveWorker = await writeProfile("worker-no-derive", {
+    ...shipped,
+    fs: { ...shipped.fs, derive: [] },
+  });
+
+  // The merge blocker, reproduced as a boxed observation: under a profile whose
+  // read-write root already covers the common directory, the local
+  // configuration the profile made writable must stay writable.
+  await observe(
+    "worker + fs.rw over the repository keeps local git config writable",
+    "succeeds",
+    wideWorker,
+    repository.worktree,
+    [
+      "sh",
+      "-c",
+      "git config --local pagu.journey composed && " +
+      "git config --local --get pagu.journey",
+    ],
+    "composed",
+  );
+  await observe(
+    "worker + fs.rw over the repository still commits",
+    "succeeds",
+    wideWorker,
+    repository.worktree,
+    [
+      "sh",
+      "-c",
+      "git commit --quiet --allow-empty -m composed && git log -1 --format=%s",
+    ],
+    "composed",
+  );
+  // And the derivation added nothing at all: every path it would have emitted
+  // is already supplied by the policy.
+  const composed = await run(
+    box,
+    ["--policy", wideWorker, "--explain"],
+    repository.worktree,
+  );
+  requireClaim(composed.code === 0, `--explain failed: ${composed.stderr}`);
+  const composedArgv = (JSON.parse(composed.stdout) as { argv: string[] }).argv;
+  requireClaim(
+    !composedArgv.some((arg) =>
+      arg === repository.commonDir || arg.startsWith(`${repository.commonDir}/`)
+    ),
+    "a derived git mount was emitted over an already-writable policy root: " +
+      JSON.stringify(
+        composedArgv.filter((arg) => arg.startsWith(repository.commonDir)),
+      ),
+  );
+  requireClaim(
+    writableRoots(composedArgv).includes(root),
+    `--explain no longer mounts ${root} read-write`,
+  );
+
+  // Placement is an explicit capability: without `fs.derive`, the same genuine
+  // worktree has nowhere its metadata may be placed.
+  await observe(
+    "worker without fs.derive cannot place a derived git mount",
+    "fails",
+    noDeriveWorker,
+    repository.worktree,
+    ["git", "status"],
+    "fs.derive",
   );
 
   // A repository-controlled pointer to something that is not a linked worktree
@@ -431,7 +571,9 @@ async function main(args = Deno.args): Promise<void> {
   for (const item of cases) {
     console.log(`  ${item.expect === "succeeds" ? "✓" : "✗"} ${item.name}`);
   }
-  console.log(`  fixtures retained at ${root} and ${untrustedRoot}`);
+  console.log(
+    `  fixtures retained at ${root}, ${untrustedRoot}, and ${root}-policies`,
+  );
 }
 
 if (import.meta.main) await main();
