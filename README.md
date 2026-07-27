@@ -245,6 +245,7 @@ Policy fields:
 | `fs.home`           | Bind the host home read-write, or replace it with a temporary filesystem. |
 | `fs.rw` / `fs.ro`   | Additional read-write or read-only bind mounts.                           |
 | `fs.deny`           | Concealed paths; built-in SSH and GPG denies are always added.            |
+| `fs.derive`         | Optional: where pagu may place mounts derived from repository metadata.   |
 | `net`               | Share or isolate the host network namespace.                              |
 | `env.pass`          | Environment names copied into the scrubbed child environment.             |
 | `escalation.auto`   | Read-only child scopes the gate may approve for the session.              |
@@ -282,6 +283,75 @@ If a missing denied path sits beneath an overlapping read-only bind (for
 example, advisor launched with `$PWD=$HOME`), Linux lowering fails loud: the
 host could create that path after the check, while bubblewrap cannot install a
 new mask mountpoint below the RO destination. Use a narrower repository root.
+
+### Git linked worktrees
+
+A linked worktree's `.git` is a pointer file, so the repository itself lives
+outside `$PWD`. Launching from one used to produce
+`fatal: not a git repository: (null)`. pagu now derives those mounts, at the
+same access the profile already grants on the launch directory and no wider:
+
+**This table describes _derived_ authority only** — what pagu adds when the
+policy does not already reach the repository. It is a floor, never a cap: a
+profile that already mounts the common directory more broadly stays that broad,
+because derivation composes with the policy and never narrows it. Read every row
+as "at least this".
+
+| Path (when derived)                | Advisor   | Writer profiles |
+| ---------------------------------- | --------- | --------------- |
+| Git common directory root          | read-only | read-only       |
+| `objects`, `refs`, `logs`          | read-only | read-write      |
+| this worktree's `worktrees/<name>` | read-only | read-write      |
+
+Supported when these are the derived mounts: status, diff, log, stage, commit,
+branch and reflog updates, including branches that exist only in `packed-refs`,
+and `git fetch` — Git keeps `FETCH_HEAD` per worktree, inside the writable
+`worktrees/<name>` directory. Refused, because the derived common root is not
+writable: `git config --local`, `pack-refs`, `gc`, `repack`, and
+`worktree add/prune`.
+
+Under an explicit policy that already grants more — an `infra`-style profile
+whose write root holds both the checkout and its common directory — nothing is
+derived, those operations are **not** refused, and even an advisor sees whatever
+that policy granted. pagu reports the skipped derivation on stderr so the wider
+authority is visible rather than inferred from absent mounts.
+
+#### A worktree is not a branch sandbox
+
+Objects and refs are **shared repository state**, so working-tree isolation is
+not ref isolation. A writer in one linked worktree can create, move, or delete
+any branch in the repository, and every other worktree and the host see it
+immediately — without ever reading another worktree's files. Use worktrees to
+keep concurrent agents out of each other's _files_; do not rely on them to keep
+one agent out of another's _branch_.
+
+#### Where a derived mount may be placed
+
+Placement is an explicit trusted capability, graded by the access it needs:
+
+| Access needed  | May be placed inside                                     |
+| -------------- | -------------------------------------------------------- |
+| read-only      | `fs.derive`, plus any root the policy already mounts     |
+| **read-write** | `fs.derive`, plus roots the policy already mounts **rw** |
+
+```json
+"fs": { "…": "…", "derive": ["/srv/share/projects/**"] }
+```
+
+`fs.derive` is the only way to widen placement, and only the _trusted_ layer can
+set it: a project policy may shrink it, never extend it. `escalation.auto`
+deliberately does **not** count — it names read scopes the gate may grant on
+request, and a read-only rule must not become the source of write authority on a
+shared object and ref store. The shipped profiles declare the projects region
+they already pre-authorize.
+
+A repository pointer that resolves outside the ceiling for the access it needs,
+or that cannot prove it belongs to this worktree, aborts the launch with a
+diagnostic instead of being mounted. Submodules and `--separate-git-dir` layouts
+are refused for that reason. Ordinary checkouts and bare repositories are
+untouched, and when the profile already mounts the whole repository read-write,
+nothing is derived at all — derivation composes with the policy and never
+narrows it.
 
 ## Run a boxed harness
 
@@ -629,7 +699,15 @@ deno task journey:mock /absolute/path/to/result/bin/pagu
 deno task journey:box \
   /absolute/path/to/result/bin/pagu \
   /absolute/path/to/result-1/bin/pagu-box
+deno task journey:worktree /absolute/path/to/result-1/bin/pagu-box
 ```
+
+`journey:worktree` builds real Git fixtures and runs the shipped advisor and
+worker profiles in real bubblewrap: writer status/stage/commit with packed refs,
+advisor refused at the index, refs, objects and reflog, ordinary checkouts and
+bare repositories preserved, and both a forged and a genuine-but-untrusted
+pointer refused before launch. Its fixture roots must be outside `/tmp` and
+`$HOME`, which the box replaces.
 
 `XDG_RUNTIME_DIR` must name the current user's private runtime directory. The
 tracer launches the real packaged `pagu`, `pagu-box`, and `pagu mcp` surfaces. A

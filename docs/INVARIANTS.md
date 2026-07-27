@@ -28,19 +28,19 @@ than capability structure, the boundary.
 
 Enforcement:
 
-| Rung        | Enforcer                                                                                                                |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------- |
-| runtime     | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket. |
-| agent API   | `src/mcp/server.ts` and `integrations/pi/pagu.ts` expose one strict `request_read_access` tool and no operator-resolution port. |
-| schema      | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.      |
-| pure core   | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.      |
-| persistence | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                         |
-| packaging   | `src/policy/compile.ts` emits the socket mount and `PAGU_REQUEST_SOCKET` only when a gate socket is supplied.           |
-| application | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace. |
-| child core  | `src/policy/child.ts` rejects a complete child proposal if any authority field exceeds its effective parent.            |
-| nesting     | Each descendant bubblewrap remains inside its ancestor namespace; bypassing the SDK cannot recover absent authority.    |
+| Rung         | Enforcer                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| runtime      | `src/request/channel.ts` accepts one strict request frame per mounted Unix connection; the box mounts only that socket.                     |
+| agent API    | `src/mcp/server.ts` and `integrations/pi/pagu.ts` expose one strict `request_read_access` tool and no operator-resolution port.             |
+| schema       | `src/request/schema.ts` permits only `need`, `justification`, and one exact `fs.ro` suggestion; unknown keys fail.                          |
+| pure core    | `src/request/adjudicate.ts` checks refusal first and returns the requested child rule, never the auto-rule parent.                          |
+| persistence  | `src/request/gate.ts` owns queue, grant, user-policy, launch, and event writes outside the box.                                             |
+| packaging    | `src/policy/compile.ts` emits the socket mount and `PAGU_REQUEST_SOCKET` only when a gate socket is supplied.                               |
+| application  | `src/gate/relaunch.ts` stops the gate-owned child and starts one newly compiled box; it never mutates a live namespace.                     |
+| child core   | `src/policy/child.ts` rejects a complete child proposal if any authority field exceeds its effective parent.                                |
+| nesting      | Each descendant bubblewrap remains inside its ancestor namespace; bypassing the SDK cannot recover absent authority.                        |
 | child broker | `src/child/broker.ts` selects the active parent from one trusted sender observation, derives before launch, and rolls back failed evidence. |
-| child frame | `src/child/schema.ts` accepts launch metadata only; parent selection, resolution, state, signals, and persistence are absent. |
+| child frame  | `src/child/schema.ts` accepts launch metadata only; parent selection, resolution, state, signals, and persistence are absent.               |
 
 Bound laws:
 
@@ -85,15 +85,17 @@ archaeology.
 
 Enforcement:
 
-| Rung               | Enforcer                                                                                                             |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| schema             | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`.                   |
-| fold               | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.                         |
-| child derivation   | `src/policy/child.ts` unions ancestor/child denies and refusals after checking every positive capability.            |
-| compiler           | `src/policy/compile.ts` emits denies after read-write and read-only binds.                                           |
-| observer           | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.                        |
-| category profiles  | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts. |
-| retained primitive | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                                         |
+| Rung                | Enforcer                                                                                                                                                                                              |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema              | `src/policy/schema.ts` always adds built-in secret denies and rejects a refusal outside `fs.deny`.                                                                                                    |
+| fold                | `src/policy/load.ts` unions project denies/refusals while attenuating every authority field.                                                                                                          |
+| child derivation    | `src/policy/child.ts` unions ancestor/child denies and refusals after checking every positive capability.                                                                                             |
+| compiler            | `src/policy/compile.ts` emits denies after read-write and read-only binds.                                                                                                                            |
+| derived mounts      | `src/policy/compile.ts` refuses a derived Git path inside a denied root and emits derived binds parents-first, so a writable child overlays its read-only parent.                                     |
+| derived composition | `src/policy/worktree.ts` emits only what the effective policy does not already supply, and restores every granted writable root inside a composed read-only parent, so derivation can never subtract. |
+| observer            | The same `CompiledPolicy` derives enforcement mounts and exact/subtree denial-observer rules.                                                                                                         |
+| category profiles   | `src/policy/profiles.test.ts` checks every curated profile's full secret refusal floor and final concealment mounts.                                                                                  |
+| retained primitive  | `src/permissions/envelope.ts` rejects a request matched by an envelope deny.                                                                                                                          |
 
 Bound laws:
 
@@ -112,6 +114,15 @@ Bound laws:
 - [law: Pi fresh binds assigned session id without discovery]
 - [law: child derivation preserves identity while attenuating every authority]
 - [law: rw parent home may attenuate to explicit child home scopes]
+- [law: derived writable git children overlay read only common parent]
+- [falsifier: derived git path inside denied root aborts before launch]
+- [falsifier: derived git mount cannot overlay the launch worktree]
+- [falsifier: missing derived git path aborts instead of dropping the bind]
+- [law: derivation emits nothing when policy already grants every git path]
+- [law: derivation never narrows a policy root that already covers the
+  repository]
+- [falsifier: derived read only common parent cannot shadow a granted writable
+  child]
 
 Review questions:
 
@@ -132,13 +143,16 @@ the request trustworthy.
 
 Enforcement:
 
-| Rung          | Enforcer                                                                                                                             |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| fold          | `src/policy/load.ts` treats the project policy as attenuation of user authority and returns warnings for widening attempts.          |
-| child path    | `src/policy/path.ts` requires canonical containment for nested child scopes; null or escape rejects the complete derivation.         |
-| path boundary | Project children and auto requests require canonical containment; grant application requires the same target at relaunch.            |
-| gate          | `src/request/adjudicate.ts` never uses `need` or `justification` as authority; only the typed rule and standing policy affect tiers. |
-| operator seam | `GateApprover` receives the full request but returns only deny or an explicit decision scope.                                        |
+| Rung          | Enforcer                                                                                                                                                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fold          | `src/policy/load.ts` treats the project policy as attenuation of user authority and returns warnings for widening attempts.                                                                                                         |
+| child path    | `src/policy/path.ts` requires canonical containment for nested child scopes; null or escape rejects the complete derivation.                                                                                                        |
+| path boundary | Project children and auto requests require canonical containment; grant application requires the same target at relaunch.                                                                                                           |
+| derivation    | `src/policy/worktree.ts` takes Git metadata authority only from a back pointer the repository cannot forge, inside a trusted ceiling and never above the profile's authority on the launch directory.                               |
+| placement     | `src/policy/compile.ts` grades the derivation ceiling by access: only `fs.derive` and roots the policy already mounts read-write may hold a derived writable mount. `escalation.auto` is a gate read scope and grants no placement. |
+| frozen probe  | `src/policy/repository-fs.ts` answers each repository fact once per launch, so the material validated is the material mounted.                                                                                                      |
+| gate          | `src/request/adjudicate.ts` never uses `need` or `justification` as authority; only the typed rule and standing policy affect tiers.                                                                                                |
+| operator seam | `GateApprover` receives the full request but returns only deny or an explicit decision scope.                                                                                                                                       |
 
 Bound laws:
 
@@ -150,11 +164,29 @@ Bound laws:
 - [falsifier: child canonical path cannot escape parent through symlink]
 - [falsifier: literal filesystem wildcard cannot become its parent directory]
 - [falsifier 3: project filesystem wildcard is a literal path]
+- [law: linked worktree derives git metadata at profile authority]
+- [law: advisor linked worktree git metadata stays read only]
+- [law: ordinary checkout and bare repository derive no git metadata]
+- [law: real git linked worktree probe freezes canonical metadata]
+- [falsifier: hostile git pointer outside trusted ceiling aborts before launch]
+- [falsifier: git pointer traversal or symlink alias cannot acquire authority]
+- [falsifier: rewritten commondir pointer cannot acquire authority]
+- [falsifier: git directory without worktree back pointer is refused]
+- [falsifier: derived git root cannot expose the gate request socket]
+- [law: a read-only placement root cannot host a writable derived mount]
+- [law: real git fetch writes FETCH_HEAD inside the writable admin directory]
+- [falsifier: forged pointer into a trusted root cannot acquire write access]
+- [falsifier: an auto read scope alone cannot place a derived git mount]
+- [falsifier: a derived git mount cannot re-expose a deny masked by a tmpfs
+  home]
 
 Review questions:
 
 - Did prose, repository metadata, or a display field become a policy input?
 - Is a nested path accepted without canonical containment?
+- Can a repository-controlled pointer select a mount outside the trusted
+  ceiling, or above the profile's authority on the launch directory?
+- Can a read-only rule of any kind become the source of a writable mount?
 - Can project data select a broader network, environment, home, or auto scope?
 
 ### #4 — Evidence outranks reports
@@ -169,26 +201,30 @@ views but cannot replace retained events.
 
 Enforcement:
 
-| Rung         | Enforcer                                                                                                                         |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| compiler     | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                                                |
-| event codec  | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define versioned session metadata and retained wire entries. |
-| stream       | `src/events.ts` addresses the append-only entry array by stable offset.                                                          |
-| writer       | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence.             |
-| launch       | `src/policy/cli.ts` writes evidence from one `CompiledPolicy` while staying outside any entered parent namespace.              |
-| child launch | `src/child/broker.ts` verifies lineage/policy/route/process material before `src/child/evidence.ts` creates a strict event.      |
-| denial       | Opt-in `src/policy/cli.ts` rejects writable log roots and passes that `CompiledPolicy`'s deny rules to the outside supervisor.   |
-| telemetry    | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store.                     |
-| API floor    | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                                                    |
-| profile wire | `schemas/profile-grant-v0.schema.json` publishes the box-accepted `PolicyV0` shape; `parsePolicy` retains semantic checks.       |
-| grant wire   | `schemas/grant-v0.schema.json` publishes the strict gate GrantV0 shape; `parseGrant` retains semantic checks.                    |
-| reload wire  | `src/gate/reload-schema.ts` strictly binds checkpoint adoption and prepare → handoff → active evidence.                          |
-| provenance   | `src/provenance/build.json` is the only place a build identity enters the program; `flake.nix` writes it once from `self` into the store source both packaged entrypoints run from. |
-| provenance type | `src/provenance/provenance.ts` pairs a proven state with a revision by construction and forbids that pairing for `unknown`, so a fabricated or degraded provenance cannot typecheck. |
+| Rung             | Enforcer                                                                                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| compiler         | `src/policy/compile.ts` returns one `CompiledPolicy`; `explain` projects from it.                                                                          |
+| derived evidence | The same `CompiledPolicy` carries derived writable roots and derivation warnings, so `--explain` and the outside guards see the mounts that were compiled. |
+| event codec      | `src/log/schema.ts`, `src/log/serialize.ts`, and `src/log/parse.ts` define versioned session metadata and retained wire entries.                           |
+| stream           | `src/events.ts` addresses the append-only entry array by stable offset.                                                                                    |
+| writer           | `src/request/gate.ts` serializes session, request, decision, projection, grant, launch, failure, and spend evidence.                                       |
+| launch           | `src/policy/cli.ts` writes evidence from one `CompiledPolicy` while staying outside any entered parent namespace.                                          |
+| child launch     | `src/child/broker.ts` verifies lineage/policy/route/process material before `src/child/evidence.ts` creates a strict event.                                |
+| denial           | Opt-in `src/policy/cli.ts` rejects writable log roots and passes that `CompiledPolicy`'s deny rules to the outside supervisor.                             |
+| telemetry        | `src/telemetry/projection.ts` folds retained entries; table and JSON adapters do not maintain another store.                                               |
+| API floor        | `src/mod.test.ts` fails if a frozen surviving export disappears accidentally.                                                                              |
+| profile wire     | `schemas/profile-grant-v0.schema.json` publishes the box-accepted `PolicyV0` shape; `parsePolicy` retains semantic checks.                                 |
+| grant wire       | `schemas/grant-v0.schema.json` publishes the strict gate GrantV0 shape; `parseGrant` retains semantic checks.                                              |
+| reload wire      | `src/gate/reload-schema.ts` strictly binds checkpoint adoption and prepare → handoff → active evidence.                                                    |
+| provenance       | `src/provenance/build.json` is the only place a build identity enters the program; `flake.nix` writes it once from `self` into the store source both packaged entrypoints run from. |
+| provenance type  | `src/provenance/provenance.ts` pairs a proven state with a revision by construction and forbids that pairing for `unknown`, so a fabricated or degraded provenance cannot typecheck. |
 
 Bound laws:
 
 - [law: explain argv exactly compiled argv]
+- [law: explain proves no broad git parent became writable]
+- [law: normal checkout compilation is unchanged by git derivation]
+- [falsifier: unsupported repository shape stops compilation before launch]
 - [law: event wire schema every entry kind round trips]
 - [law: child launch evidence binds lineage policies route and material]
 - [falsifier: namespace or durable evidence failure stops provisional child]

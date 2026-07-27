@@ -139,19 +139,20 @@ process launched.
 
 For trusted child-lifecycle work, additionally run
 `deno run -A scripts/child-broker-tracer.ts /absolute/path/to/pagu-box
-/absolute/path/to/nsenter`. It must enter the real parent namespaces from the
-host, complete ordinary child work, retain a strict `child-launch` event outside
-the parent policy, and observe distinct child user/mount/PID/network namespaces.
-The packaged compiler/evidence supervisor must stay wholly outside the parent
-PID namespace; the parent-side `/proc` scan and evidence-FD injection attempt
-must not find it. Only the supervisor's enforcement child enters the live parent
-namespaces before bubblewrap narrows them. This controlled phase-A tracer keeps
-that numeric process target alive; it is not evidence of PID-reuse-safe
-selection. Phase B work must replace the tracer-supplied sender fact with
-per-message `SCM_CREDENTIALS` plus `SCM_PIDFD`, pin the attributed namespace
-handles, and launch through those exact handles. Connection-time `SO_PEERCRED`
-and numeric PID targeting are falsifiers, not production implementations. Phase
-C must exercise the child request → decision → replacement chain.
+/absolute/path/to/nsenter`.
+It must enter the real parent namespaces from the host, complete ordinary child
+work, retain a strict `child-launch` event outside the parent policy, and
+observe distinct child user/mount/PID/network namespaces. The packaged
+compiler/evidence supervisor must stay wholly outside the parent PID namespace;
+the parent-side `/proc` scan and evidence-FD injection attempt must not find it.
+Only the supervisor's enforcement child enters the live parent namespaces before
+bubblewrap narrows them. This controlled phase-A tracer keeps that numeric
+process target alive; it is not evidence of PID-reuse-safe selection. Phase B
+work must replace the tracer-supplied sender fact with per-message
+`SCM_CREDENTIALS` plus `SCM_PIDFD`, pin the attributed namespace handles, and
+launch through those exact handles. Connection-time `SO_PEERCRED` and numeric
+PID targeting are falsifiers, not production implementations. Phase C must
+exercise the child request → decision → replacement chain.
 
 Security-boundary work should receive an independent-context review. The
 reviewer should try to falsify the claim, not merely restate the diff.

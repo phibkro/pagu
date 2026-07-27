@@ -28,6 +28,7 @@ function policy(fields: {
       rw: fields.rw ?? [],
       ro: fields.ro ?? [],
       deny: [],
+      derive: [],
     },
     net: fields.net ?? NET_OFF,
     env: { pass: fields.pass ?? [] },

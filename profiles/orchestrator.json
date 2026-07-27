@@ -21,7 +21,8 @@
       "~/.zsh_history",
       "~/.python_history",
       "~/.config/herdr"
-    ]
+    ],
+    "derive": ["/srv/share/projects/**"]
   },
   "net": { "mode": "host" },
   "env": {

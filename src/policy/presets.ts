@@ -36,6 +36,8 @@ function preset(
       rw: ["$PWD"],
       ro: [],
       deny: [...new Set([...BUILTIN_SECRET_DENY, ...deny])],
+      // The legacy baselines predate derived mounts and grant no placement.
+      derive: [],
     },
     net,
     env: { pass: [...COMMON_ENV] },

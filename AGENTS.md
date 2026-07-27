@@ -85,6 +85,11 @@ nix build .#pagu-box .#pagu
 `deno task ci` is the full local gate: format, lint, type-check, layer check,
 documentation drift check, then tests.
 
+Capability-path work that touches derived mounts also runs
+`deno task journey:worktree /abs/path/to/pagu-box` — a real bubblewrap journey
+over the shipped advisor and worker profiles. Its fixture roots must be outside
+`/tmp` and `$HOME`, which the box replaces.
+
 For box/gate capability work, also run a real packaged journey:
 
 1. start the built `pagu gate` with a real Codex session ID; it owns `pagu-box`;

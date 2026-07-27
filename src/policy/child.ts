@@ -66,6 +66,22 @@ export function deriveChildPolicy(
     return [narrowed];
   });
 
+  // A child may narrow where derived mounts are placeable; it may never name a
+  // region the ancestor did not already trust for derivation.
+  const derive = child.fs.derive.flatMap((candidate) => {
+    const narrowed = narrowCapabilityPath(
+      parent.fs.derive,
+      candidate,
+      context,
+      "pattern",
+    );
+    if (narrowed === null) {
+      violations.push(`fs.derive widening ${JSON.stringify(candidate)}`);
+      return [];
+    }
+    return [restoreWildcard(narrowed, candidate)];
+  });
+
   if (!netWithin(child.net, parent.net)) {
     violations.push(
       `net=${child.net.mode} would regain ancestor network authority`,
@@ -112,6 +128,7 @@ export function deriveChildPolicy(
       rw,
       ro,
       deny: union(parent.fs.deny, child.fs.deny),
+      derive,
     },
     net: meetNet(parent.net, child.net),
     env: { pass: child.env.pass },

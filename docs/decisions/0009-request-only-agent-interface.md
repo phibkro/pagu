@@ -12,11 +12,11 @@ session-local stdio MCP configuration. MCP gives the harness a discoverable
 typed tool without mounting a general control service or modifying persistent
 harness configuration.
 
-The difficult boundary is capability placement, not transport. An inhabitant
-may describe one denied read and await its decision. It must not acquire
-operator resolution, persistence, grant administration, gate state, or a
-general socket. Approval also replaces the current box, so the request call can
-be interrupted before it receives its response.
+The difficult boundary is capability placement, not transport. An inhabitant may
+describe one denied read and await its decision. It must not acquire operator
+resolution, persistence, grant administration, gate state, or a general socket.
+Approval also replaces the current box, so the request call can be interrupted
+before it receives its response.
 
 ## Decision
 
@@ -28,9 +28,9 @@ be interrupted before it receives its response.
    It has no resolver, state path, policy writer, child launcher, or grant
    administration method. `pagu mcp` is the programmatic entrypoint.
 3. Gate-owned Codex launches receive session-local dotted configuration
-   overrides. Gate-owned Claude launches receive one inline `--mcp-config`.
-   Both initial and resumed commands carry the same server. Pagu does not edit
-   global or project harness configuration.
+   overrides. Gate-owned Claude launches receive one inline `--mcp-config`. Both
+   initial and resumed commands carry the same server. Pagu does not edit global
+   or project harness configuration.
 4. The packaged launcher supplies an exact immutable `pagu-mcp` store path and
    routes public `pagu mcp` directly to that narrow Deno wrapper. The outer box
    remains the network/filesystem enforcement boundary.
@@ -40,8 +40,7 @@ be interrupted before it receives its response.
    evidence.
 6. This slice does not invent a status projection. A future status tool must
    derive from one canonical retained/runtime value and earn a concrete user
-   journey. Host resolution remains the existing TTY and `pagu resolve`
-   adapter.
+   journey. Host resolution remains the existing TTY and `pagu resolve` adapter.
 
 ## Consequences
 
@@ -58,8 +57,8 @@ operator decision. The agent must verify an approval by retrying the denied
 operation. If stronger tool-name integrity becomes necessary, it must be
 designed without silently removing the inhabitant's other tools.
 
-The server implements the bounded stdio JSON-RPC lifecycle directly. There is
-no Effect or web-server dependency because the tracer has one connection-local
+The server implements the bounded stdio JSON-RPC lifecycle directly. There is no
+Effect or web-server dependency because the tracer has one connection-local
 state machine and one existing asynchronous request effect. The implementation
 can adopt a library later if protocol breadth makes that simpler.
 
@@ -78,9 +77,9 @@ inhabitant cancellation is not operator authority.
   correct invocation depend on prose injection.
 - **A general gate MCP server inside the box** — would collapse request and
   operator authority into one protocol surface.
-- **Persistent harness configuration edits** — create global state, collide
-  with user configuration, and can outlive the pagu journey that owns the
-  request capability.
+- **Persistent harness configuration edits** — create global state, collide with
+  user configuration, and can outlive the pagu journey that owns the request
+  capability.
 - **An HTTP server or framework** — adds a network-facing lifecycle without a
   user journey requiring one; stdio is already supported by both harnesses.
 - **Effect by default** — the current resource and failure topology is small

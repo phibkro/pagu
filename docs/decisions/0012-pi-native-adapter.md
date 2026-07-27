@@ -23,27 +23,27 @@ state needs write access; installed runtime code does not.
 
 ## Decision
 
-1. `pi` is a verified `HarnessName`. Bare launch configuration, `--harness`,
-   and wrapped-executable inference may select it.
+1. `pi` is a verified `HarnessName`. Bare launch configuration, `--harness`, and
+   wrapped-executable inference may select it.
 2. A fresh Pi launch receives a generated UUID through `--session-id`; resume
    reopens exactly that UUID through `--session`. Pi therefore uses assigned
    attribution like Claude and does not poll a session store.
-3. Pi state inference searches
-   `~/.pi/agent/sessions/**/*_SESSION_ID.jsonl`. Exactly one matching Codex,
-   Claude, or Pi store is required when the operator does not select a harness.
+3. Pi state inference searches `~/.pi/agent/sessions/**/*_SESSION_ID.jsonl`.
+   Exactly one matching Codex, Claude, or Pi store is required when the operator
+   does not select a harness.
 4. The packaged launcher passes one immutable extension with `--extension` and
    the pagu skill with `--skill` on both fresh and resume commands. It does not
-   edit user or project Pi configuration and does not suppress ordinary Pi
-   tools or extensions.
+   edit user or project Pi configuration and does not suppress ordinary Pi tools
+   or extensions.
 5. The extension registers exactly one native `request_read_access` tool. It
    translates that call through the exact packaged `pagu-mcp` process, so
-   request decoding, append-and-await behavior, cancellation semantics, and
-   the absence of operator methods remain shared with Codex and Claude.
+   request decoding, append-and-await behavior, cancellation semantics, and the
+   absence of operator methods remain shared with Codex and Claude.
 6. The Pi overlay mounts `~/.pi` read-write. The two common user-local package
    roots for the Earendil and upstream Pi packages are mounted read-only when
    present. Missing paths grant nothing; other installation layouts must use a
-   self-contained executable until a trusted runtime-root configuration earns
-   a separate design.
+   self-contained executable until a trusted runtime-root configuration earns a
+   separate design.
 7. Routine lifecycle regression remains the provider-free mock journey. Changes
    to Pi's own adapter contract receive a packaged smoke with a local Ollama
    model and hosted-provider credentials removed. Remote free tiers are an
@@ -57,8 +57,8 @@ tool mechanism. Humans continue to use the same `pagu`, `pagu gate`, and
 returns; the exact session is reopened in the replacement box and retries the
 original read.
 
-The extension is transport glue, not a new SDK core. It cannot resolve, choose
-a grant scope, mutate state, persist policy, or launch a child. Its subprocess
+The extension is transport glue, not a new SDK core. It cannot resolve, choose a
+grant scope, mutate state, persist policy, or launch a child. Its subprocess
 uses an exact argv, bounded output, and no shell.
 
 The two read-only package roots are compatibility for common user-local npm

@@ -22,6 +22,7 @@ import {
   NET_OFF,
   policyIdentity,
 } from "../policy/index.ts";
+import { createRepositoryMetadataContext } from "../policy/repository-fs.ts";
 import { parseLog } from "../log/index.ts";
 
 function policy(overrides: {
@@ -38,6 +39,7 @@ function policy(overrides: {
       rw: [],
       ro: overrides.ro ?? [],
       deny: overrides.deny ?? ["~/.ssh", "~/.gnupg"],
+      derive: [],
     },
     net: NET_OFF,
     env: { pass: [] },
@@ -542,6 +544,7 @@ Deno.test("falsifier 1: real sandbox endpoint cannot submit a resolution", async
     const server = await serveGate({ socket, gate });
     const home = Deno.env.get("HOME") ?? "/tmp";
     const environment = Deno.env.toObject();
+    const repository = createRepositoryMetadataContext();
     const context: BwrapCompileContext = {
       platform: "linux",
       home,
@@ -553,13 +556,9 @@ Deno.test("falsifier 1: real sandbox endpoint cannot submit a resolution", async
       sslCertFile: environment.SSL_CERT_FILE ??
         "/etc/ssl/certs/ca-certificates.crt",
       environment,
-      pathKind: (path) => {
-        try {
-          return Deno.statSync(path).isDirectory ? "directory" : "file";
-        } catch {
-          return "missing";
-        }
-      },
+      pathKind: repository.pathKind,
+      canonicalize: repository.canonicalize,
+      readRepositoryFile: repository.readRepositoryFile,
       environmentMode: "process",
       requestSocket: { hostPath: socket, sandboxPath: sandboxSocket },
     };

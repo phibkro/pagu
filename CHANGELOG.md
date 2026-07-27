@@ -9,6 +9,60 @@ pagu is pre-v1 and has no release ledger yet. This is the human-readable shipped
 history; the Conventional Commit log is authoritative, and `ROADMAP.md` contains
 only forward work.
 
+## Box enforcement
+
+- Fixed `fatal: not a git repository: (null)` when a journey is launched from a
+  Git linked worktree. A linked worktree's `.git` is a pointer file, so the
+  repository lives outside every `$PWD`-scoped mount. `src/policy/worktree.ts`
+  now derives the exact metadata mounts from repository facts that are probed,
+  validated, and frozen before bubblewrap starts.
+- Bounded that derivation instead of widening the box: the access mode mirrors
+  the profile's authority on the launch directory, the Git common root stays
+  read-only, and only the object store, ref store, common reflog directory, and
+  this worktree's own administrative directory become writable — parents first,
+  so a writable child overlays the read-only parent. `git config --local`,
+  `pack-refs`, `gc`, `repack`, and `worktree add/prune` stay refused.
+  `git fetch` is supported: Git keeps `FETCH_HEAD` per worktree, inside the
+  writable `worktrees/<name>` directory.
+- Made repository pointers prove themselves rather than be believed: the
+  administrative directory must carry the `gitdir` back pointer naming this
+  worktree, `commondir` must resolve to the exact parent of `worktrees/<name>`,
+  and every derived path must sit inside a trusted root the trusted policy layer
+  already names and inside no denied root. Traversal, symlink aliases, rewritten
+  `commondir` values, submodules, and `--separate-git-dir` layouts are refused
+  before launch with stable diagnostics; ordinary checkouts and bare
+  repositories are unchanged.
+- Stopped the derivation from narrowing authority the profile already granted.
+  Derived mounts are emitted after the policy's own, so the read-only common
+  bind used to overlay an effective read-write root that already covered it,
+  quietly turning local configuration, hooks, and packed refs read-only.
+  Derivation is now the difference: a path the policy already mounts at the
+  needed access is not re-emitted, and a composed read-only parent restores
+  every granted writable root inside it.
+- Added `fs.derive`, the explicit trusted derivation ceiling naming where pagu
+  may place mounts derived from repository metadata. Placement is graded by the
+  access it needs, so a read-only root can host the derived common directory but
+  never a derived writable object or ref store. `escalation.auto` no longer
+  contributes: it names read scopes the gate may grant on request, and a
+  read-only rule must not become the source of write authority on shared
+  repository state. The field is optional, defaults to granting nothing,
+  attenuates in the project fold and child derivation, and is published in both
+  grant contracts. The shipped profiles declare the projects region they already
+  pre-authorize.
+- Documented that working-tree isolation is not ref isolation: objects and refs
+  are shared, so a writer in one linked worktree can create, move, or delete any
+  branch the whole repository sees, without reading another worktree's files.
+- Narrowed the frozen-probe claim to what it proves. It makes validation and
+  lowering see one consistent set of repository facts; it does not remove the
+  compile-to-exec race, because bubblewrap resolves a bind source when it runs.
+  Derived mounts carry the same residual assumption as ordinary policy mounts.
+- Added `deno task journey:worktree`, a real bubblewrap journey over the shipped
+  advisor and worker profiles: writer status/stage/commit with packed refs and
+  reflog, a real `git fetch` writing `FETCH_HEAD`, cross-worktree branch writes
+  observed by the host, an already-writable repository root deriving nothing,
+  advisor refused at the index, refs, objects, and reflog, and both a forged and
+  a genuine-but-untrusted pointer refused before launch.
+
 ## Product launch surface
 
 - Added `pagu --version`, which reports the build that is answering instead of
@@ -43,7 +97,8 @@ only forward work.
   `--deny` beats an approval scope regardless of argument order.
 - Made the packaged CLI hermetic: `vendor/` is committed and shipped into the
   Nix store, and `--cached-only` fails a missing module loudly at launch rather
-  than fetching it over the network inside a process holding `--allow-net
+  than fetching it over the network inside a process holding
+  `--allow-net
   --allow-write --allow-run`.
 - Made bare `pagu` start a fresh gate-owned worker Codex session and made `pagu`
   the root flake's default package. The direct `pagu gate` and compatibility
@@ -102,9 +157,9 @@ only forward work.
   inference, caller-assigned fresh UUIDs, exact `--session` reopening, and
   scoped `~/.pi` state. Common user-local Pi package roots are visible
   read-only, while final policy denies remain unchanged.
-- Added an immutable Pi-native `request_read_access` extension and explicit
-  pagu skill injection on both fresh and resume commands. The extension invokes
-  the same packaged request-only MCP adapter rather than duplicating the request
+- Added an immutable Pi-native `request_read_access` extension and explicit pagu
+  skill injection on both fresh and resume commands. The extension invokes the
+  same packaged request-only MCP adapter rather than duplicating the request
   protocol or editing persistent Pi configuration.
 - Verified a fresh packaged Pi 0.80.6 box and a second exact-UUID resume box
   against local Ollama `qwen3.5:9b`; both reported the native request tool

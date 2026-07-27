@@ -9,9 +9,9 @@
 The box/gate pivot produced the right security organs but exposed the
 implementation split as the primary user journey. A new session required the
 operator to choose `gate`, a category profile, and a harness even though pagu
-already had a verified safe fresh-launch lifecycle and a natural worker
-default. The root flake also launched the `pagu-box` compatibility adapter,
-keeping the historical component name in front of the product name.
+already had a verified safe fresh-launch lifecycle and a natural worker default.
+The root flake also launched the `pagu-box` compatibility adapter, keeping the
+historical component name in front of the product name.
 
 Humans need one memorable host command. Programmatic consumers still need typed
 launch resolution rather than shell parsing. The box/gate boundary must remain
@@ -51,6 +51,6 @@ The file is intentionally separate from the archived integrated-harness
 historical API explicitly rather than interpreting one path in two ways.
 
 MCP, an agent skill, arbitrary harness ports, nested host/inhabitant authority,
-and monotone child-box attenuation remain separate tracer slices. In
-particular, this decision does not mount a control or resolution capability
-inside the sandbox.
+and monotone child-box attenuation remain separate tracer slices. In particular,
+this decision does not mount a control or resolution capability inside the
+sandbox.

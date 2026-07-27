@@ -52,22 +52,21 @@ ownership while starting `pagu-box` literally inside the parent boundary.
    ID and lineage node itself. Invalid policy, unknown frame fields, namespace
    mismatch, canonicalization failure, or launch-evidence mismatch rejects the
    complete operation.
-5. The packaged policy compiler and evidence supervisor stays wholly in the
-   host namespaces. It invokes an enforcement child that enters the exact parent
+5. The packaged policy compiler and evidence supervisor stays wholly in the host
+   namespaces. It invokes an enforcement child that enters the exact parent
    namespaces before bubblewrap narrows them; it does not launch a
    policy-intersected sibling. This keeps the evidence emitter out of the
    hostile parent's PID namespace and `/proc` view. Policy material crosses the
    host boundary through immutable launch material, not an inhabitant-writable
    policy file.
 6. The trusted launcher pins the selected parent namespace handles before
-   effects and its enforcement child enters those exact handles. After launch
-   it uses namespace handles/ioctls where the kernel exposes hierarchy and
-   verifies the distinct mount namespace from controlled host-supervisor →
-   setns-parent → packaged-bwrap construction.
-   Network must equal the parent when shared and differ when isolated.
-   Evidence/state commit precedes success and active-lineage registration. Any
-   failure stops the provisional child; a failed stop remains tracked for
-   shutdown retry.
+   effects and its enforcement child enters those exact handles. After launch it
+   uses namespace handles/ioctls where the kernel exposes hierarchy and verifies
+   the distinct mount namespace from controlled host-supervisor → setns-parent →
+   packaged-bwrap construction. Network must equal the parent when shared and
+   differ when isolated. Evidence/state commit precedes success and
+   active-lineage registration. Any failure stops the provisional child; a
+   failed stop remains tracked for shutdown retry.
 7. Retained child-launch evidence binds child and parent IDs, claimed host
    actor, parent and child policy identities, request-route identity, exact
    compiled argv/environment names/command/cwd, PID, and observed namespace

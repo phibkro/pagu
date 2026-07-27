@@ -81,6 +81,18 @@ function narrowProject(
     return [narrowed];
   });
 
+  // The derivation ceiling attenuates like any other positive authority: a
+  // project may shrink where pagu places derived mounts, never extend it.
+  const derive = project.fs.derive.filter((candidate) => {
+    const allowed = user.fs.derive.some((root) =>
+      capabilityPathCovered(root, candidate, context, "pattern")
+    );
+    if (!allowed) {
+      warn(`ignored fs.derive widening ${JSON.stringify(candidate)}`);
+    }
+    return allowed;
+  });
+
   if (!netWithin(project.net, user.net)) {
     warn(`ignored net=${project.net.mode} widening`);
   }
@@ -121,6 +133,7 @@ function narrowProject(
         rw,
         ro,
         deny: union(user.fs.deny, project.fs.deny),
+        derive,
       },
       net: meetNet(user.net, project.net),
       env: { pass },
