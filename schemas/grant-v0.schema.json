@@ -98,6 +98,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "derive": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

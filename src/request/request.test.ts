@@ -39,6 +39,7 @@ function policy(overrides: {
       rw: [],
       ro: overrides.ro ?? [],
       deny: overrides.deny ?? ["~/.ssh", "~/.gnupg"],
+      derive: [],
     },
     net: NET_OFF,
     env: { pass: [] },

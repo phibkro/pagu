@@ -21,6 +21,26 @@ export interface PolicyFsV0 {
   readonly rw: readonly string[];
   readonly ro: readonly string[];
   readonly deny: readonly string[];
+  /**
+   * Explicit trusted derivation ceiling: roots inside which pagu may place
+   * mounts it derives from repository metadata, at the launch directory's own
+   * authority. Today the only derivation is linked-worktree Git metadata
+   * (`src/policy/worktree.ts`).
+   *
+   * This is a *capability*, not a mount: nothing is bound because a root
+   * appears here. It exists because placement authority and read authority are
+   * different questions. `escalation.auto` names read scopes the gate may grant
+   * on request; letting that answer "may a derived *writable* Git mount be
+   * placed here" would make a read-only rule the source of write authority.
+   * Deriving read-write inside a root named only by `fs.ro` is refused for the
+   * same reason. Absent means no derivation is placeable outside the mounts the
+   * policy already emits.
+   *
+   * Pattern semantics (`/srv/share/projects/**`) match `escalation.auto`,
+   * because this also names a region where repositories live rather than one
+   * directory.
+   */
+  readonly derive: readonly string[];
 }
 
 export interface PolicyEnvV0 {
@@ -121,7 +141,7 @@ export const BUILTIN_SECRET_DENY = ["~/.ssh", "~/.gnupg"] as const;
 export const EMPTY_POLICY: PolicyV0 = {
   version: 0,
   subject: { agent: "", label: "" },
-  fs: { home: "tmpfs", rw: [], ro: [], deny: BUILTIN_SECRET_DENY },
+  fs: { home: "tmpfs", rw: [], ro: [], deny: BUILTIN_SECRET_DENY, derive: [] },
   net: NET_OFF,
   env: { pass: [] },
   escalation: { auto: [], refuse: [] },
@@ -193,7 +213,9 @@ function subjectAt(value: unknown): PolicySubjectV0 {
 
 function fsAt(value: unknown): PolicyFsV0 {
   const fs = objectAt(value, "policy.fs");
-  rejectUnknown(fs, ["home", "rw", "ro", "deny"], "policy.fs");
+  rejectUnknown(fs, ["home", "rw", "ro", "deny", "derive"], "policy.fs");
+  // `derive` is optional and defaults to bottom: a policy written before the
+  // capability existed grants no derivation placement, never a silent one.
   requireKeys(fs, ["home", "rw", "ro", "deny"], "policy.fs");
   const home = fs.home;
   if (home !== "rw" && home !== "tmpfs") {
@@ -212,6 +234,9 @@ function fsAt(value: unknown): PolicyFsV0 {
         ...stringsAt(fs.deny, "policy.fs.deny"),
       ]),
     ],
+    derive: fs.derive === undefined
+      ? []
+      : stringsAt(fs.derive, "policy.fs.derive"),
   };
 }
 

@@ -98,6 +98,9 @@ Deno.test("law: published grant v0 contract matches strict decoder shape", async
         rw: stringArray,
         ro: stringArray,
         deny: stringArray,
+        // Optional: a policy written before the derivation capability existed
+        // grants no placement, so it must not become required.
+        derive: stringArray,
       },
     },
     env: {

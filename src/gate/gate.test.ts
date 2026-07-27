@@ -52,6 +52,7 @@ function policy(ro: readonly string[] = []): PolicyV0 {
       rw: [],
       ro,
       deny: ["~/.ssh", "~/.gnupg"],
+      derive: [],
     },
     net: NET_OFF,
     env: { pass: [] },
@@ -517,6 +518,7 @@ Deno.test("law: harness state is scoped and deny remains final", () => {
       ...policy().fs,
       home: "rw",
       deny: ["$HOME/.ssh", "$HOME/.gnupg"],
+      derive: [],
     },
   };
   const codex = composeHarnessState(base, codexResumeAdapter());

@@ -17,12 +17,22 @@
 //      target cannot satisfy this without already holding write access to it;
 //   2. `commondir` resolves to the exact parent of `<...>/worktrees/<name>`,
 //      which is Git's own linked-worktree layout;
-//   3. every resulting path lies inside a trusted ceiling declared outside the
-//      project, and inside no denied root;
+//   3. every resulting path lies inside a trusted placement ceiling declared
+//      outside the project — graded, so a root that may hold a derived
+//      read-only mount has not authorized a derived writable one — and inside
+//      no denied root;
 //   4. the mode never exceeds the profile's authority on the launch directory.
 //
 // Anything else is refused before launch with a stable diagnostic rather than
 // silently mounted or silently skipped.
+//
+// Derivation *composes with* the effective policy; it never re-decides it.
+// Derived mounts are emitted after the policy's own, so a derived read-only
+// parent would overlay — silently narrow — write authority the trusted profile
+// already granted. So the derivation is only the difference: a path the policy
+// already mounts at the access this launch needs is never re-emitted, and when a
+// read-only parent must be composed, every granted writable root inside it is
+// restored above it. Composition can only add what is missing.
 import {
   type CapabilityPathContext,
   capabilityPathCovered,
@@ -43,9 +53,37 @@ export interface RepositoryMetadataContext extends CapabilityPathContext {
 /** Derived metadata access mirrors the profile's authority on the worktree. */
 export type GitAuthorityMode = "ro" | "rw";
 
+/**
+ * Where a derived mount may be placed, by the access it needs.
+ *
+ * Two lists, not one, because placement authority is graded: a root that may
+ * host a derived *read-only* mount has not thereby authorized a derived
+ * *writable* one. `rw` is the explicitly trusted derivation capability plus the
+ * roots the policy already mounts read-write; `ro` additionally admits roots the
+ * policy already mounts read-only. A read-only rule can never be the source of
+ * write authority — that is a widening the type makes unrepresentable.
+ */
+export interface DerivationCeiling {
+  readonly rw: readonly string[];
+  readonly ro: readonly string[];
+}
+
+/** Mounts the effective policy already emits, exactly as compiled. Coverage is
+ * decided canonically against these, so derivation composes with the authority
+ * the trusted profile actually granted rather than guessing at it. */
+export interface PolicyMounts {
+  readonly rw: readonly string[];
+  readonly ro: readonly string[];
+}
+
 export interface GitWorktreeBind {
   readonly path: string;
   readonly access: GitAuthorityMode;
+  /** `derived` is authority this module composed from repository facts.
+   * `restored` re-emits a root the effective policy already granted, so a
+   * derived read-only parent cannot shadow it — never a widening, because the
+   * path and access are the policy's own. */
+  readonly source: "derived" | "restored";
 }
 
 export interface GitWorktreeAuthority {
@@ -56,8 +94,10 @@ export interface GitWorktreeAuthority {
   /** Canonical Git common directory; read-only in every profile. */
   readonly commonDir: string;
   readonly mode: GitAuthorityMode;
-  /** Mounts in specificity order — a parent always precedes its children, so a
-   * writable child overlays the read-only common root instead of being erased. */
+  /** Mounts to emit after the policy's own, in specificity order — a parent
+   * always precedes its children, so a writable child overlays the read-only
+   * common root instead of being erased. Empty when the effective policy already
+   * supplies every path this launch needs. */
   readonly binds: readonly GitWorktreeBind[];
   /** Visible, non-fatal facts about the frozen derivation. */
   readonly notes: readonly string[];
@@ -76,11 +116,14 @@ export interface GitWorktreeRequest {
   readonly worktree: string;
   /** Effective profile authority on the launch directory; null grants nothing. */
   readonly mode: GitAuthorityMode | null;
-  /** Trusted roots established outside the project. Derived metadata may never
-   * leave them, however genuine the repository pointers look. */
-  readonly ceiling: readonly string[];
+  /** Trusted placement roots established outside the project. Derived metadata
+   * may never leave them, however genuine the repository pointers look. */
+  readonly ceiling: DerivationCeiling;
   /** Expanded `fs.deny` roots. Deny absorbs derivation like any other allow. */
   readonly deny: readonly string[];
+  /** Mounts the effective policy already emits. Derivation composes with them:
+   * it never re-emits what they already supply and never overlays them. */
+  readonly granted: PolicyMounts;
   readonly context: RepositoryMetadataContext;
 }
 
@@ -260,7 +303,11 @@ export function deriveGitWorktreeAuthority(
     }
   }
 
-  const binds: GitWorktreeBind[] = [
+  // Every Git path this launch needs, with the access it needs there. The whole
+  // set is validated, whether or not the policy already supplies it, so an
+  // unsafe shape still fails loudly instead of being waved through as "already
+  // covered".
+  const required: readonly Omit<GitWorktreeBind, "source">[] = [
     { path: commonDir, access: "ro" },
     ...writable.sort(bySpecificity).map((path) => ({
       path,
@@ -268,34 +315,93 @@ export function deriveGitWorktreeAuthority(
     })),
   ];
 
-  for (const bind of binds) {
-    // Derived mounts are emitted after the policy's own, so one that contained
-    // the launch directory would overlay it — silently erasing the authority the
-    // profile actually granted. Refuse instead of quietly downgrading `$PWD`.
-    if (capabilityPathCovered(bind.path, worktree, context)) {
+  for (const need of required) {
+    // A mount that contained the launch directory would overlay it — silently
+    // erasing the authority the profile actually granted. Refuse instead of
+    // quietly downgrading `$PWD`.
+    if (capabilityPathCovered(need.path, worktree, context)) {
       return refuse(
-        `${bind.path} contains the launch worktree ${worktree}, so mounting it ` +
+        `${need.path} contains the launch worktree ${worktree}, so mounting it ` +
           `would overlay the working tree`,
       );
     }
+    // Placement is checked at the access the path actually needs, so a
+    // read-only root can host the common directory without ever authorizing a
+    // writable object or ref store inside it.
+    const placeable = request.ceiling[need.access];
     if (
-      !request.ceiling.some((root) =>
-        capabilityPathCovered(root, bind.path, context)
-      )
+      !placeable.some((root) => capabilityPathCovered(root, need.path, context))
     ) {
       return refuse(
-        `${bind.path} is outside every trusted repository root (${
-          request.ceiling.length === 0
-            ? "none declared"
-            : request.ceiling.join(", ")
-        }); a project cannot widen the launch by pointing at it`,
+        `${need.path} is outside every trusted repository root that may hold a ` +
+          `derived ${need.access} mount (${
+            placeable.length === 0 ? "none declared" : placeable.join(", ")
+          }); a project cannot widen the launch by pointing at it, and ` +
+          `fs.derive is the only way to declare a new one`,
       );
     }
     for (const denied of request.deny) {
-      if (capabilityPathCovered(denied, bind.path, context)) {
-        return refuse(`${bind.path} is inside denied root ${denied}`);
+      if (capabilityPathCovered(denied, need.path, context)) {
+        return refuse(`${need.path} is inside denied root ${denied}`);
       }
     }
+  }
+
+  // Coverage is canonical, and it is read *after* the deny refusal above, so a
+  // path counted as covered is never a path the compiled denies mask.
+  const covers = (roots: readonly string[], path: string) =>
+    roots.filter((root) => capabilityPathCovered(root, path, context));
+  const supplied = (need: Omit<GitWorktreeBind, "source">): string[] =>
+    need.access === "rw" ? covers(request.granted.rw, need.path) : [
+      ...covers(request.granted.rw, need.path),
+      ...covers(request.granted.ro, need.path),
+    ];
+
+  const missing = required.filter((need) => supplied(need).length === 0);
+  const commonRootIsComposed = missing.some((need) => need.path === commonDir);
+  // The read-only common root is the only mount broad enough to shadow another
+  // authority. When it is composed, every granted writable root inside it is
+  // re-emitted above it, so composition can only add.
+  const restored = commonRootIsComposed
+    ? request.granted.rw.filter((root) =>
+      capabilityPathCovered(commonDir, root, context) &&
+      !capabilityPathCovered(root, commonDir, context)
+    )
+    : [];
+
+  const children = [
+    ...missing.filter((need) => need.path !== commonDir).map((need) => ({
+      ...need,
+      source: "derived" as const,
+    })),
+    ...restored.map((path) => ({
+      path,
+      access: "rw" as const,
+      source: "restored" as const,
+    })),
+  ].sort((a, b) => bySpecificity(a.path, b.path));
+  const binds: GitWorktreeBind[] = [
+    ...(commonRootIsComposed
+      ? [{ path: commonDir, access: "ro" as const, source: "derived" as const }]
+      : []),
+    ...children,
+  ];
+
+  if (binds.length === 0) {
+    const already = supplied(required[0]);
+    notes.push(
+      `the effective policy already mounts every git path this linked ` +
+        `worktree needs (${
+          already.join(", ")
+        } covers ${commonDir}), so no git ` +
+        `metadata was derived`,
+    );
+  }
+  for (const root of restored) {
+    notes.push(
+      `policy root ${root} is inside the derived read-only git common ` +
+        `directory ${commonDir} and is re-mounted read-write above it`,
+    );
   }
 
   return {

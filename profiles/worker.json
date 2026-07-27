@@ -20,7 +20,8 @@
       "~/.bash_history",
       "~/.zsh_history",
       "~/.python_history"
-    ]
+    ],
+    "derive": ["/srv/share/projects/**"]
   },
   "net": { "mode": "host" },
   "env": {

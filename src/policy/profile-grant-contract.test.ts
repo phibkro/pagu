@@ -91,6 +91,9 @@ Deno.test("law: published profile grant v0 contract matches box policy decoder",
         rw: stringArray,
         ro: stringArray,
         deny: stringArray,
+        // Optional: a policy written before the derivation capability existed
+        // grants no placement, so it must not become required.
+        derive: stringArray,
       },
     },
     env: {

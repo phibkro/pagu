@@ -2,9 +2,11 @@
 import type { PolicyV0 } from "./schema.ts";
 import { capabilityPathCovered, normalizeCapabilityPath } from "./path.ts";
 import {
+  type DerivationCeiling,
   deriveGitWorktreeAuthority,
   type GitAuthorityMode,
   type GitWorktreeAuthority,
+  type PolicyMounts,
 } from "./worktree.ts";
 
 export type PolicyPlatform = "linux" | "darwin";
@@ -166,64 +168,65 @@ function contains(parent: string, child: string): boolean {
 /** Authority the profile already holds on the launch directory. Derived Git
  * metadata mirrors it and can never exceed it. */
 function launchDirectoryMode(
-  policy: PolicyV0,
   ctx: BwrapCompileContext,
-  rw: readonly string[],
-  ro: readonly string[],
+  granted: PolicyMounts,
 ): GitAuthorityMode | null {
   const covers = (roots: readonly string[]) =>
     roots.some((root) => capabilityPathCovered(root, ctx.pwd, ctx));
-  if (covers([...(policy.fs.home === "rw" ? [ctx.home] : []), ...rw])) {
-    return "rw";
-  }
-  return covers(ro) ? "ro" : null;
+  if (covers(granted.rw)) return "rw";
+  return covers(granted.ro) ? "ro" : null;
 }
 
 /**
- * Roots the trusted layer has already named as places repository material may
- * live: standing filesystem authority plus pre-authorized read scopes. The
- * project cannot contribute here — `src/policy/load.ts` only ever narrows these
- * fields — so a repository pointer can select *within* this ceiling, never
- * beyond it.
+ * Where a derived mount may be *placed*, by the access it needs.
+ *
+ * Placement authority is a separate question from read authority, so it has a
+ * separate answer. `fs.derive` is the explicit trusted derivation capability;
+ * beyond it, a derived mount may only land inside a root the policy already
+ * mounts at that access or stronger. `escalation.auto` is deliberately absent:
+ * it names read scopes the gate may grant on request, and a read-only rule must
+ * not become the source of write authority.
+ *
+ * The project cannot contribute here — `src/policy/load.ts` only ever narrows
+ * these fields — so a repository pointer can select *within* this ceiling,
+ * never beyond it.
  */
-function repositoryCeiling(
+function derivationCeiling(
   policy: PolicyV0,
   ctx: BwrapCompileContext,
-  rw: readonly string[],
-  ro: readonly string[],
-): string[] {
-  return dedupe([
-    ...(policy.fs.home === "rw" ? [ctx.home] : []),
-    ...rw,
-    ...ro,
-    ...policy.escalation.auto.flatMap((rule) => {
-      const root = normalizeCapabilityPath(rule["fs.ro"], "pattern");
-      if (root === null) return [];
-      try {
-        return [expandPath(root, ctx)];
-      } catch {
-        // An auto scope pagu cannot expand narrows the ceiling instead of
-        // failing a launch that never needed the derivation. The refusal
-        // diagnostic lists the roots that were considered, so this stays
-        // visible rather than becoming a silent widening.
-        return [];
-      }
-    }),
-  ]);
+  granted: PolicyMounts,
+): DerivationCeiling {
+  const declared = dedupe(policy.fs.derive.flatMap((pattern) => {
+    const root = normalizeCapabilityPath(pattern, "pattern");
+    if (root === null) return [];
+    try {
+      return [expandPath(root, ctx)];
+    } catch {
+      // A derive root pagu cannot expand narrows the ceiling instead of failing
+      // a launch that never needed the derivation. The refusal diagnostic lists
+      // the roots that were considered, so this stays visible rather than
+      // becoming a silent widening.
+      return [];
+    }
+  }));
+  return {
+    rw: dedupe([...granted.rw, ...declared]),
+    ro: dedupe([...granted.rw, ...granted.ro, ...declared]),
+  };
 }
 
 function deriveGitAuthority(
   policy: PolicyV0,
   ctx: BwrapCompileContext,
-  rw: readonly string[],
-  ro: readonly string[],
+  granted: PolicyMounts,
   denyPaths: readonly string[],
 ): GitWorktreeAuthority | undefined {
   const derivation = deriveGitWorktreeAuthority({
     worktree: ctx.pwd,
-    mode: launchDirectoryMode(policy, ctx, rw, ro),
-    ceiling: repositoryCeiling(policy, ctx, rw, ro),
+    mode: launchDirectoryMode(ctx, granted),
+    ceiling: derivationCeiling(policy, ctx, granted),
     deny: denyPaths,
+    granted,
     context: {
       canonicalize: ctx.canonicalize,
       readRepositoryFile: ctx.readRepositoryFile,
@@ -287,10 +290,17 @@ function compile(
   const denyPaths = dedupe(
     policy.fs.deny.map((item) => expandPath(item, ctx)),
   );
+  // The authority already emitted above, as compiled: a policy root that is
+  // missing on the host is not bound, so it supplies nothing. Derivation
+  // composes with exactly this and can only add to it.
+  const granted: PolicyMounts = {
+    rw: dedupe([...(policy.fs.home === "rw" ? [ctx.home] : []), ...boundRw]),
+    ro: boundRo,
+  };
   // A linked worktree's repository lives outside `$PWD`. The derivation is
   // probed, validated, and frozen here — before launch — and lowered in
   // specificity order so each writable child overlays the read-only common root.
-  const git = deriveGitAuthority(policy, ctx, rw, ro, denyPaths);
+  const git = deriveGitAuthority(policy, ctx, granted, denyPaths);
   for (const bind of git?.binds ?? []) {
     args.push(
       bind.access === "rw" ? "--bind" : "--ro-bind",

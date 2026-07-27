@@ -74,16 +74,23 @@ function derive(
   repository: FakeRepository,
   mode: "ro" | "rw" | null = "rw",
   overrides: {
-    readonly ceiling?: readonly string[];
+    readonly ceiling?: { readonly rw: string[]; readonly ro: string[] };
     readonly deny?: readonly string[];
     readonly worktree?: string;
+    readonly granted?: { readonly rw: string[]; readonly ro: string[] };
   } = {},
 ) {
   return deriveGitWorktreeAuthority({
     worktree: overrides.worktree ?? WORKTREE,
     mode,
-    ceiling: overrides.ceiling ?? [ROOT],
+    ceiling: overrides.ceiling ?? { rw: [ROOT], ro: [ROOT] },
     deny: overrides.deny ?? [`${HOME}/.ssh`],
+    // The default mirrors `policy()` below: a `$PWD`-scoped profile, which
+    // grants nothing above the launch worktree.
+    granted: overrides.granted ?? {
+      rw: mode === "rw" ? [overrides.worktree ?? WORKTREE] : [],
+      ro: mode === "ro" ? [overrides.worktree ?? WORKTREE] : [],
+    },
     context: metadata(repository),
   });
 }
@@ -116,18 +123,20 @@ Deno.test("law: linked worktree derives git metadata at profile authority", () =
   // The common root stays read-only; only the four ordinary-commit surfaces
   // become writable, parents before children so a child overlays its parent.
   assertEquals(authority.binds, [
-    { path: COMMON, access: "ro" },
-    { path: `${COMMON}/logs`, access: "rw" },
-    { path: `${COMMON}/objects`, access: "rw" },
-    { path: `${COMMON}/refs`, access: "rw" },
-    { path: ADMIN, access: "rw" },
+    { path: COMMON, access: "ro", source: "derived" },
+    { path: `${COMMON}/logs`, access: "rw", source: "derived" },
+    { path: `${COMMON}/objects`, access: "rw", source: "derived" },
+    { path: `${COMMON}/refs`, access: "rw", source: "derived" },
+    { path: ADMIN, access: "rw", source: "derived" },
   ]);
 });
 
 Deno.test("law: advisor linked worktree git metadata stays read only", () => {
   const authority = derived(derive(linkedWorktree(), "ro"));
   assertEquals(authority.mode, "ro");
-  assertEquals(authority.binds, [{ path: COMMON, access: "ro" }]);
+  assertEquals(authority.binds, [
+    { path: COMMON, access: "ro", source: "derived" },
+  ]);
 });
 
 Deno.test("law: ordinary checkout and bare repository derive no git metadata", () => {
@@ -287,22 +296,162 @@ Deno.test("falsifier: derived git mount cannot overlay the launch worktree", () 
 Deno.test("falsifier: derived git path inside denied root aborts before launch", () => {
   const denied = linkedWorktree();
   const diagnostic = unsupported(
-    derive(denied, "rw", { deny: [MAIN], ceiling: [ROOT] }),
+    derive(denied, "rw", { deny: [MAIN], ceiling: { rw: [ROOT], ro: [ROOT] } }),
   );
   assertStringIncludes(diagnostic, MAIN);
 });
 
+Deno.test("law: derivation emits nothing when policy already grants every git path", () => {
+  // The `infra`-style shape: one trusted read-write root holds both the linked
+  // worktree and the repository it belongs to. Deriving a read-only common
+  // mount here would *narrow* authority the profile already granted, turning
+  // `config`, `hooks`, and `packed-refs` read-only after the fact.
+  const authority = derived(
+    derive(linkedWorktree(), "rw", { granted: { rw: [ROOT], ro: [] } }),
+  );
+  assertEquals(authority.commonDir, COMMON);
+  assertEquals(authority.binds, []);
+  assertEquals(authority.notes.length, 1);
+  assertStringIncludes(authority.notes[0], ROOT);
+
+  // Read-only policy coverage of the common directory is equally sufficient for
+  // an advisor: re-binding it read-only would change nothing.
+  const advisor = derived(
+    derive(linkedWorktree(), "ro", { granted: { rw: [], ro: [ROOT] } }),
+  );
+  assertEquals(advisor.binds, []);
+
+  // But read-only coverage does not satisfy a writer: the writable members are
+  // still missing, and only they are composed — never a broader parent.
+  const writer = derived(
+    derive(linkedWorktree(), "rw", { granted: { rw: [WORKTREE], ro: [ROOT] } }),
+  );
+  assertEquals(writer.binds.map((bind) => bind.path), [
+    `${COMMON}/logs`,
+    `${COMMON}/objects`,
+    `${COMMON}/refs`,
+    ADMIN,
+  ]);
+  assertEquals(writer.binds.every((bind) => bind.access === "rw"), true);
+});
+
+Deno.test("falsifier: derived read only common parent cannot shadow a granted writable child", () => {
+  // The common directory itself is unmounted, so the derivation must bind it
+  // read-only — but the profile already granted write on a member of it. The
+  // read-only parent is emitted first and the granted child is restored after
+  // it, so composition never subtracts.
+  const hooks = `${COMMON}/hooks`;
+  const repository = linkedWorktree();
+  repository.kinds.set(hooks, "directory");
+  const authority = derived(
+    derive(repository, "rw", { granted: { rw: [WORKTREE, hooks], ro: [] } }),
+  );
+  const common = authority.binds.findIndex((bind) => bind.path === COMMON);
+  const restored = authority.binds.findIndex((bind) => bind.path === hooks);
+  assert(common >= 0, "the common directory was not mounted read-only");
+  assert(restored > common, "a granted writable child must overlay the parent");
+  assertEquals(authority.binds[restored], {
+    path: hooks,
+    access: "rw",
+    source: "restored",
+  });
+  // Restoration is not a widening: it re-asserts exactly the policy's own root.
+  assertEquals(
+    authority.binds.filter((bind) => bind.source === "restored").map((bind) =>
+      bind.path
+    ),
+    [hooks],
+  );
+});
+
+Deno.test("law: a read-only placement root cannot host a writable derived mount", () => {
+  // The graded ceiling is the authority decision made structural. A root that
+  // may hold a derived read-only mount has *not* authorized a derived writable
+  // object or ref store inside it: only `fs.derive` and the policy's own
+  // read-write mounts can.
+  const readOnlyPlacement = { rw: [], ro: [ROOT] } as const;
+  const diagnostic = unsupported(
+    derive(linkedWorktree(), "rw", {
+      ceiling: { rw: [...readOnlyPlacement.rw], ro: [...readOnlyPlacement.ro] },
+      granted: { rw: [WORKTREE], ro: [] },
+    }),
+  );
+  assertStringIncludes(diagnostic, "derived rw mount");
+  assertStringIncludes(diagnostic, "fs.derive");
+
+  // The same launch with the region declared for derivation is supported, and
+  // an advisor never needed it: its mounts are read-only.
+  assertEquals(
+    derived(derive(linkedWorktree(), "rw", {
+      ceiling: { rw: [ROOT], ro: [ROOT] },
+      granted: { rw: [WORKTREE], ro: [] },
+    })).binds.filter((bind) => bind.access === "rw").length,
+    4,
+  );
+  assertEquals(
+    derived(derive(linkedWorktree(), "ro", {
+      ceiling: { rw: [], ro: [ROOT] },
+      granted: { rw: [], ro: [WORKTREE] },
+    })).binds,
+    [{ path: COMMON, access: "ro", source: "derived" }],
+  );
+});
+
+Deno.test("falsifier: forged pointer into a trusted root cannot acquire write access", () => {
+  // The placement ceiling says *where* a derived mount may land, never that a
+  // repository may claim it. A project pointing at a genuine linked worktree
+  // inside the ceiling still fails the back-pointer proof, because writing that
+  // back pointer needs write access to the very root it is trying to acquire.
+  const forged = linkedWorktree();
+  const victim = "/srv/repo/victim/.git";
+  for (
+    const path of [
+      "/srv/repo/victim",
+      victim,
+      `${victim}/objects`,
+      `${victim}/refs`,
+      `${victim}/logs`,
+      `${victim}/worktrees`,
+      `${victim}/worktrees/wt`,
+    ]
+  ) forged.kinds.set(path, "directory");
+  forged.kinds.set(`${victim}/worktrees/wt/gitdir`, "file");
+  forged.kinds.set(`${victim}/worktrees/wt/commondir`, "file");
+  forged.files.set(`${WORKTREE}/.git`, `gitdir: ${victim}/worktrees/wt\n`);
+  // The victim's own back pointer names the victim's worktree, not the forger's.
+  forged.files.set(
+    `${victim}/worktrees/wt/gitdir`,
+    "/srv/repo/victim-wt/.git\n",
+  );
+  forged.files.set(`${victim}/worktrees/wt/commondir`, "../..\n");
+
+  const diagnostic = unsupported(
+    derive(forged, "rw", {
+      ceiling: { rw: [ROOT], ro: [ROOT] },
+      granted: { rw: [WORKTREE], ro: [] },
+    }),
+  );
+  assertStringIncludes(diagnostic, "not the launch worktree pointer");
+  assertStringIncludes(diagnostic, `${WORKTREE}/.git`);
+});
+
 // ---------- lowering, evidence, and the compile boundary ----------
 
-function policy(access: "rw" | "ro"): ReturnType<typeof parsePolicy> {
+function policy(
+  access: "rw" | "ro",
+  extraRw: readonly string[] = [],
+): ReturnType<typeof parsePolicy> {
   return parsePolicy({
     version: 0,
     subject: { agent: "category", label: "test" },
     fs: {
       home: "tmpfs",
-      rw: access === "rw" ? ["$PWD"] : [],
+      rw: [...(access === "rw" ? ["$PWD"] : []), ...extraRw],
       ro: access === "ro" ? ["$PWD"] : [],
       deny: [],
+      // The trusted derivation ceiling. Without it a linked worktree outside
+      // `$PWD` has nowhere its metadata may be placed.
+      derive: [`${ROOT}/**`],
     },
     net: { mode: "host" },
     env: { pass: [] },
@@ -364,6 +513,48 @@ Deno.test("law: derived writable git children overlay read only common parent", 
   assertEquals(compiled.writablePaths.includes(COMMON), false);
   assert(compiled.writablePaths.includes(`${COMMON}/objects`));
   assert(compiled.writablePaths.includes(ADMIN));
+});
+
+Deno.test("law: derivation never narrows a policy root that already covers the repository", () => {
+  // An `infra`-style profile: one granted read-write root holds the linked
+  // worktree *and* the repository. Emitting the derived read-only common mount
+  // after the policy's own bind would silently turn local configuration, hooks,
+  // and packed refs read-only.
+  const compiled = compilePolicy(
+    policy("rw", [ROOT]),
+    compileContext(linkedWorktree()),
+  );
+  const argv = [...compiled.argv];
+  assertEquals(
+    argv.filter((arg) => arg === COMMON || arg.startsWith(`${COMMON}/`)),
+    [],
+    "no derived git mount may be emitted over an already-writable root",
+  );
+  assertEquals(compiled.writablePaths, [WORKTREE, ROOT]);
+  assert(
+    compiled.warnings.some((warning) => warning.includes(ROOT)),
+    `the skipped derivation must be visible: ${
+      JSON.stringify(compiled.warnings)
+    }`,
+  );
+});
+
+Deno.test("falsifier: an auto read scope alone cannot place a derived git mount", () => {
+  // `escalation.auto` names read scopes the *gate* may grant on request. It is
+  // not placement authority, and it must not become the source of write
+  // authority: only the explicit `fs.derive` capability can widen placement.
+  const withoutDerive = parsePolicy({
+    ...policy("rw"),
+    fs: { ...policy("rw").fs, derive: [] },
+  });
+  const error = assertThrows(
+    () => compilePolicy(withoutDerive, compileContext(linkedWorktree())),
+    PolicyCompileError,
+  );
+  assertStringIncludes(error.message, "outside every trusted repository root");
+  assertStringIncludes(error.message, "fs.derive");
+  // The auto rule is still there, and still grants nothing here.
+  assertEquals(withoutDerive.escalation.auto[0]["fs.ro"], `${ROOT}/**`);
 });
 
 Deno.test("law: explain proves no broad git parent became writable", () => {
@@ -469,6 +660,67 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   return new TextDecoder().decode(output.stdout).trim();
 }
 
+Deno.test("law: real git fetch writes FETCH_HEAD inside the writable admin directory", async () => {
+  // `FETCH_HEAD` is not in Git's common-directory list, so it is per-worktree:
+  // `git fetch` writes it into `<common>/worktrees/<name>`, which the derivation
+  // mounts read-write. Fetching is therefore *supported*, not refused.
+  const root = await Deno.makeTempDir({ prefix: "pagu-fetch-head-" });
+  const canonicalRoot = await Deno.realPath(root);
+  try {
+    await Deno.mkdir(`${canonicalRoot}/main`);
+    await git(`${canonicalRoot}/main`, "init", "--quiet", ".");
+    await Deno.writeTextFile(`${canonicalRoot}/main/a.txt`, "hello\n");
+    await git(`${canonicalRoot}/main`, "add", "a.txt");
+    await git(`${canonicalRoot}/main`, "commit", "--quiet", "-m", "seed");
+    const branch = await git(
+      `${canonicalRoot}/main`,
+      "branch",
+      "--show-current",
+    );
+    await git(
+      `${canonicalRoot}/main`,
+      "worktree",
+      "add",
+      "--quiet",
+      `${canonicalRoot}/wt`,
+      "-b",
+      "feature",
+    );
+    const worktree = `${canonicalRoot}/wt`;
+    const authority = derived(
+      deriveGitWorktreeAuthority({
+        worktree,
+        mode: "rw",
+        ceiling: { rw: [canonicalRoot], ro: [canonicalRoot] },
+        deny: [],
+        granted: { rw: [worktree], ro: [] },
+        context: createRepositoryMetadataContext(),
+      }),
+    );
+    // The only remote reachable under the derived mounts is the common
+    // directory itself, which is exactly what makes this a fair check.
+    await git(worktree, "fetch", authority.commonDir, branch);
+    const fetchHead = `${authority.adminDir}/FETCH_HEAD`;
+    assertEquals((await Deno.stat(fetchHead)).isFile, true);
+    assertEquals(
+      await Deno.stat(`${authority.commonDir}/FETCH_HEAD`).then(() => true)
+        .catch(() => false),
+      false,
+      "FETCH_HEAD must not land in the read-only common root",
+    );
+    assert(
+      authority.binds.some((bind) =>
+        bind.access === "rw" &&
+        (bind.path === authority.adminDir ||
+          fetchHead.startsWith(`${bind.path}/`))
+      ),
+      "the admin directory holding FETCH_HEAD must be writable",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("law: real git linked worktree probe freezes canonical metadata", async () => {
   const root = await Deno.makeTempDir({ prefix: "pagu-worktree-" });
   const canonicalRoot = await Deno.realPath(root);
@@ -496,8 +748,9 @@ Deno.test("law: real git linked worktree probe freezes canonical metadata", asyn
       deriveGitWorktreeAuthority({
         worktree,
         mode: "rw",
-        ceiling: [canonicalRoot],
+        ceiling: { rw: [canonicalRoot], ro: [canonicalRoot] },
         deny: [],
+        granted: { rw: [worktree], ro: [] },
         context,
       }),
     );
@@ -526,8 +779,9 @@ Deno.test("law: real git linked worktree probe freezes canonical metadata", asyn
       deriveGitWorktreeAuthority({
         worktree,
         mode: "rw",
-        ceiling: [canonicalRoot],
+        ceiling: { rw: [canonicalRoot], ro: [canonicalRoot] },
         deny: [],
+        granted: { rw: [worktree], ro: [] },
         context,
       }),
     );
@@ -538,8 +792,9 @@ Deno.test("law: real git linked worktree probe freezes canonical metadata", asyn
       deriveGitWorktreeAuthority({
         worktree,
         mode: "rw",
-        ceiling: [canonicalRoot],
+        ceiling: { rw: [canonicalRoot], ro: [canonicalRoot] },
         deny: [],
+        granted: { rw: [worktree], ro: [] },
         context: createRepositoryMetadataContext(),
       }).kind,
       "unsupported",
