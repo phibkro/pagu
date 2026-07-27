@@ -220,17 +220,30 @@ outside `$PWD`. Launching from one used to produce
 `fatal: not a git repository: (null)`. pagu now derives those mounts, at the
 same access the profile already grants on the launch directory and no wider:
 
-| Path                               | Advisor   | Writer profiles |
+**This table describes _derived_ authority only** — what pagu adds when the
+policy does not already reach the repository. It is a floor, never a cap: a
+profile that already mounts the common directory more broadly stays that broad,
+because derivation composes with the policy and never narrows it. Read every row
+as "at least this".
+
+| Path (when derived)                | Advisor   | Writer profiles |
 | ---------------------------------- | --------- | --------------- |
 | Git common directory root          | read-only | read-only       |
 | `objects`, `refs`, `logs`          | read-only | read-write      |
 | this worktree's `worktrees/<name>` | read-only | read-write      |
 
-Supported: status, diff, log, stage, commit, branch and reflog updates,
-including branches that exist only in `packed-refs`, and `git fetch` — Git keeps
-`FETCH_HEAD` per worktree, inside the writable `worktrees/<name>` directory.
-Refused, because the common root is never writable: `git config --local`,
-`pack-refs`, `gc`, `repack`, and `worktree add/prune`.
+Supported when these are the derived mounts: status, diff, log, stage, commit,
+branch and reflog updates, including branches that exist only in `packed-refs`,
+and `git fetch` — Git keeps `FETCH_HEAD` per worktree, inside the writable
+`worktrees/<name>` directory. Refused, because the derived common root is not
+writable: `git config --local`, `pack-refs`, `gc`, `repack`, and
+`worktree add/prune`.
+
+Under an explicit policy that already grants more — an `infra`-style profile
+whose write root holds both the checkout and its common directory — nothing is
+derived, those operations are **not** refused, and even an advisor sees whatever
+that policy granted. pagu reports the skipped derivation on stderr so the wider
+authority is visible rather than inferred from absent mounts.
 
 #### A worktree is not a branch sandbox
 
