@@ -49,6 +49,7 @@ design; this file owns sequence and remaining work.
 | 20 — gated egress       | Prove the Claw Patrol composition and make a missing gateway fail loud instead of yielding the open internet.       | next           |
 | 21 — credential channel | Destination-bound credential names in policy, placeholders inside, real values only on the wire.                    | after 20       |
 | 22 — egress approval    | Route a blocked call into the existing gate queue and widen it without stopping the box.                            | after 21       |
+| build provenance        | One injected source fact behind `pagu --version` and packaged host/inhabitant parity; unknown stays unknown.         | ✓ shipped      |
 | worktree visibility     | Derive a linked worktree's exact Git metadata at profile authority under a trusted ceiling, or refuse.              | ✓ shipped      |
 | `pagu doctor`           | Read-only orientation report: position, profile, harness, git visibility, request tool, toolchain.                  | queued         |
 | playwright regression   | Root-cause heavy-page browser death inside the worker profile; `/dev/shm` and nested-userns both falsified.         | open           |
@@ -255,7 +256,9 @@ sequence:
 - **`pagu doctor`.** One read-only report: host versus inhabitant position,
   selected profile and harness, whether permission bypass is harness-owned,
   repository and worktree visibility, request-tool availability, and visible
-  toolchain executables.
+  toolchain executables. Build identity is no longer part of this item:
+  `pagu --version` already answers it, and `pagu doctor` should project that
+  record rather than compute a second one.
 - **Playwright regression.** Heavy-page navigation kills the browser inside the
   worker profile while a light page loads in ~1.2s; proven pre-existing by a
   clean-tree re-run. Both leading hypotheses were measured and rejected:
@@ -410,6 +413,12 @@ Slice 5 turns a recorded approval into a new launch as one security lifecycle.
 - Route every surface through the existing Approver port.
 
 ## Homelab flake-input migration
+
+The lock currently pins `17179f683e732db8cb857913b080ef97fa210b5f`, which
+predates the provenance contract and therefore cannot answer `pagu --version`.
+Advancing that pin to the reviewed commit carrying this contract is a change to
+the homelab repository, not this one, and is the prerequisite for the parity
+check being runnable against the system-profile executable at all.
 
 Next:
 

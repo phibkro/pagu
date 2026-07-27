@@ -15,6 +15,40 @@
         "aarch64-darwin"
       ];
       forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f system nixpkgs.legacyPackages.${system});
+      /*
+        THE source fact for every packaged pagu identity claim.
+
+        `self` is the only thing in the build that can prove which tree produced
+        these executables, so it is the single home of that fact: no wrapper, no
+        shell script, and no checked-in constant may state a revision. What
+        cannot be proven is reported as unknown rather than approximated —
+        `state = "unknown"` with a null revision is the honest answer for a
+        source whose flake reference carries no revision at all, and it can
+        never be mistaken for a build that was actually pinned.
+
+        A dirty tree keeps its base revision AND says so: the revision alone
+        does not determine behavior there, which is exactly why `sourceHash`
+        (the exact tree hash nix computed) travels with it.
+      */
+      buildProvenance =
+        if self ? rev then
+          {
+            state = "clean";
+            revision = self.rev;
+            sourceHash = self.narHash;
+          }
+        else if self ? dirtyRev then
+          {
+            state = "dirty";
+            revision = nixpkgs.lib.removeSuffix "-dirty" self.dirtyRev;
+            sourceHash = self.narHash;
+          }
+        else
+          {
+            state = "unknown";
+            revision = null;
+            sourceHash = self.narHash or null;
+          };
       devSystem = "x86_64-linux";
       devPkgs = nixpkgs.legacyPackages.${devSystem};
       /*
@@ -69,9 +103,9 @@
             vendored module fails loudly at launch rather than silently
             reaching the network.
           */
-          paguSource = builtins.path {
+          paguSourceTree = builtins.path {
             path = ./.;
-            name = "pagu-source";
+            name = "pagu-source-tree";
             filter =
               path: _type:
               let
@@ -86,6 +120,29 @@
               in
               keep && !(nixpkgs.lib.hasSuffix ".test.ts" path);
           };
+          /*
+            The injection point, and the derivation edge the provenance contract
+            asks for. Overwriting one file in the store copy of the source — the
+            copy BOTH `pagu` and `pagu-mcp` execute from — is what makes the two
+            packaged entrypoints structurally incapable of disagreeing about
+            which build they are. There is no second substitution site to keep
+            in sync, and a renamed target fails the build loudly instead of
+            leaving the honest-unknown default behind and looking fine.
+
+            The checked-in `src/provenance/build.json` is the development
+            answer: a plain `deno run` is not a packaged artifact, so it reports
+            unknown.
+          */
+          paguSource = pkgs.runCommand "pagu-source" { } ''
+            cp -R ${paguSourceTree} "$out"
+            chmod -R u+w "$out"
+            test -f "$out/src/provenance/build.json" || {
+              echo "pagu-source: build-provenance injection target is missing" >&2
+              exit 1
+            }
+            cp ${pkgs.writeText "pagu-build-provenance.json" (builtins.toJSON buildProvenance)} \
+              "$out/src/provenance/build.json"
+          '';
           paguSkill = builtins.path {
             path = ./skills/pagu;
             name = "pagu-agent-skill";

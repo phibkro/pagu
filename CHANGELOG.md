@@ -65,6 +65,24 @@ only forward work.
 
 ## Product launch surface
 
+- Added `pagu --version`, which reports the build that is answering instead of
+  leaving a shadowed installation silently presenting a different command
+  surface. `--json` prints one stable line for automation. The report starts no
+  harness or gate and holds no permissions at all.
+- Made the flake's own `self` the single home of that fact: `flake.nix` derives
+  the record once and writes it over `src/provenance/build.json` in the store
+  copy of the source both `pagu` and `pagu-mcp` execute from, so the two
+  packaged entrypoints cannot disagree about which build they are. The MCP
+  server's advertised version is now derived from `deno.json` rather than
+  hand-copied.
+- Kept unknown provenance honest. A development checkout reports `unknown`
+  rather than guessing from the working tree, a dirty packaged build keeps its
+  base revision plus the exact nix source hash, a malformed injection fails loud
+  instead of degrading to `unknown`, and parity refuses to call two unknown
+  observations equal.
+- Added `deno task journey:provenance`, which probes the built `pagu` from the
+  host and from inside a real `pagu-box`, proves the inhabitant probe entered a
+  distinct mount namespace, and fails with both observed records on a mismatch.
 - Changed the launch grammar so a launch names its harness: `pagu claude`,
   `pagu codex`, `pagu pi`, or a path whose basename infers one. `--` is now
   reserved for executables that would otherwise parse as an option, and bare

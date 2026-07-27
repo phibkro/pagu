@@ -36,6 +36,11 @@ import {
   loadLaunchConfig,
   resolveLaunch,
 } from "../launch/index.ts";
+import {
+  buildProvenance,
+  formatProvenance,
+  provenanceJson,
+} from "../provenance/index.ts";
 
 export interface GateOptions {
   readonly command: "gate";
@@ -72,7 +77,17 @@ interface TelemetryOptions {
   readonly top: number;
 }
 
-type Options = GateOptions | McpOptions | ResolveOptions | TelemetryOptions;
+interface VersionOptions {
+  readonly command: "version";
+  readonly json: boolean;
+}
+
+type Options =
+  | GateOptions
+  | McpOptions
+  | ResolveOptions
+  | TelemetryOptions
+  | VersionOptions;
 
 export interface CliParseContext {
   readonly launchConfig?: LaunchConfigV0;
@@ -94,7 +109,8 @@ function usage(message?: string): never {
       "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude|pi [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
       "  pagu mcp\n" +
-      "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
+      "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]\n" +
+      "  pagu --version [--json]",
   );
   Deno.exit(message ? 64 : 0);
 }
@@ -190,6 +206,13 @@ export function parseArgs(
   if (args.length === 0) usage();
   const command = args[0];
   if (command === "-h" || command === "--help") usage();
+  if (command === "--version" || command === "version") {
+    const tokens = tokenize(args.slice(1), { string: [], boolean: ["json"] });
+    if (tokens.unknownFlags.length > 0 || tokens.positional.length > 0) {
+      usage("version takes only --json");
+    }
+    return { command: "version", json: tokens.bool("json") };
+  }
   if (command === "mcp") {
     if (args.length !== 1) usage("mcp takes no arguments");
     return { command };
@@ -698,15 +721,38 @@ async function telemetry(options: TelemetryOptions): Promise<void> {
   );
 }
 
+/**
+ * The one home for "this word does not start a journey".
+ *
+ * Only the root launch path may read the user's launch configuration. Keeping
+ * the set here rather than inline in `main` means adding a reporting command
+ * cannot accidentally give it filesystem reach: `pagu --version` must answer
+ * from the executable itself, with no configuration, state, or gate.
+ */
+const NON_LAUNCH_COMMANDS: ReadonlySet<string> = new Set([
+  "gate",
+  "resolve",
+  "mcp",
+  "telemetry",
+  "version",
+  "--version",
+  "-h",
+  "--help",
+]);
+
 export async function main(args = Deno.args): Promise<void> {
   const command = args[0];
-  const launchConfig = command === "gate" || command === "resolve" ||
-      command === "mcp" || command === "telemetry" || command === "-h" ||
-      command === "--help"
+  const launchConfig = command !== undefined &&
+      NON_LAUNCH_COMMANDS.has(command)
     ? undefined
     : await loadLaunchConfig();
   const options = parseArgs(args, { launchConfig });
-  if (options.command === "resolve") await resolve(options);
+  if (options.command === "version") {
+    const provenance = buildProvenance();
+    console.log(
+      options.json ? provenanceJson(provenance) : formatProvenance(provenance),
+    );
+  } else if (options.command === "resolve") await resolve(options);
   else if (options.command === "mcp") await servePaguMcpStdio();
   else if (options.command === "telemetry") await telemetry(options);
   else await gate(options);

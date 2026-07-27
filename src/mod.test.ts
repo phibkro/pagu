@@ -178,6 +178,22 @@ const EXPECTED_PUBLIC_API: { name: string; kind: string }[] = [
   { name: "ApprovalRateTelemetryV0", kind: "interface" },
   { name: "DecisionTierTelemetryV0", kind: "interface" },
   { name: "PruneCandidateTelemetryV0", kind: "interface" },
+  // Packaged build provenance v0.
+  { name: "buildProvenance", kind: "function" },
+  { name: "parseSourceProvenance", kind: "function" },
+  { name: "parseBuildProvenance", kind: "function" },
+  { name: "provenanceIdentity", kind: "function" },
+  { name: "provenanceJson", kind: "function" },
+  { name: "formatProvenance", kind: "function" },
+  { name: "assertProvenanceParity", kind: "function" },
+  { name: "BUILD_PROVENANCE_SCHEMA_ID", kind: "variable" },
+  { name: "UNKNOWN_SOURCE", kind: "variable" },
+  { name: "BuildProvenanceError", kind: "class" },
+  { name: "ProvenanceParityError", kind: "class" },
+  { name: "BuildProvenanceV0", kind: "typeAlias" },
+  { name: "SourceProvenanceV0", kind: "typeAlias" },
+  { name: "SourceState", kind: "typeAlias" },
+  { name: "ProvenanceObservation", kind: "interface" },
 ];
 
 interface DocSymbol {

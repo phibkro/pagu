@@ -60,6 +60,77 @@ nix run .#pagu-box -- --help
 The default flake package is `pagu`. Direct enforcement lives at `pagu box`;
 `pagu-box` remains an exact compatibility executable for existing automation.
 
+### Which build is answering
+
+`pagu --version` reports the build, not a guess. It starts no harness and no
+gate, needs no configuration, and holds no permissions:
+
+```console
+$ pagu --version
+pagu 0.1.0
+revision 9a0ce6e0d50c609c0bdeda804e509f68e267ce95 (clean)
+source   sha256-8QlkVkaE1xtNDHxEtKq5W9C1RFvFfrhxMsIAkQlAkFo=
+```
+
+`--json` prints the same record as one stable line for automation:
+
+```sh
+pagu --version --json
+```
+
+An executable built outside Nix — a plain `deno run` of a checkout — cannot
+prove which source produced it, so it says so:
+
+```console
+revision unknown (this executable was not built from a packaged source)
+```
+
+Unknown is never filled in with a plausible value, and two unknown builds are
+never reported as matching.
+
+### Find and remove a shadowing install
+
+Two installs of pagu can answer the same name: the box replaces `$HOME`, so a
+user-profile executable disappears inside the sandbox and a system-profile one
+answers instead. The surfaces then differ — an older build has no `pagu box`
+subcommand at all — with nothing on screen to say why.
+
+Ask the executables, not the search path:
+
+```sh
+pagu --version --json                     # host position
+pagu box --profile proof -- pagu --version --json   # inhabitant position
+```
+
+Matching records mean one implementation. Different records — or an
+`unknown option "--version"` from either side, which is what a build predating
+this contract answers — mean two. Only then use the search path, to locate the
+one to remove:
+
+```sh
+type -a pagu
+nix profile list | grep pagu
+nix profile remove <name-or-index>
+```
+
+The reported provenance is the authority here. `type -a` and `nix profile list`
+describe mutable installation state that changes under you; they tell you where
+the offending executable lives, never whether it is the right one.
+
+To prove parity from artifacts rather than from screen output — the check to run
+after packaging changes:
+
+```sh
+nix build .#pagu .#pagu-box --print-out-paths --no-link
+deno task journey:provenance /nix/store/…-pagu/bin/pagu /nix/store/…-pagu-box/bin/pagu-box
+```
+
+The journey probes the built `pagu` from the host and again from inside a real
+`pagu-box`, proves the inhabitant probe entered a distinct mount namespace, and
+fails with both observed records when they disagree. Pass
+`--shadow /path/to/other/pagu` to additionally prove a known-different install
+is refused.
+
 ## Start a protected agent
 
 Name the harness. No `--` separator is needed:

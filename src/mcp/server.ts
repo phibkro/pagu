@@ -5,6 +5,7 @@ import {
   type GateDecision,
   parseRequestInput,
 } from "../request/index.ts";
+import { buildProvenance } from "../provenance/index.ts";
 
 export type PaguMcpMessage = {
   readonly jsonrpc: "2.0";
@@ -227,7 +228,10 @@ export function createPaguMcpSession(
           capabilities: { tools: {} },
           serverInfo: {
             name: "pagu",
-            version: "0.1.0",
+            // Derived, not copied: this is the second packaged entrypoint, and
+            // a hand-written release here could disagree with `pagu --version`
+            // about which implementation an inhabitant is talking to.
+            version: buildProvenance().release,
             description: "Request-only access to the enclosing pagu gate",
           },
         });
