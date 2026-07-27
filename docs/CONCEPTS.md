@@ -62,6 +62,7 @@ For schema v0, narrowing means:
 | `fs.rw`             | every A path is canonically within a B read-write path              |
 | `fs.ro`             | every A path is canonically within a B read-only or read-write path |
 | `fs.deny`           | A may contain more denies                                           |
+| `fs.derive`         | every A root is within a B derivation root                          |
 | `net`               | false ≤ true                                                        |
 | `env.pass`          | A names are a subset of B names                                     |
 | `escalation.auto`   | A rules are already authorized by B                                 |

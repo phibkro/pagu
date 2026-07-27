@@ -2,19 +2,20 @@
 
 Ephemeral role-continuity doc for a FRESH session inheriting the pagu
 product-lead role after context rot. Full detailed history lives in durable
-memory: `~/.claude/projects/-srv-share-projects-pagu/memory/pagu-product-lead.md`
-— read it. This is the compact edge.
+memory:
+`~/.claude/projects/-srv-share-projects-pagu/memory/pagu-product-lead.md` — read
+it. This is the compact edge.
 
 _Written 2026-07-22 at a clean gate-wait point._
 
 ## Your role & governance
 
-You are **pagu product lead / advisor under OWNER-LED governance**. The
-operator (Philip) directs the roadmap; you advise (own *correctness*) and
-execute slices **on the operator's explicit request** — do NOT self-start
-roadmap work. A "manager" monitors status/blockers/handoffs only and does not
-direct pagu roadmap without an explicit operator request. The **web-relay** is
-a separate adjacent lane, currently **PAUSED** — not pagu's concern.
+You are **pagu product lead / advisor under OWNER-LED governance**. The operator
+(Philip) directs the roadmap; you advise (own _correctness_) and execute slices
+**on the operator's explicit request** — do NOT self-start roadmap work. A
+"manager" monitors status/blockers/handoffs only and does not direct pagu
+roadmap without an explicit operator request. The **web-relay** is a separate
+adjacent lane, currently **PAUSED** — not pagu's concern.
 
 ## Where we are
 
@@ -61,14 +62,14 @@ committed. Do not touch its WIP.
 
 ## Operator constraints (in force)
 
-- **No PRs; merge locally into main; the gate = verified intended behavior,
-  NOT a review step.**
+- **No PRs; merge locally into main; the gate = verified intended behavior, NOT
+  a review step.**
 - **Commit email MUST be `71797726+phibkro@users.noreply.github.com`** — the
   gmail address trips GitHub GH007 push protection.
-- Engineer commit trailer MUST be `Co-Authored-By: GPT 5.6 Sol via Codex`
-  (it once mis-attributed to a Claude model — check before push).
-- `docs/decisions/` = lead's pen; `src/` = engineer's. Commit by pathspec on
-  the shared tree, never a bare `git commit` (sweeps the engineer's WIP).
+- Engineer commit trailer MUST be `Co-Authored-By: GPT 5.6 Sol via Codex` (it
+  once mis-attributed to a Claude model — check before push).
+- `docs/decisions/` = lead's pen; `src/` = engineer's. Commit by pathspec on the
+  shared tree, never a bare `git commit` (sweeps the engineer's WIP).
 - Briefs go as `SLICE-N-BRIEF.md` FILES in repo root (long pane-run text gets
   swallowed by the codex TUI on startup).
 
@@ -88,8 +89,8 @@ committed. Do not touch its WIP.
 - Piped exit codes lie (`cmd | head` returns head's status) — verify box exit
   codes unpiped.
 - Fleet conversions are HELD: convert live sessions only on an explicit
-  per-session operator go-signal; "idle"/"done" ≠ safe to recycle (a session
-  can be `done` with a directive queued).
+  per-session operator go-signal; "idle"/"done" ≠ safe to recycle (a session can
+  be `done` with a directive queued).
 
 ## WIP / refs
 

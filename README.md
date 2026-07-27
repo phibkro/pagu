@@ -174,6 +174,7 @@ Policy fields:
 | `fs.home`           | Bind the host home read-write, or replace it with a temporary filesystem. |
 | `fs.rw` / `fs.ro`   | Additional read-write or read-only bind mounts.                           |
 | `fs.deny`           | Concealed paths; built-in SSH and GPG denies are always added.            |
+| `fs.derive`         | Optional: where pagu may place mounts derived from repository metadata.   |
 | `net`               | Share or isolate the host network namespace.                              |
 | `env.pass`          | Environment names copied into the scrubbed child environment.             |
 | `escalation.auto`   | Read-only child scopes the gate may approve for the session.              |
@@ -226,16 +227,47 @@ same access the profile already grants on the launch directory and no wider:
 | this worktree's `worktrees/<name>` | read-only | read-write      |
 
 Supported: status, diff, log, stage, commit, branch and reflog updates,
-including branches that exist only in `packed-refs`. Refused, because the common
-root is never writable: `git config --local`, `pack-refs`, `gc`, `repack`,
-`worktree add/prune`, and anything writing `FETCH_HEAD`.
+including branches that exist only in `packed-refs`, and `git fetch` — Git keeps
+`FETCH_HEAD` per worktree, inside the writable `worktrees/<name>` directory.
+Refused, because the common root is never writable: `git config --local`,
+`pack-refs`, `gc`, `repack`, and `worktree add/prune`.
 
-The derived paths must lie inside a trusted root the _trusted_ policy layer
-already names — a standing `fs.rw`/`fs.ro` mount or an `escalation.auto` read
-scope. A repository pointer that resolves outside every one of them, or that
-cannot prove it belongs to this worktree, aborts the launch with a diagnostic
-instead of being mounted. Submodules and `--separate-git-dir` layouts are
-refused for that reason. Ordinary checkouts and bare repositories are untouched.
+#### A worktree is not a branch sandbox
+
+Objects and refs are **shared repository state**, so working-tree isolation is
+not ref isolation. A writer in one linked worktree can create, move, or delete
+any branch in the repository, and every other worktree and the host see it
+immediately — without ever reading another worktree's files. Use worktrees to
+keep concurrent agents out of each other's _files_; do not rely on them to keep
+one agent out of another's _branch_.
+
+#### Where a derived mount may be placed
+
+Placement is an explicit trusted capability, graded by the access it needs:
+
+| Access needed  | May be placed inside                                     |
+| -------------- | -------------------------------------------------------- |
+| read-only      | `fs.derive`, plus any root the policy already mounts     |
+| **read-write** | `fs.derive`, plus roots the policy already mounts **rw** |
+
+```json
+"fs": { "…": "…", "derive": ["/srv/share/projects/**"] }
+```
+
+`fs.derive` is the only way to widen placement, and only the _trusted_ layer can
+set it: a project policy may shrink it, never extend it. `escalation.auto`
+deliberately does **not** count — it names read scopes the gate may grant on
+request, and a read-only rule must not become the source of write authority on a
+shared object and ref store. The shipped profiles declare the projects region
+they already pre-authorize.
+
+A repository pointer that resolves outside the ceiling for the access it needs,
+or that cannot prove it belongs to this worktree, aborts the launch with a
+diagnostic instead of being mounted. Submodules and `--separate-git-dir` layouts
+are refused for that reason. Ordinary checkouts and bare repositories are
+untouched, and when the profile already mounts the whole repository read-write,
+nothing is derived at all — derivation composes with the policy and never
+narrows it.
 
 ## Run a boxed harness
 

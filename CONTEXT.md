@@ -174,9 +174,9 @@ outside-owned `child-launch` evidence commit. A child cannot name a parent,
 resolution, operator state, signal, or persistence operation.
 
 [`scripts/child-broker-tracer.ts`](scripts/child-broker-tracer.ts) proves the
-host can own the process while launching it by controlled construction through
-a live parent process's user, mount, PID, network, IPC, and UTS namespaces.
-Policy crosses that boundary as a strict immutable argv value; exact compiled evidence
+host can own the process while launching it by controlled construction through a
+live parent process's user, mount, PID, network, IPC, and UTS namespaces. Policy
+crosses that boundary as a strict immutable argv value; exact compiled evidence
 returns through a machine-prefixed adapter line that the trusted adapter emits
 before forwarding child stderr. The adapter itself remains wholly in host
 namespaces; only its `nsenter` enforcement child enters the parent namespaces,
@@ -254,8 +254,8 @@ Security-relevant properties:
 
 ### Linked-worktree metadata is derived, not configured
 
-A Git linked worktree keeps no repository inside the working directory: `.git` is
-a pointer file naming an administrative directory under the main repository's
+A Git linked worktree keeps no repository inside the working directory: `.git`
+is a pointer file naming an administrative directory under the main repository's
 common directory, outside every mount a `$PWD`-scoped profile grants. So the box
 needs a mount the policy does not name, derived from material the project
 controls. [`src/policy/worktree.ts`](src/policy/worktree.ts) derives it, and
@@ -272,35 +272,87 @@ downgrade:
 - `commondir` must resolve to the exact parent of `worktrees/<name>`, which is
   Git's own linked-worktree layout, so rewriting it cannot select an unrelated
   directory;
-- every resulting path must sit inside a trusted ceiling — the standing
-  filesystem authority plus the pre-authorized session-auto read scopes of the
-  *trusted* layer, which a project can only narrow — and inside no denied root;
+- every resulting path must sit inside a trusted _placement_ ceiling that a
+  project can only narrow, and inside no denied root;
 - the access mode mirrors the profile's authority on the launch directory, so an
-  advisor derives read-only metadata and a writer derives no more than it already
-  holds on `$PWD`;
-- canonical paths carry no symlinks, so a pointer or alias swapped after the
-  probe cannot redirect a mount.
+  advisor derives read-only metadata and a writer derives no more than it
+  already holds on `$PWD`.
 
-The supported Git-operation contract is deliberately narrower than "the
-repository is writable". The common directory root stays read-only; only the
-object store, the ref store, the common reflog directory, and this worktree's own
-administrative directory become writable, in specificity order so each overlays
-the read-only parent instead of being erased by it. That covers the ordinary
-journey — status, diff, log, stage, commit, branch and reflog updates, including
-branches that exist only in `packed-refs`. It excludes operations that rewrite
-the common root itself: `git config --local`, `pack-refs`, `gc`, `repack`,
-`worktree add/prune`, and anything writing `FETCH_HEAD`. Those fail loudly inside
-the box on a read-only filesystem rather than being granted for convenience. An
-absent common reflog directory is reported on stderr, not silently dropped.
+#### Placement authority is explicit and graded
 
-Submodules and `--separate-git-dir` layouts have no per-worktree back pointer, so
-they are refused before launch with a stable diagnostic rather than trusted on a
-weaker check. Ordinary checkouts and bare repositories derive nothing at all:
-whatever Git needs is already inside `$PWD`.
+Where a derived mount may be _placed_ is a different question from what may be
+read, so it has its own answer. `fs.derive` is the trusted derivation
+capability: the region inside which pagu may place mounts derived from
+repository metadata, at the launch directory's own authority. Beyond it, a
+derived mount may land only inside a root the policy already mounts at that
+access or stronger — a read-only policy root can host the derived common
+directory, and can never host a derived writable object or ref store.
 
-An advisor or writer launched in a linked worktree can therefore read the main
+`escalation.auto` deliberately contributes nothing. It names read scopes the
+_gate_ may grant on request; letting it answer "may a writable Git mount be
+placed here" would make a read-only rule the source of write authority on shared
+repository state, which is exactly what invariant #3 forbids. `fs.derive` is set
+only by the trusted layer; `src/policy/load.ts` and `src/policy/child.ts`
+attenuate it like any other positive authority.
+
+#### Derivation composes with the policy; it never re-decides it
+
+Derived mounts are emitted after the policy's own, so a derived read-only parent
+would _overlay_ — silently narrow — write authority the trusted profile already
+granted. Derivation is therefore only the difference. The whole required path
+set is still validated, but a path the policy already mounts at the access this
+launch needs is never re-emitted, and when the read-only common parent must be
+composed, every granted writable root inside it is restored above it. Where one
+trusted read-write root already holds both the checkout and its common
+directory, nothing is derived at all, and that is reported on stderr rather than
+left to be inferred from the absence of mounts.
+
+The supported Git-operation contract, when the mounts _are_ derived, is
+deliberately narrower than "the repository is writable". The common directory
+root stays read-only; only the object store, the ref store, the common reflog
+directory, and this worktree's own administrative directory become writable, in
+specificity order so each overlays the read-only parent instead of being erased
+by it. That covers the ordinary journey — status, diff, log, stage, commit,
+branch and reflog updates, including branches that exist only in `packed-refs` —
+and `git fetch`, because Git keeps `FETCH_HEAD` per worktree, inside the
+writable `worktrees/<name>` directory. It excludes operations that rewrite the
+common root itself: `git config --local`, `pack-refs`, `gc`, `repack`, and
+`worktree add/prune`. Those fail loudly inside the box on a read-only filesystem
+rather than being granted for convenience. An absent common reflog directory is
+reported on stderr, not silently dropped.
+
+Submodules and `--separate-git-dir` layouts have no per-worktree back pointer,
+so they are refused before launch with a stable diagnostic rather than trusted
+on a weaker check. Ordinary checkouts and bare repositories derive nothing at
+all: whatever Git needs is already inside `$PWD`.
+
+#### Working-tree isolation is not ref isolation
+
+An advisor or writer launched in a linked worktree can read the main
 repository's object and ref store — the history is exactly what Git inspection
-needs — but reaches no working tree other than its own.
+needs — and reaches no working tree other than its own. That bounds _files_, not
+_refs_. Objects and refs are shared repository state, so a writer that can
+update refs can create, move, or delete any branch in the repository, and every
+other worktree and the host observe it, without ever touching another worktree's
+working-tree files. Worktrees are the isolation primitive for concurrent agents'
+files; they are not a branch sandbox, and nothing in this derivation makes them
+one.
+
+#### What the frozen probe does and does not buy
+
+[`src/policy/repository-fs.ts`](src/policy/repository-fs.ts) memoizes every
+repository fact for the launch, so the derivation that was validated is the
+derivation that gets compiled: a repository cannot answer one way during
+validation and another way during lowering, and the recorded paths are canonical
+at probe time.
+
+It does **not** eliminate the compile-to-exec race. bubblewrap resolves a bind
+source when it runs, so a path component replaced by a symlink between the probe
+and launch redirects that mount — observed directly against real bubblewrap.
+Derived mounts therefore carry exactly the same residual assumption as ordinary
+policy mounts, no more and no less: the ancestors of a mounted path are not
+writable by an attacker during launch. Nothing about derivation improves or
+worsens it.
 
 On Linux, `--observe-denials FILE` opts a schema-policy launch into the seccomp
 user-notif supervisor in [`box/src/denial-spike.c`](box/src/denial-spike.c). The
@@ -423,25 +475,23 @@ leaves the standing/profile policy immutable, passes through the same boundary
 validation and exact compiler/evidence path, and retains final secret denies.
 Session-store inference selects exactly one of Codex, Claude, or Pi; ambiguous
 and missing matches fail loud, while an explicit harness skips inference.
-Gate-session v1 retains that
-selection for existing-session launches. A fresh launch requires an explicit
-harness and establishes ownership rather than inferring it from file timing.
-Codex receives a generated nonce marker in its inert initial prompt; the gate
-snapshots existing IDs before spawn and polls new rollout contents until that
-exact marker attributes one UUID, ignoring unrelated concurrent sessions and
-waiting through file-before-content flushes. Claude and Pi receive a
-caller-generated UUID through `--session-id` and need no discovery poll.
-Gate-session v2 retains the attributed or assigned UUID and fresh initial mode.
-Requests arriving during
-Codex attribution wait behind the already-mounted socket and cannot enter the
-session-bound gate until attribution completes. Codex uses UUID resume with its
-inner approval/sandbox posture disabled because bubblewrap is the outer
-boundary; Claude uses `claude --resume SESSION_ID`; Pi uses
-`pi --session SESSION_ID`. Versioned box launch
-evidence v1 and the `policy-launch` event bind compiled argv, cwd, and the fresh
-or resume command together. [`src/gate/resume.ts`](src/gate/resume.ts) is the
-harness command/state port; [`src/gate/harness.ts`](src/gate/harness.ts) owns
-fresh identity attribution and existing-session inference.
+Gate-session v1 retains that selection for existing-session launches. A fresh
+launch requires an explicit harness and establishes ownership rather than
+inferring it from file timing. Codex receives a generated nonce marker in its
+inert initial prompt; the gate snapshots existing IDs before spawn and polls new
+rollout contents until that exact marker attributes one UUID, ignoring unrelated
+concurrent sessions and waiting through file-before-content flushes. Claude and
+Pi receive a caller-generated UUID through `--session-id` and need no discovery
+poll. Gate-session v2 retains the attributed or assigned UUID and fresh initial
+mode. Requests arriving during Codex attribution wait behind the already-mounted
+socket and cannot enter the session-bound gate until attribution completes.
+Codex uses UUID resume with its inner approval/sandbox posture disabled because
+bubblewrap is the outer boundary; Claude uses `claude --resume SESSION_ID`; Pi
+uses `pi --session SESSION_ID`. Versioned box launch evidence v1 and the
+`policy-launch` event bind compiled argv, cwd, and the fresh or resume command
+together. [`src/gate/resume.ts`](src/gate/resume.ts) is the harness
+command/state port; [`src/gate/harness.ts`](src/gate/harness.ts) owns fresh
+identity attribution and existing-session inference.
 
 Nonce attribution handles cooperative fleet concurrency, not adversarial writers
 to the shared harness store. Every gate-owned Codex box intentionally receives

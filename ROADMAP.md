@@ -243,12 +243,15 @@ sequence:
   for concurrent delegated tabs, so this blocked the delegation story.
   [`src/policy/worktree.ts`](src/policy/worktree.ts) now derives the exact
   metadata mounts at the profile's own authority on the launch directory,
-  bounded by a trusted ceiling, and refuses unsafe or unsupported shapes before
-  launch. See `CONTEXT.md` → Linked-worktree metadata is derived. Deliberately
-  still refused, not deferred silently: submodule and `--separate-git-dir`
-  layouts (no per-worktree back pointer can prove the pointer genuine), and the
-  operations that rewrite the common root (`git config --local`, `pack-refs`,
-  `gc`, `repack`, `worktree add/prune`, `FETCH_HEAD`).
+  bounded by the explicit `fs.derive` placement ceiling, composing with — never
+  narrowing — the mounts the policy already emits, and refuses unsafe or
+  unsupported shapes before launch. See `CONTEXT.md` → Linked-worktree metadata
+  is derived. Deliberately still refused, not deferred silently: submodule and
+  `--separate-git-dir` layouts (no per-worktree back pointer can prove the
+  pointer genuine), and the operations that rewrite the common root
+  (`git config --local`, `pack-refs`, `gc`, `repack`, `worktree add/prune`).
+  Deliberately _not_ solved by this slice: a linked worktree isolates working
+  trees, not refs, because objects and refs are shared repository state.
 - **`pagu doctor`.** One read-only report: host versus inhabitant position,
   selected profile and harness, whether permission bypass is harness-owned,
   repository and worktree visibility, request-tool availability, and visible
