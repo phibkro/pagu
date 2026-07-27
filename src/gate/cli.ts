@@ -7,6 +7,7 @@ import {
 import { createBoxLauncher } from "./relaunch.ts";
 import { resumeAdapter } from "./resume.ts";
 import { createFreshSessionPlanner, resolveHarness } from "./harness.ts";
+import { servePaguMcpStdio } from "../mcp/index.ts";
 import {
   createGate,
   type FileRequestInput,
@@ -17,6 +18,7 @@ import {
   type RequestGate,
   serveGate,
 } from "../request/index.ts";
+import { parseArgs as parseFlags } from "@std/cli/parse-args";
 import { assertOperatorBoundary } from "./boundary.ts";
 import { ensurePrivateStateDirectory } from "./state.ts";
 import {
@@ -27,6 +29,13 @@ import {
   policyIdentity,
 } from "../policy/index.ts";
 import { collectTelemetry, formatTelemetry } from "../telemetry/index.ts";
+import {
+  DEFAULT_LAUNCH_CONFIG,
+  type HarnessName,
+  type LaunchConfigV0,
+  loadLaunchConfig,
+  resolveLaunch,
+} from "../launch/index.ts";
 
 export interface GateOptions {
   readonly command: "gate";
@@ -36,8 +45,16 @@ export interface GateOptions {
   readonly stateDir: string;
   readonly session: string | undefined;
   readonly fresh: boolean;
-  readonly harness: string | undefined;
+  readonly harness: HarnessName | undefined;
+  readonly harnessExecutable?: string;
+  readonly mcpCommand?: string;
+  readonly piExtension?: string;
+  readonly skillPath?: string;
   readonly box: string;
+}
+
+interface McpOptions {
+  readonly command: "mcp";
 }
 
 interface ResolveOptions {
@@ -55,82 +72,201 @@ interface TelemetryOptions {
   readonly top: number;
 }
 
-type Options = GateOptions | ResolveOptions | TelemetryOptions;
+type Options = GateOptions | McpOptions | ResolveOptions | TelemetryOptions;
+
+export interface CliParseContext {
+  readonly launchConfig?: LaunchConfigV0;
+  readonly runtimeDir?: string;
+  readonly profileDir?: string;
+  readonly mcpCommand?: string;
+  readonly piExtension?: string;
+  readonly skillPath?: string;
+  readonly randomUUID?: () => string;
+}
 
 function usage(message?: string): never {
   if (message) console.error(`pagu: ${message}`);
   console.error(
     "usage:\n" +
-      "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
-      "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu [--profile NAME] [--harness codex|claude|pi] [EXECUTABLE]\n" +
+      "  pagu box [pagu-box options] -- COMMAND [ARGS...]\n" +
+      "  pagu gate (--policy FILE | --profile NAME) --session ID [--harness codex|claude|pi] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
+      "  pagu gate (--policy FILE | --profile NAME) --harness codex|claude|pi [--fresh] [--socket PATH] [--state-dir DIR] [--box PATH]\n" +
       "  pagu resolve --state-dir DIR --request ID (--deny | --scope once|session|persist)\n" +
+      "  pagu mcp\n" +
       "  pagu telemetry STATE_DIR... [--older-than-days N] [--top N] [--json]",
   );
   Deno.exit(message ? 64 : 0);
 }
 
-function value(args: readonly string[], index: number, flag: string): string {
-  return args[index + 1] ?? usage(`${flag} requires a value`);
+function randomUUID(context: CliParseContext): string {
+  return context.randomUUID ? context.randomUUID() : crypto.randomUUID();
 }
 
-export function parseArgs(args: readonly string[]): Options {
-  if (args[0] === "-h" || args[0] === "--help") usage();
-  const command = args[0];
-  if (command !== "gate" && command !== "resolve" && command !== "telemetry") {
-    usage("expected the 'gate', 'resolve', or 'telemetry' command");
+/**
+ * One harness validator for both parse paths. `--harness` selects the adapter
+ * that owns fresh/resume argv, so an unvalidated value used to survive the
+ * boundary and fail later in `resumeAdapter` — after the state directory was
+ * created and the policy was copied to disk. Reject it while rejecting is free.
+ */
+function harnessName(candidate: string): HarnessName {
+  if (candidate !== "codex" && candidate !== "claude" && candidate !== "pi") {
+    usage("--harness must be codex, claude, or pi");
   }
-  let policy: string | undefined;
-  let profile: string | undefined;
-  let socket: string | undefined;
-  let stateDir: string | undefined;
-  let session: string | undefined;
-  let harness: string | undefined;
-  let fresh = false;
-  let box = "pagu-box";
-  let request: string | undefined;
-  let scope: ResolveOptions["scope"] | undefined;
-  let json = false;
-  let olderThanDays = 30;
-  let top = 10;
-  const stateDirs: string[] = [];
+  return candidate;
+}
 
-  for (let index = 1; index < args.length; index++) {
-    const arg = args[index];
-    if (arg === "--policy") policy = value(args, index++, arg);
-    else if (arg === "--profile") profile = value(args, index++, arg);
-    else if (arg === "--socket") socket = value(args, index++, arg);
-    else if (arg === "--state-dir") stateDir = value(args, index++, arg);
-    else if (arg === "--session") session = value(args, index++, arg);
-    else if (arg === "--harness") harness = value(args, index++, arg);
-    else if (arg === "--fresh") fresh = true;
-    else if (arg === "--box") box = value(args, index++, arg);
-    else if (arg === "--request") request = value(args, index++, arg);
-    else if (arg === "--scope") {
-      const candidate = value(args, index++, arg);
-      if (
-        candidate !== "once" && candidate !== "session" &&
-        candidate !== "persist"
-      ) usage("--scope must be once, session, or persist");
-      scope = candidate;
-    } else if (arg === "--deny") scope = "deny";
-    else if (arg === "--json") json = true;
-    else if (arg === "--older-than-days") {
-      olderThanDays = Number(value(args, index++, arg));
-      if (!Number.isFinite(olderThanDays) || olderThanDays < 0) {
-        usage("--older-than-days must be a non-negative number");
-      }
-    } else if (arg === "--top") {
-      top = Number(value(args, index++, arg));
-      if (!Number.isSafeInteger(top) || top <= 0) {
-        usage("--top must be a positive integer");
-      }
-    } else if (arg === "-h" || arg === "--help") usage();
-    else if (command === "telemetry" && !arg.startsWith("-")) {
-      stateDirs.push(arg);
-    } else usage(`unknown option ${JSON.stringify(arg)}`);
+function categoryProfile(candidate: string): CategoryProfileName {
+  if (!isCategoryProfile(candidate)) {
+    usage(`unknown category profile ${JSON.stringify(candidate)}`);
+  }
+  return candidate;
+}
+
+interface FlagSpec {
+  readonly string: readonly string[];
+  readonly boolean?: readonly string[];
+}
+
+interface Tokens {
+  /** Undefined when absent; exits when declared with no value. */
+  readonly flag: (name: string) => string | undefined;
+  readonly bool: (name: string) => boolean;
+  readonly positional: readonly string[];
+  /** Present only when the caller actually wrote `--`, even if empty after it. */
+  readonly wrapped: readonly string[] | undefined;
+  readonly unknownFlags: readonly string[];
+}
+
+/**
+ * Tokenisation only. `@std/cli` owns splitting argv into flags, positionals,
+ * and the post-`--` tail — the mechanical part every CLI re-implements and
+ * gets subtly wrong. Everything downstream stays hand-owned on purpose: those
+ * decisions choose which policy is enforced, which is the security-critical
+ * core, and a schema-driven parser cannot express them anyway.
+ *
+ * `-h`/`--help` resolves here so every command answers it identically.
+ */
+function tokenize(args: readonly string[], spec: FlagSpec): Tokens {
+  const unknownFlags: string[] = [];
+  const parsed = parseFlags([...args], {
+    string: [...spec.string],
+    boolean: [...(spec.boolean ?? []), "help"],
+    alias: { h: "help" },
+    "--": true,
+    unknown: (arg, key) => {
+      // `key === undefined` marks a positional; only flags can be unknown.
+      if (key !== undefined) unknownFlags.push(arg);
+      return true;
+    },
+  });
+  if (parsed.help === true) usage();
+  return {
+    flag: (name) => {
+      const value = parsed[name];
+      if (value === undefined) return undefined;
+      // A declared string flag with nothing after it parses as "".
+      if (value === "") usage(`--${name} requires a value`);
+      return String(value);
+    },
+    bool: (name) => parsed[name] === true,
+    positional: (parsed._ as readonly (string | number)[]).map(String),
+    wrapped: args.includes("--") ? (parsed["--"] ?? []) : undefined,
+    unknownFlags,
+  };
+}
+
+export function parseArgs(
+  args: readonly string[],
+  context: CliParseContext = {},
+): Options {
+  /*
+    Bare `pagu` prints help rather than launching a default harness. Silently
+    starting a Codex session is a surprising default: the caller declared no
+    intent, and the thing being guessed at is which policy gets enforced.
+    Launching stays explicit — `pagu claude`, or flags. Configured defaults in
+    launch.json still fill in whatever the caller left unspecified.
+  */
+  if (args.length === 0) usage();
+  const command = args[0];
+  if (command === "-h" || command === "--help") usage();
+  if (command === "mcp") {
+    if (args.length !== 1) usage("mcp takes no arguments");
+    return { command };
+  }
+  if (command !== "gate" && command !== "resolve" && command !== "telemetry") {
+    return parseRootArgs(args, context);
+  }
+
+  const tokens = tokenize(args.slice(1), {
+    string: [
+      "policy",
+      "profile",
+      "socket",
+      "state-dir",
+      "session",
+      "harness",
+      "box",
+      "request",
+      "scope",
+      "older-than-days",
+      "top",
+    ],
+    boolean: ["fresh", "deny", "json"],
+  });
+  if (tokens.unknownFlags.length > 0) {
+    usage(`unknown option ${JSON.stringify(tokens.unknownFlags[0])}`);
+  }
+  if (command !== "telemetry" && tokens.positional.length > 0) {
+    usage(`unknown option ${JSON.stringify(tokens.positional[0])}`);
+  }
+
+  let policy = tokens.flag("policy");
+  const profile = tokens.flag("profile");
+  const socket = tokens.flag("socket");
+  let stateDir = tokens.flag("state-dir");
+  const session = tokens.flag("session");
+  const harnessRaw = tokens.flag("harness");
+  const harness = harnessRaw === undefined
+    ? undefined
+    : harnessName(harnessRaw);
+  const box = tokens.flag("box") ?? "pagu-box";
+  const request = tokens.flag("request");
+  const json = tokens.bool("json");
+  let fresh = tokens.bool("fresh");
+
+  const scopeRaw = tokens.flag("scope");
+  let scope: ResolveOptions["scope"] | undefined;
+  if (scopeRaw !== undefined) {
+    if (
+      scopeRaw !== "once" && scopeRaw !== "session" && scopeRaw !== "persist"
+    ) usage("--scope must be once, session, or persist");
+    scope = scopeRaw;
+  }
+  // Deny wins over an approval scope when both are given. Order-independent
+  // and fail-safe: the narrower decision cannot be lost to argument order.
+  if (tokens.bool("deny")) scope = "deny";
+
+  let olderThanDays = 30;
+  const olderThanDaysRaw = tokens.flag("older-than-days");
+  if (olderThanDaysRaw !== undefined) {
+    olderThanDays = Number(olderThanDaysRaw);
+    if (!Number.isFinite(olderThanDays) || olderThanDays < 0) {
+      usage("--older-than-days must be a non-negative number");
+    }
+  }
+
+  let top = 10;
+  const topRaw = tokens.flag("top");
+  if (topRaw !== undefined) {
+    top = Number(topRaw);
+    if (!Number.isSafeInteger(top) || top <= 0) {
+      usage("--top must be a positive integer");
+    }
   }
 
   if (command === "telemetry") {
+    const stateDirs = tokens.positional;
     if (stateDirs.length === 0) usage("telemetry requires a state directory");
     return { command, stateDirs, json, olderThanDays, top };
   }
@@ -142,22 +278,20 @@ export function parseArgs(args: readonly string[]): Options {
   }
   if (policy && profile) usage("--policy and --profile are mutually exclusive");
   if (!policy && !profile) usage("gate requires --policy or --profile");
-  if (profile && !isCategoryProfile(profile)) {
-    usage(`unknown category profile ${JSON.stringify(profile)}`);
-  }
+  if (profile) categoryProfile(profile);
   if (fresh && session) usage("--fresh and --session are mutually exclusive");
   fresh ||= session === undefined;
   if (fresh && !harness) usage("fresh gate launch requires --harness");
-  const runtime = Deno.env.get("XDG_RUNTIME_DIR");
+  const runtime = context.runtimeDir ?? Deno.env.get("XDG_RUNTIME_DIR");
   if (!stateDir && !runtime) {
     usage("gate requires --state-dir when XDG_RUNTIME_DIR is unset");
   }
-  const stateKey = session ?? `fresh-${harness}-${crypto.randomUUID()}`;
+  const stateKey = session ?? `fresh-${harness}-${randomUUID(context)}`;
   stateDir ??= `${runtime}/pagu/${encodeURIComponent(stateKey)}`;
   if (profile) {
-    const directory = Deno.env.get("PAGU_PROFILE_DIR") ?? decodeURIComponent(
-      new URL("../../profiles", import.meta.url).pathname,
-    );
+    const directory = context.profileDir ??
+      Deno.env.get("PAGU_PROFILE_DIR") ??
+      decodeURIComponent(new URL("../../profiles", import.meta.url).pathname);
     policy = `${directory.replace(/\/+$/, "")}/${
       categoryProfileFilename(profile as CategoryProfileName)
     }`;
@@ -171,6 +305,115 @@ export function parseArgs(args: readonly string[]): Options {
     session,
     fresh,
     harness,
+    harnessExecutable: undefined,
+    mcpCommand: context.mcpCommand ?? Deno.env.get("PAGU_MCP_COMMAND"),
+    piExtension: context.piExtension ?? Deno.env.get("PAGU_PI_EXTENSION"),
+    skillPath: context.skillPath ?? Deno.env.get("PAGU_SKILL_PATH"),
+    box,
+  };
+}
+
+/**
+ * A gated launch owns the harness argv because widening a policy stops the box
+ * and relaunches the same session — the adapter must be able to reproduce the
+ * command, and caller-supplied arguments cannot be merged into a resume
+ * invocation. That constraint applies to the gated journey only, so point the
+ * caller at the ungated box rather than just refusing.
+ */
+function wrappedArgvMessage(wrapped: readonly string[]): string {
+  // The hint is meant to be pasted, so keep argument boundaries intact.
+  const argv = wrapped
+    .map((part) => /[^\w@%+=:,./-]/.test(part) ? `'${part}'` : part)
+    .join(" ");
+  return "a gated launch wraps exactly one executable, because the harness " +
+    "adapter owns the argv it replays on resume.\n" +
+    `  to sandbox an arbitrary command instead: pagu box -- ${argv}`;
+}
+
+function parseRootArgs(
+  args: readonly string[],
+  context: CliParseContext,
+): GateOptions {
+  const tokens = tokenize(args, {
+    string: ["profile", "harness", "socket", "state-dir", "box"],
+  });
+
+  let executable: string | undefined = tokens.positional[0];
+
+  /*
+    Once an executable is named, an unrecognized token — flag or not — is the
+    caller passing harness arguments, which is the one thing a resumable gated
+    launch cannot accept. Name the tool that can, rather than reporting an
+    opaque "unknown option". The hint quotes the original argv so it survives
+    short-flag clustering and value capture.
+  */
+  if (tokens.unknownFlags.length > 0 || tokens.positional.length > 1) {
+    if (executable !== undefined) {
+      usage(wrappedArgvMessage(args.slice(args.indexOf(executable))));
+    }
+    usage(`unknown option ${JSON.stringify(tokens.unknownFlags[0])}`);
+  }
+
+  // A bare executable needs no `--`. `pagu claude` is the common journey;
+  // reserve `--` for names that would otherwise parse as an option.
+  if (tokens.wrapped !== undefined) {
+    if (executable !== undefined) {
+      usage(
+        `executable ${JSON.stringify(executable)} is already set; ` +
+          "pass it either bare or after `--`, not both",
+      );
+    }
+    if (tokens.wrapped.length === 0) usage("`--` requires an executable");
+    if (tokens.wrapped.length > 1) usage(wrappedArgvMessage(tokens.wrapped));
+    executable = tokens.wrapped[0];
+  }
+
+  const profileRaw = tokens.flag("profile");
+  const profile = profileRaw === undefined
+    ? undefined
+    : categoryProfile(profileRaw);
+  const harnessRaw = tokens.flag("harness");
+  const harness = harnessRaw === undefined
+    ? undefined
+    : harnessName(harnessRaw);
+  const socket = tokens.flag("socket");
+  let stateDir = tokens.flag("state-dir");
+  const box = tokens.flag("box") ?? "pagu-box";
+
+  let launch;
+  try {
+    launch = resolveLaunch(
+      context.launchConfig ?? DEFAULT_LAUNCH_CONFIG,
+      { harness, profile, executable },
+    );
+  } catch (error) {
+    usage(error instanceof Error ? error.message : String(error));
+  }
+  const runtime = context.runtimeDir ?? Deno.env.get("XDG_RUNTIME_DIR");
+  if (!stateDir && !runtime) {
+    usage("pagu requires --state-dir when XDG_RUNTIME_DIR is unset");
+  }
+  const stateKey = `fresh-${launch.harness}-${randomUUID(context)}`;
+  stateDir ??= `${runtime}/pagu/${encodeURIComponent(stateKey)}`;
+  const directory = context.profileDir ??
+    Deno.env.get("PAGU_PROFILE_DIR") ??
+    decodeURIComponent(new URL("../../profiles", import.meta.url).pathname);
+  const policy = `${directory.replace(/\/+$/, "")}/${
+    categoryProfileFilename(launch.profile)
+  }`;
+  return {
+    command: "gate",
+    policy,
+    profile: launch.profile,
+    socket: socket ?? `${stateDir}/request.sock`,
+    stateDir,
+    session: undefined,
+    fresh: true,
+    harness: launch.harness,
+    harnessExecutable: launch.executable,
+    mcpCommand: context.mcpCommand ?? Deno.env.get("PAGU_MCP_COMMAND"),
+    piExtension: context.piExtension ?? Deno.env.get("PAGU_PI_EXTENSION"),
+    skillPath: context.skillPath ?? Deno.env.get("PAGU_SKILL_PATH"),
     box,
   };
 }
@@ -345,7 +588,14 @@ async function gate(options: GateOptions): Promise<void> {
   );
   let reportFatal!: (reason: string) => void;
   const fatal = new Promise<string>((resolve) => reportFatal = resolve);
-  const adapter = resumeAdapter(harness);
+  const adapter = resumeAdapter(
+    harness,
+    options.harnessExecutable,
+    options.mcpCommand ? { command: options.mcpCommand } : undefined,
+    options.piExtension
+      ? { extension: options.piExtension, skill: options.skillPath }
+      : undefined,
+  );
   const launcher = createBoxLauncher({
     box: options.box,
     gateSocket: options.socket,
@@ -449,8 +699,15 @@ async function telemetry(options: TelemetryOptions): Promise<void> {
 }
 
 export async function main(args = Deno.args): Promise<void> {
-  const options = parseArgs(args);
+  const command = args[0];
+  const launchConfig = command === "gate" || command === "resolve" ||
+      command === "mcp" || command === "telemetry" || command === "-h" ||
+      command === "--help"
+    ? undefined
+    : await loadLaunchConfig();
+  const options = parseArgs(args, { launchConfig });
   if (options.command === "resolve") await resolve(options);
+  else if (options.command === "mcp") await servePaguMcpStdio();
   else if (options.command === "telemetry") await telemetry(options);
   else await gate(options);
 }

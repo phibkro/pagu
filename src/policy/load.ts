@@ -1,5 +1,16 @@
 // pure: trusted-user policy folded with an untrusted narrow-only project layer.
-import { EMPTY_POLICY, parsePolicy, type PolicyV0 } from "./schema.ts";
+import {
+  EMPTY_POLICY,
+  meetNet,
+  netWithin,
+  parsePolicy,
+  type PolicyV0,
+} from "./schema.ts";
+import {
+  type CapabilityPathContext,
+  capabilityPathCovered,
+  narrowCapabilityPath,
+} from "./path.ts";
 
 export interface PolicyLayers {
   /** Operator-authored standing policy. Absent means deny-all. */
@@ -8,11 +19,7 @@ export interface PolicyLayers {
   readonly project?: unknown;
 }
 
-export interface PolicyLoadContext {
-  /** Resolve a schema path to its canonical host path. Returning null fails
-   * closed. Required before accepting a project path nested below a user path. */
-  readonly canonicalize: (path: string) => string | null;
-}
+export interface PolicyLoadContext extends CapabilityPathContext {}
 
 export interface LoadedPolicy {
   readonly policy: PolicyV0;
@@ -26,88 +33,13 @@ const union = (
   b: readonly string[],
 ): string[] => [...new Set([...a, ...b])];
 
-function normalizeCapabilityPath(path: string): string | null {
-  let value = path.endsWith("/**") ? path.slice(0, -3) : path;
-  let root: string;
-  if (value === "$PWD" || value.startsWith("$PWD/")) {
-    root = "$PWD";
-    value = value.slice(4);
-  } else if (value === "$HOME" || value.startsWith("$HOME/")) {
-    root = "$HOME";
-    value = value.slice(5);
-  } else if (value === "~" || value.startsWith("~/")) {
-    root = "~";
-    value = value.slice(1);
-  } else if (value.startsWith("/")) {
-    root = "";
-  } else {
-    return null;
-  }
-
-  const segments: string[] = [];
-  for (const segment of value.split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") {
-      // A project path may normalize within a trusted root, but must never
-      // traverse above an absolute or symbolic ($PWD/$HOME/~) root.
-      if (segments.length === 0) return null;
-      segments.pop();
-    } else {
-      segments.push(segment);
-    }
-  }
-  const suffix = segments.join("/");
-  if (root === "") return suffix === "" ? "/" : `/${suffix}`;
-  return suffix === "" ? root : `${root}/${suffix}`;
-}
-
-/** Lexical containment over schema paths (`$PWD`, `~`, and absolute paths).
- * Runtime canonicalization belongs to compilation/enforcement; this fold only
- * proves that a repo's child scope is syntactically within a trusted parent. */
-function pathCovered(
-  parent: string,
-  child: string,
-  context?: PolicyLoadContext,
-): boolean {
-  const p = normalizeCapabilityPath(parent);
-  const c = normalizeCapabilityPath(child);
-  if (p === null || c === null) return false;
-  if (c === p) return true;
-  if (!context) return false;
-  const canonicalParent = context.canonicalize(p);
-  const canonicalChild = context.canonicalize(c);
-  if (canonicalParent === null || canonicalChild === null) return false;
-  return canonicalChild === canonicalParent ||
-    canonicalChild.startsWith(
-      canonicalParent === "/" ? "/" : `${canonicalParent}/`,
-    );
-}
-
-function narrowedPath(
-  parents: readonly string[],
-  candidate: string,
-  context?: PolicyLoadContext,
-): string | null {
-  const normalizedCandidate = normalizeCapabilityPath(candidate);
-  if (normalizedCandidate === null) return null;
-  for (const parent of parents) {
-    const normalizedParent = normalizeCapabilityPath(parent);
-    if (normalizedParent === normalizedCandidate) return candidate;
-    if (pathCovered(parent, candidate, context)) {
-      // Nested project paths are returned canonical, closing the symlink/TOCTOU
-      // alias between attenuation and later bwrap compilation.
-      return context?.canonicalize(normalizedCandidate) ?? null;
-    }
-  }
-  return null;
-}
-
 function equalRule(
   a: PolicyV0["escalation"]["auto"][number],
   b: PolicyV0["escalation"]["auto"][number],
   context?: PolicyLoadContext,
 ): boolean {
-  return pathCovered(a["fs.ro"], b["fs.ro"], context) && a.scope === b.scope;
+  return capabilityPathCovered(a["fs.ro"], b["fs.ro"], context, "pattern") &&
+    a.scope === b.scope;
 }
 
 function narrowProject(
@@ -125,8 +57,9 @@ function narrowProject(
     warn("ignored fs.home=rw widening");
   }
 
+  const userRw = user.fs.home === "rw" ? [...user.fs.rw, "$HOME"] : user.fs.rw;
   const rw = project.fs.rw.flatMap((candidate) => {
-    const narrowed = narrowedPath(user.fs.rw, candidate, context);
+    const narrowed = narrowCapabilityPath(userRw, candidate, context);
     if (narrowed === null) {
       warn(`ignored fs.rw widening ${JSON.stringify(candidate)}`);
       return [];
@@ -136,8 +69,8 @@ function narrowProject(
 
   // A trusted RW scope may be attenuated to RO by the project.
   const ro = project.fs.ro.flatMap((candidate) => {
-    const narrowed = narrowedPath(
-      [...user.fs.rw, ...user.fs.ro],
+    const narrowed = narrowCapabilityPath(
+      [...userRw, ...user.fs.ro],
       candidate,
       context,
     );
@@ -148,7 +81,21 @@ function narrowProject(
     return [narrowed];
   });
 
-  if (!user.net && project.net) warn("ignored net=true widening");
+  // The derivation ceiling attenuates like any other positive authority: a
+  // project may shrink where pagu places derived mounts, never extend it.
+  const derive = project.fs.derive.filter((candidate) => {
+    const allowed = user.fs.derive.some((root) =>
+      capabilityPathCovered(root, candidate, context, "pattern")
+    );
+    if (!allowed) {
+      warn(`ignored fs.derive widening ${JSON.stringify(candidate)}`);
+    }
+    return allowed;
+  });
+
+  if (!netWithin(project.net, user.net)) {
+    warn(`ignored net=${project.net.mode} widening`);
+  }
 
   const pass = project.env.pass.filter((name) => {
     const allowed = user.env.pass.includes(name);
@@ -186,8 +133,9 @@ function narrowProject(
         rw,
         ro,
         deny: union(user.fs.deny, project.fs.deny),
+        derive,
       },
-      net: user.net && project.net,
+      net: meetNet(user.net, project.net),
       env: { pass },
       escalation: {
         auto,

@@ -9,29 +9,264 @@ The live product is the box + gate pair defined by
 [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) and
 [ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md), with profile
 growth and telemetry governed by
-[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md).
-[CONTEXT.md](CONTEXT.md) owns durable design; this file owns sequence and
-remaining work.
+[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md) and the default
+launch journey governed by
+[ADR-0008](docs/decisions/0008-default-launch-surface.md).
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md) governs the
+request-only inhabitant interface.
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md) governs child
+authority and trusted lineage.
+[ADR-0011](docs/decisions/0011-credential-attested-child-broker.md) governs
+credential-attested child hosting and literal nesting.
+[ADR-0012](docs/decisions/0012-pi-native-adapter.md) governs Pi's assigned
+session and native request-tool transport. [CONTEXT.md](CONTEXT.md) owns durable
+design; this file owns sequence and remaining work.
 
 ## Delivery slices
 
-| Slice                   | Outcome                                                                                                          | Status         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------- |
-| 1 — consolidate         | Import the cross-platform `pagu-box` history and preserve its compatibility package.                             | ✓ shipped      |
-| 2 — policy core         | Strict schema v0, bottom policy, grant shape, narrow-only project fold.                                          | ✓ shipped      |
-| 3 — enforcement adapter | Pure Linux lowering, `--policy`, exact `--explain`, fail-loud unsupported platforms.                             | ✓ shipped      |
-| 4 — gate MVP            | Typed append-and-await request channel; refuse/auto/operator tiers; once/session/persist state; retained events. | ✓ shipped      |
-| docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                    | ✓ shipped      |
-| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.   | ✓ shipped      |
-| 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection. | ✓ shipped      |
-| 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                             | ✓ shipped      |
-| 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                       | ✓ shipped      |
-| 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                     | ✓ shipped      |
-| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                         | ✓ verified     |
-| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                               | ✓ shipped      |
-| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                | ✓ shipped      |
-| runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                | slice 1        |
-| homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                 | operator-gated |
+| Slice                   | Outcome                                                                                                             | Status         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 1 — consolidate         | Import the cross-platform `pagu-box` history and preserve its compatibility package.                                | ✓ shipped      |
+| 2 — policy core         | Strict schema v0, bottom policy, grant shape, narrow-only project fold.                                             | ✓ shipped      |
+| 3 — enforcement adapter | Pure Linux lowering, `--policy`, exact `--explain`, fail-loud unsupported platforms.                                | ✓ shipped      |
+| 4 — gate MVP            | Typed append-and-await request channel; refuse/auto/operator tiers; once/session/persist state; retained events.    | ✓ shipped      |
+| docs rewrite            | Replace live harness-era documentation and re-arm documentation drift checks.                                       | ✓ shipped      |
+| 5 — apply grants        | Relaunch/resume, operator/herdr surface, once consumption, session binding, enforcement-time canonicalization.      | ✓ shipped      |
+| 6 — profiles/telemetry  | Six curated category policies, named resolution, CI assertions, and a standalone event-log telemetry projection.    | ✓ shipped      |
+| 7 — harness state       | Compose harness-scoped auth/session state into every gate-owned launch and relaunch.                                | ✓ shipped      |
+| 8 — Claude resume       | Verify exact `claude --resume UUID` through the shared relaunch lifecycle.                                          | ✓ shipped      |
+| 9 — profile hardening   | Infer the harness, restore Nix-daemon environment parity, and stand down inner Codex gating.                        | ✓ shipped      |
+| 11 — denial spike       | Bound seccomp user-notif feasibility for one structured, supervisor-owned denial record.                            | ✓ verified     |
+| 12 — denial evidence    | Opt-in compiled-deny-driven `open`/`openat` evidence with a strict v1 JSONL event.                                  | ✓ shipped      |
+| 13 — fresh gated launch | Attributed fresh Codex/Claude launch and UUID-bound widen/resume.                                                   | ✓ shipped      |
+| 14 — product front door | Single-command front door, worker defaults, strict user launch config, executable inference, default Nix package.   | ✓ shipped¹     |
+| 15 — agent interface    | Inhabitant discovers one typed request tool through MCP plus an in-repo skill; no prompt injection required.        | ✓ shipped      |
+| 16 — nested authority   | Host/inhabitant roles and strict child attenuation make the narrowest ancestor boundary final.                      | core + proof ✓ |
+| 16b — child lifecycle   | Narrow trusted launch/request routing, replacement, and lineage-linked evidence without a control socket.           | phase A ✓      |
+| 17 — command completion | Move direct PEP operation under `pagu box`; keep `pagu-box` as a compatibility package.                             | ✓ shipped      |
+| 18 — Pi adapter         | Infer Pi, preserve exact sessions, and expose the request core through a native extension verified on local Ollama. | ✓ shipped      |
+| 19 — launch grammar     | Name the harness as a bare positional, make bare `pagu` print usage, and vendor the packaged CLI's dependencies.    | ✓ shipped      |
+| 20 — gated egress       | Prove the Claw Patrol composition and make a missing gateway fail loud instead of yielding the open internet.       | next           |
+| 21 — credential channel | Destination-bound credential names in policy, placeholders inside, real values only on the wire.                    | after 20       |
+| 22 — egress approval    | Route a blocked call into the existing gate queue and widen it without stopping the box.                            | after 21       |
+| worktree visibility     | Derive a linked worktree's exact Git metadata at profile authority under a trusted ceiling, or refuse.              | ✓ shipped      |
+| `pagu doctor`           | Read-only orientation report: position, profile, harness, git visibility, request tool, toolchain.                  | queued         |
+| playwright regression   | Root-cause heavy-page browser death inside the worker profile; `/dev/shm` and nested-userns both falsified.         | open           |
+| runtime reload          | Graceful gate FD/state handoff plus safe-point, coalesced box policy replacement.                                   | slice 1 parked |
+| homelab migration       | Consume this repository as the flake input; remove source patching and the old `pagu-box` input.                    | operator-gated |
+
+¹ Slice 14's bare-`pagu` launch and `--`-separated executable form were replaced
+by Slice 19; see
+[ADR-0013](docs/decisions/0013-named-harness-launch-grammar.md). Its
+launch-config, inference, and packaging decisions remain in force.
+
+## Product journey sequence
+
+Every product feature advances as a thin end-to-end tracer with one named
+person, one desired outcome, and one falsifier. Pure SDK behavior lands before
+its human CLI or agent adapter; the journey is not complete until the packaged
+runtime exercises the same core.
+
+Routine lifecycle regression is now provider-free:
+`deno task journey:mock /absolute/path/to/pagu` drives the packaged root
+command, MCP server, gate, host resolver, and two real boxes with a
+deterministic fake inhabitant. It verifies the retained policy transition and
+makes no model call. Real harness checks remain release or adapter-contract
+evidence. Pi contract changes use local Ollama with hosted-provider credentials
+removed; a remote free-tier provider remains an optional fallback rather than a
+CI dependency.
+
+### Slice 14 — start protected work
+
+- **Journey:** a human host enters a repository and runs `pagu`; a fresh worker
+  agent starts under the gate without selecting an implementation component or
+  profile.
+- **Variants:** the host selects a category, configures trusted defaults, or
+  wraps one Codex/Claude/Pi executable whose harness is inferred.
+- **Falsifier:** default/configured/wrapped invocations lower to a different
+  lifecycle or authority than the equivalent explicit fresh gate launch.
+- **Boundary:** the CLI adds no policy field and no new process authority. It
+  selects a checked-in category and verified adapter, then delegates to the
+  existing gate.
+
+### Slice 15 — ask for help from inside
+
+- **Journey:** an inhabitant encounters a denied read, discovers pagu through
+  MCP or the pagu skill, files one typed request, and awaits the gate decision;
+  the human host sees and resolves the same request through a human-oriented
+  surface.
+- **Tracer:** expose the existing `fileRequest` core through a small Deno stdio
+  MCP server, inject it session-locally into fresh and resumed Codex/Claude
+  commands, then make the skill teach that tool and its replacement lifecycle.
+- **Falsifier:** an inhabitant-facing tool can resolve, persist, mutate gate
+  state, enumerate a general control socket, or widen the request beyond the
+  exact typed rule.
+- **Delivered boundary:** exactly one `request_read_access` tool; its only
+  effect is the existing append-and-await request socket. Approval may terminate
+  the call while pagu replaces the box; the resumed agent retries the original
+  read.
+- **Deferred from this slice:** status projection, grant administration, child
+  hosting, and a general remote control plane.
+
+### Slice 16 — safely host a child
+
+- **Journey:** a host agent inside pagu launches a nested pagu for a child. The
+  child can perform normal work inside the inherited boundary and request help
+  from the outer host, but neither parent inhabitant nor child can grant itself
+  more than the narrowest ancestor allowed.
+- **Tracer:** model actor/box lineage and pure policy attenuation first; prove a
+  two-level worker → child launch using real bubblewrap before adding deeper
+  orchestration.
+- **Falsifier:** any nested launch regains a filesystem, network, environment,
+  state, resolution, or control capability removed by an ancestor.
+- **Design gate:** specify authority provenance, host-vs-inhabitant identity,
+  request routing, state placement, and evidence linkage in a new ADR before
+  implementation. Do not mount a general control socket.
+- **Delivered core:** ADR-0010; strict `deriveChildPolicy`; relative
+  actor/box-lineage constructors; shared canonical path containment; and a real
+  packaged two-level tracer. The accepted child performs ordinary work. A direct
+  derivation-bypass child still cannot recover outer filesystem, network,
+  environment, state, resolution, or control capabilities.
+- **Delivered lifecycle phase A (16b):** ADR-0011; a strict `launch-child`
+  frame; namespace-selected recursive authority; transactional rollback; strict
+  retained `child-launch` evidence; immutable inline policy handoff; and a real
+  host-owned packaged supervisor → live-parent `nsenter` → bubblewrap tracer.
+  The supervisor remains outside the parent PID namespace, whose inhabitant
+  attempts and fails to discover its policy sentinel or forge its evidence FD.
+  The broker, not the inhabitant, mints lineage and request-route identities.
+- **Deferred lifecycle phases B/C:** connect a Linux `SOCK_SEQPACKET` frontend
+  with per-message `SCM_CREDENTIALS` plus `SCM_PIDFD` attribution and the
+  agent-facing adapter. It must pin the attributed sender's namespace handles
+  and launch through those exact handles; the phase-A numeric target is a
+  controlled tracer mechanism, not PID-reuse-safe authority. Then route the
+  child's request-only endpoint through adjudication and gate-owned replacement.
+  Connection-time `SO_PEERCRED` is not sufficient. Until those tracers land,
+  pagu does not claim an inhabitant-accessible child command or
+  lineage-attributed child request/resume.
+
+### Slice 17 — use one product name for expert control
+
+- **Journey:** a human who needs direct static enforcement runs `pagu box …`;
+  existing automation may continue to invoke `pagu-box`.
+- **Falsifier:** the new subcommand compiles or launches differently from the
+  compatibility executable for the same policy and argv.
+- **Delivered:** the root package dispatches `box` before changing the caller
+  environment and execs the packaged compatibility wrapper with untouched
+  remaining argv.
+- **Proof:** the packaged tracer compares help, schema explanation, and a real
+  launch—including the child-visible `PATH`, stdout, stderr, and exit status—
+  under both names.
+
+### Slice 18 — run a local-first Pi inhabitant
+
+- **Journey:** a human host wraps Pi with `pagu`; Pi starts with an assigned
+  session, discovers `request_read_access` through its native tool system, and
+  the exact UUID reopens inside a later box.
+- **Falsifier:** the native adapter implements a parallel request or operator
+  surface, edits persistent Pi configuration, loses the assigned UUID, or
+  requires a hosted model for routine evidence.
+- **Delivered:** Pi launch/config/executable and existing-session inference;
+  exact `--session-id` → `--session` lifecycle; `~/.pi` state; narrow read-only
+  compatibility roots for common user-local Pi packages; immutable extension
+  plus explicit skill injection on fresh and resume.
+- **Proof:** unit laws bind the argv, state overlay, unique session-store
+  inference, one-tool registration, and exact packaged MCP translation. A real
+  packaged web-profile journey used Pi 0.80.6 and local Ollama `qwen3.5:9b`—with
+  hosted-provider variables removed—to observe `PAGU_PI_TOOL_OK`, then reopened
+  the same UUID in a second box and observed it again.
+- **Boundary:** Pi's extension is transport glue over the Slice 15 core. It has
+  no resolution, persistence, state, or child-host method. Provider-free mock
+  remains routine CI; remote free tiers remain optional.
+
+### Slice 19 — state which harness you are launching
+
+- **Journey:** a human host runs `pagu claude` in a repository and gets a fresh
+  gated session; a host who runs bare `pagu` gets usage rather than a silently
+  chosen adapter; a host who reaches for `pagu` to run an ordinary command is
+  told to use `pagu box`, with their own argv quoted back as a runnable line.
+- **Falsifier:** an empty command line launches an enforcing box; a named
+  harness lowers to different authority than the equivalent explicit gate
+  launch; configured `launch.json` defaults stop completing an otherwise-stated
+  launch; or the packaged CLI fetches a dependency over the network at startup.
+- **Delivered:** bare-positional harness naming with `--` reserved for
+  option-shaped executables; `@std/cli` tokenisation with all policy-selecting
+  decisions still hand-owned; `--harness` validated on both parse paths;
+  order-independent `--deny`; and a committed, store-shipped `vendor/` behind
+  `--cached-only`.
+- **Boundary:** grammar only. No policy field, process authority, adjudication
+  path, or request-lifecycle change. ADR-0013 supersedes ADR-0008 decisions 1
+  and 3 and leaves the rest in force.
+
+### Slice 20 — keep authority when the network is gated
+
+- **Journey:** a host runs `clawpatrol run -- pagu claude` under a profile whose
+  policy declares `egress.gateway: "required"`; the inhabitant reaches an
+  allowed destination and nothing else. A host who forgets the gateway gets a
+  refused launch, not a quietly open network.
+- **Falsifier:** a box under `gateway: "required"` launches with no gateway
+  present; or a process inside reaches a destination outside `egress.allow`.
+- **Boundary:** pagu adds a policy axis and a presence check. It does not parse,
+  terminate, or route traffic. `compile.ts` is unchanged — `--share-net` already
+  inherits the gateway's namespace.
+
+### Slice 21 — authenticate without holding the credential
+
+- **Journey:** the inhabitant runs `gh pr list` and it works. The box holds a
+  placeholder; the gateway swaps in the real token bound to `api.github.com`.
+- **Falsifier:** the real credential is observable inside the box — in the
+  environment, `/proc`, the filesystem, or on the wire toward any destination
+  other than the one it is bound to.
+- **Boundary:** policy carries destinations and credential names only. Zero
+  per-tool integration inside the box; tools read the environment normally.
+
+### Slice 22 — widen egress without losing the session
+
+- **Journey:** the inhabitant calls a destination its policy does not allow. The
+  call blocks on the wire; the same request appears in the existing gate queue;
+  the host runs `pagu resolve`; the call completes. The harness session is never
+  stopped, resumed, or otherwise interrupted.
+- **Falsifier:** an egress decision stops the box; a second approval surface or
+  event log appears; or the auto tier grants a credential — credentials are
+  operator-only, never automatic.
+- **Why this is easier than a read grant:** the enforcement point is outside the
+  box, so nothing about the running sandbox changes. See
+  [ADR-0014](docs/decisions/0014-gated-egress-and-credential-broker.md).
+
+### Queued operator-friction work
+
+Three items from observed delegation journeys, independent of the egress
+sequence:
+
+- **Worktree visibility — shipped.** A git worktree's `.git` pointed outside the
+  mounted directory, so every git command inside the box failed with
+  `not a git repository: (null)`. Worktrees are the natural isolation primitive
+  for concurrent delegated tabs, so this blocked the delegation story.
+  [`src/policy/worktree.ts`](src/policy/worktree.ts) now derives the exact
+  metadata mounts at the profile's own authority on the launch directory,
+  bounded by the explicit `fs.derive` placement ceiling, composing with — never
+  narrowing — the mounts the policy already emits, and refuses unsafe or
+  unsupported shapes before launch. See `CONTEXT.md` → Linked-worktree metadata
+  is derived. Deliberately still refused, not deferred silently: submodule and
+  `--separate-git-dir` layouts (no per-worktree back pointer can prove the
+  pointer genuine), and the operations that rewrite the common root
+  (`git config --local`, `pack-refs`, `gc`, `repack`, `worktree add/prune`).
+  Deliberately _not_ solved by this slice: a linked worktree isolates working
+  trees, not refs, because objects and refs are shared repository state.
+- **`pagu doctor`.** One read-only report: host versus inhabitant position,
+  selected profile and harness, whether permission bypass is harness-owned,
+  repository and worktree visibility, request-tool availability, and visible
+  toolchain executables.
+- **Playwright regression.** Heavy-page navigation kills the browser inside the
+  worker profile while a light page loads in ~1.2s; proven pre-existing by a
+  clean-tree re-run. Both leading hypotheses were measured and rejected:
+  `/dev/shm` is writable on a 16G tmpfs, and nested user namespaces are
+  permitted. Root cause is open and needs the affected repository mounted.
+
+The runtime stays Deno. Effect v4 earns introduction only where typed context,
+resource lifetime, interruption, or concurrent failure semantics materially
+simplify a tracer; it is not a default dependency. The current CLI/gate needs no
+web framework. A future network server should justify that surface before
+choosing an HTTP framework.
 
 ## Runtime reload
 
@@ -40,7 +275,8 @@ The frozen design and proposed decision are
 [`ADR-0007`](docs/decisions/0007-runtime-reload.md). Implementation proceeds by
 its eight falsifier-bound slices. Slice 1 publishes strict checkpoint and reload
 evidence shapes plus pure adoption/evidence-chain laws; it does not yet transfer
-an FD or alter a running gate.
+an FD or alter a running gate. Further runtime-reload work is parked behind the
+user and agent journey slices above.
 
 ## Slice 13 fresh-launch boundary
 
@@ -195,7 +431,6 @@ These items follow the complete Slice 5 lifecycle:
 - reviewed overlay-to-profile promotion and unused-allow pruning tooling;
 - reconciliation UX for a once grant conservatively spent by a process crash;
 - schema-v0 lowering for macOS seatbelt;
-- a unified `pagu box` command while retaining the compatibility executable;
 - grant listing and revocation UX over the retained derivation data;
 - tested policy fixtures carried beside operator policies;
 - optional flow integration above the standalone gate;

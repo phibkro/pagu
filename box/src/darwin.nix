@@ -38,20 +38,28 @@ pkgs.writeShellApplication {
     PASS_ENV_USER=()
     NO_NET=0
     POLICY_FILE=""
+    POLICY_JSON=""
     GATE_SOCKET=""
     LAUNCH_EVIDENCE=""
+    EVIDENCE_STDIO=0
     DENIAL_LOG=""
     SUPERVISOR_PID=""
+    NAMESPACE_TARGET=""
+    NSENTER=""
     EXPLAIN=0
     LEGACY_OPTIONS=0
 
     while [ $# -gt 0 ]; do
       case "$1" in
         --policy)       POLICY_FILE="$2"; shift 2 ;;
+        --policy-json)  POLICY_JSON="$2"; shift 2 ;;
         --gate)         GATE_SOCKET="$2"; shift 2 ;;
         --evidence)     LAUNCH_EVIDENCE="$2"; shift 2 ;;
+        --evidence-stdio) EVIDENCE_STDIO=1; shift ;;
         --observe-denials) DENIAL_LOG="$2"; shift 2 ;;
         --supervisor-pid) SUPERVISOR_PID="$2"; shift 2 ;;
+        --namespace-target) NAMESPACE_TARGET="$2"; shift 2 ;;
+        --nsenter)      NSENTER="$2"; shift 2 ;;
         --explain)      EXPLAIN=1; shift ;;
         --profile=*)    PROFILE="''${1#--profile=}"; PROFILE_EXPLICIT=1; shift ;;
         --profile)      PROFILE="$2"; PROFILE_EXPLICIT=1; shift 2 ;;
@@ -103,7 +111,19 @@ pkgs.writeShellApplication {
       echo "pagu-box: --observe-denials is unsupported on Darwin" >&2
       exit 65
     }
+    if [ -n "$NAMESPACE_TARGET" ] || [ -n "$NSENTER" ]; then
+      echo "pagu-box: nested namespace launch is unsupported on Darwin" >&2
+      exit 65
+    fi
 
+    if [ -n "$POLICY_JSON" ]; then
+      echo "pagu-box: inline schema policy is unsupported on Darwin" >&2
+      exit 65
+    fi
+    if [ "$EVIDENCE_STDIO" -eq 1 ]; then
+      echo "pagu-box: streamed schema launch evidence is unsupported on Darwin" >&2
+      exit 65
+    fi
     if [ "$PROFILE_EXPLICIT" -eq 1 ] && [ -n "$POLICY_FILE" ]; then
       echo "pagu-box: --profile and --policy are mutually exclusive" >&2
       exit 64

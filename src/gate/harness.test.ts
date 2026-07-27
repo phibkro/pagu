@@ -9,6 +9,7 @@ import {
   claudeResumeAdapter,
   codexNonceMarker,
   codexResumeAdapter,
+  piResumeAdapter,
 } from "./resume.ts";
 
 async function withHome(
@@ -42,6 +43,16 @@ Deno.test("law: harness inference selects unique session location", async () => 
       "claude",
     );
   });
+
+  await withHome(async (home) => {
+    const pi = `${home}/.pi/agent/sessions/--work-project--`;
+    await Deno.mkdir(pi, { recursive: true });
+    await Deno.writeTextFile(
+      `${pi}/2026-07-25T00-00-00-000Z_session-pi.jsonl`,
+      '{"type":"session","id":"session-pi"}\n',
+    );
+    assertEquals(await resolveHarness(undefined, "session-pi", home), "pi");
+  });
 });
 
 Deno.test("law: harness inference fails typed for both or neither", async () => {
@@ -58,8 +69,10 @@ Deno.test("law: harness inference fails typed for both or neither", async () => 
     ) as HarnessInferenceError;
     assertEquals(both.codexFound, true);
     assertEquals(both.claudeFound, true);
+    assertEquals(both.piFound, false);
     assertEquals(both.message.includes(".codex/sessions"), true);
     assertEquals(both.message.includes(".claude/projects"), true);
+    assertEquals(both.message.includes(".pi/agent/sessions"), true);
   });
 
   await withHome(async (home) => {
@@ -69,6 +82,7 @@ Deno.test("law: harness inference fails typed for both or neither", async () => 
     ) as HarnessInferenceError;
     assertEquals(neither.codexFound, false);
     assertEquals(neither.claudeFound, false);
+    assertEquals(neither.piFound, false);
     assertEquals(neither.message.includes(".codex/sessions"), true);
     assertEquals(neither.message.includes(".claude/projects"), true);
   });
@@ -223,6 +237,36 @@ Deno.test("Claude fresh binds assigned session id without discovery", async () =
     },
   ).prepare();
   assertEquals(fresh.command, ["claude", "--session-id", assigned]);
+  assertEquals(await fresh.bind(), assigned);
+  assertEquals(discoveryPolls, 0);
+});
+
+Deno.test("law: Pi fresh binds assigned session id without discovery", async () => {
+  const assigned = "00000000-0000-0000-0000-000000000015";
+  let discoveryPolls = 0;
+  const fresh = await createFreshSessionPlanner(
+    piResumeAdapter("pi", {
+      extension: "/nix/store/pagu-pi-extension.ts",
+      skill: "/nix/store/pagu-skill/SKILL.md",
+    }),
+    "/home/test",
+    {
+      uuid: () => assigned,
+      codexSessions: () => {
+        discoveryPolls++;
+        return Promise.resolve(new Map());
+      },
+    },
+  ).prepare();
+  assertEquals(fresh.command, [
+    "pi",
+    "--extension",
+    "/nix/store/pagu-pi-extension.ts",
+    "--skill",
+    "/nix/store/pagu-skill/SKILL.md",
+    "--session-id",
+    assigned,
+  ]);
   assertEquals(await fresh.bind(), assigned);
   assertEquals(discoveryPolls, 0);
 });

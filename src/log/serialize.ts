@@ -158,6 +158,27 @@ export function serializeEntry(e: Entry): string {
       });
       body = "";
       break;
+    case "child-launch":
+      open = head("child-launch", {
+        version: String(e.version),
+        ...(e.at ? { at: e.at } : {}),
+      });
+      body = JSON.stringify({
+        id: e.id,
+        parent: e.parent,
+        depth: e.depth,
+        host: e.host,
+        parentPolicy: e.parentPolicy,
+        policy: e.policy,
+        requestRoute: e.requestRoute,
+        pid: e.pid,
+        namespace: e.namespace,
+        cwd: e.cwd,
+        command: e.command,
+        argv: e.argv,
+        environment: e.environment,
+      });
+      break;
   }
   // Use a fence longer than any `~` run in the body, so a body line of tildes
   // (e.g. a markdown `~~~` fence in model output) can't be read as the close.

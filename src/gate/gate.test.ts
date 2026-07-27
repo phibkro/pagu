@@ -4,6 +4,7 @@ import {
   type BwrapCompileContext,
   compilePolicy,
   explain,
+  NET_OFF,
   type PolicyV0,
 } from "../policy/index.ts";
 import {
@@ -36,6 +37,7 @@ import {
   codexNonceMarker,
   codexResumeAdapter,
   composeHarnessState,
+  piResumeAdapter,
   resumeAdapter,
   ResumeAdapterNotVerifiedError,
 } from "./resume.ts";
@@ -50,8 +52,9 @@ function policy(ro: readonly string[] = []): PolicyV0 {
       rw: [],
       ro,
       deny: ["~/.ssh", "~/.gnupg"],
+      derive: [],
     },
-    net: false,
+    net: NET_OFF,
     env: { pass: [] },
     escalation: { auto: [], refuse: [] },
   };
@@ -176,8 +179,12 @@ Deno.test("operator state directory rejects replaceable ancestry and symlinks", 
   }
 });
 
-Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound", () => {
-  const codex = codexResumeAdapter();
+Deno.test("resume adapters preserve exact Codex, Claude, and Pi sessions", () => {
+  const mcp = {
+    command: "/nix/store/pagu-mcp/bin/pagu-mcp",
+    args: [] as const,
+  };
+  const codex = codexResumeAdapter("codex", mcp);
   const nonce = "00000000-0000-0000-0000-000000000099";
   assertEquals(codex.freshCommand(nonce), [
     "codex",
@@ -185,6 +192,16 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     "approval_policy=never",
     "-c",
     "sandbox_mode=danger-full-access",
+    "-c",
+    'mcp_servers.pagu.command="/nix/store/pagu-mcp/bin/pagu-mcp"',
+    "-c",
+    "mcp_servers.pagu.args=[]",
+    "-c",
+    'mcp_servers.pagu.env_vars=["PAGU_REQUEST_SOCKET"]',
+    "-c",
+    'mcp_servers.pagu.enabled_tools=["request_read_access"]',
+    "-c",
+    "mcp_servers.pagu.required=true",
     "pagu fresh-session attribution marker; no task is requested.\n\n" +
     codexNonceMarker(nonce),
   ]);
@@ -196,26 +213,84 @@ Deno.test("resume adapters: Codex stands down inside box; Claude is UUID-bound",
     "approval_policy=never",
     "-c",
     "sandbox_mode=danger-full-access",
+    "-c",
+    'mcp_servers.pagu.command="/nix/store/pagu-mcp/bin/pagu-mcp"',
+    "-c",
+    "mcp_servers.pagu.args=[]",
+    "-c",
+    'mcp_servers.pagu.env_vars=["PAGU_REQUEST_SOCKET"]',
+    "-c",
+    'mcp_servers.pagu.enabled_tools=["request_read_access"]',
+    "-c",
+    "mcp_servers.pagu.required=true",
   ]);
   assertEquals(codex.stateRw, ["$HOME/.codex"]);
+  assertEquals(codex.stateRo, []);
   assertEquals(claudeResumeAdapter().stateRw, [
     "$HOME/.claude",
     "$HOME/.claude.json",
   ]);
-  assertEquals(claudeResumeAdapter().command("session-2"), [
+  assertEquals(claudeResumeAdapter().stateRo, []);
+  const claude = claudeResumeAdapter("claude", mcp);
+  const claudeConfig = JSON.stringify({
+    mcpServers: {
+      pagu: {
+        type: "stdio",
+        command: mcp.command,
+        args: [],
+        env: { PAGU_REQUEST_SOCKET: "/run/pagu/request.sock" },
+      },
+    },
+  });
+  assertEquals(claude.command("session-2"), [
     "claude",
+    "--mcp-config",
+    claudeConfig,
     "--resume",
     "session-2",
   ]);
-  assertEquals(claudeResumeAdapter().freshCommand("session-2"), [
+  assertEquals(claude.freshCommand("session-2"), [
     "claude",
+    "--mcp-config",
+    claudeConfig,
     "--session-id",
     "session-2",
   ]);
   assertEquals(
-    claudeResumeAdapter().command("session-2").includes("--continue"),
+    claude.command("session-2").includes("--strict-mcp-config"),
     false,
   );
+  assertEquals(
+    claude.command("session-2").includes("--continue"),
+    false,
+  );
+  const pi = piResumeAdapter("pi", {
+    extension: "/nix/store/pagu-pi-extension.ts",
+    skill: "/nix/store/pagu-skill/SKILL.md",
+  });
+  assertEquals(pi.stateRw, ["$HOME/.pi"]);
+  assertEquals(pi.stateRo, [
+    "$HOME/.local/lib/node_modules/@earendil-works/pi-coding-agent",
+    "$HOME/.local/lib/node_modules/@mariozechner/pi-coding-agent",
+  ]);
+  assertEquals(pi.freshCommand("session-3"), [
+    "pi",
+    "--extension",
+    "/nix/store/pagu-pi-extension.ts",
+    "--skill",
+    "/nix/store/pagu-skill/SKILL.md",
+    "--session-id",
+    "session-3",
+  ]);
+  assertEquals(pi.command("session-3"), [
+    "pi",
+    "--extension",
+    "/nix/store/pagu-pi-extension.ts",
+    "--skill",
+    "/nix/store/pagu-skill/SKILL.md",
+    "--session",
+    "session-3",
+  ]);
   assertThrows(
     () => resumeAdapter("unverified"),
     ResumeAdapterNotVerifiedError,
@@ -443,14 +518,22 @@ Deno.test("law: harness state is scoped and deny remains final", () => {
       ...policy().fs,
       home: "rw",
       deny: ["$HOME/.ssh", "$HOME/.gnupg"],
+      derive: [],
     },
   };
   const codex = composeHarnessState(base, codexResumeAdapter());
   const claude = composeHarnessState(base, claudeResumeAdapter());
+  const pi = composeHarnessState(base, piResumeAdapter());
   assertEquals(codex.fs.rw, ["$HOME/.codex"]);
   assertEquals(claude.fs.rw, ["$HOME/.claude", "$HOME/.claude.json"]);
+  assertEquals(pi.fs.rw, ["$HOME/.pi"]);
+  assertEquals(pi.fs.ro, [
+    "$HOME/.local/lib/node_modules/@earendil-works/pi-coding-agent",
+    "$HOME/.local/lib/node_modules/@mariozechner/pi-coding-agent",
+  ]);
   assertEquals(codex.fs.deny, base.fs.deny);
   assertEquals(claude.fs.deny, base.fs.deny);
+  assertEquals(pi.fs.deny, base.fs.deny);
 
   const ctx: BwrapCompileContext = {
     platform: "linux",
@@ -463,6 +546,8 @@ Deno.test("law: harness state is scoped and deny remains final", () => {
     sslCertFile: "/etc/ssl/certs/ca-certificates.crt",
     environment: {},
     pathKind: (path) => path.endsWith(".json") ? "file" : "directory",
+    canonicalize: (path) => path,
+    readRepositoryFile: () => null,
     environmentMode: "process",
   };
   const argv = explain(codex, ctx).argv;
@@ -715,6 +800,8 @@ Deno.test("falsifier 5: widened launch evidence uses the explained compiled argv
       sslCertFile: "/etc/ssl/certs/ca-certificates.crt",
       environment: {},
       pathKind: (path) => path === granted ? "directory" : "missing",
+      canonicalize: (path) => path,
+      readRepositoryFile: () => null,
       environmentMode: "process",
     };
     const gate = await createGate({

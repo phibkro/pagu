@@ -11,11 +11,16 @@ import {
   decodeDenialEvidence,
   EMPTY_POLICY,
   explain,
+  GatewayUnavailableError,
   LEGACY_POLICY_PRESETS,
   loadPolicy,
+  NET_HOST,
+  NET_OFF,
   parseGrant,
   parsePolicy,
+  type PolicyNetV0,
   PolicyValidationError,
+  requireGateway,
   UnsupportedPlatformError,
 } from "./index.ts";
 
@@ -62,6 +67,8 @@ const CTX: BwrapCompileContext = {
     OPENAI_API_KEY: "openai-test",
   },
   pathKind: (path) => pathKinds.get(path) ?? "missing",
+  canonicalize: (path) => path,
+  readRepositoryFile: () => null,
   environmentMode: "process",
 };
 
@@ -81,7 +88,7 @@ function completePolicy(
       ro?: string[];
       deny?: string[];
     };
-    net?: boolean;
+    net?: PolicyNetV0;
     env?: { pass: string[] };
     escalation?: {
       auto: { "fs.ro": string; scope: "session" }[];
@@ -99,7 +106,7 @@ function completePolicy(
       deny: [],
       ...fields.fs,
     },
-    net: fields.net ?? false,
+    net: fields.net ?? NET_OFF,
     env: fields.env ?? { pass: [] },
     escalation: fields.escalation ?? { auto: [], refuse: [] },
   };
@@ -359,7 +366,7 @@ Deno.test("falsifier 3: project policy cannot widen user authority", () => {
         ro: ["/srv/share"],
         deny: ["~/.ssh"],
       },
-      net: false,
+      net: NET_OFF,
       env: { pass: ["ANTHROPIC_API_KEY"] },
       escalation: {
         auto: [{ "fs.ro": "/srv/share/**", scope: "session" }],
@@ -375,7 +382,7 @@ Deno.test("falsifier 3: project policy cannot widen user authority", () => {
         ro: ["/srv/share/subdir", "/root"],
         deny: ["~/.gnupg"],
       },
-      net: true,
+      net: NET_HOST,
       env: { pass: ["OPENAI_API_KEY"] },
       escalation: {
         auto: [{ "fs.ro": "/root/**", scope: "session" }],
@@ -389,7 +396,7 @@ Deno.test("falsifier 3: project policy cannot widen user authority", () => {
   assertEquals(policy.fs.rw, []);
   assertEquals(policy.fs.ro, ["/srv/share/subdir"]);
   assertEquals(policy.fs.deny, ["~/.ssh", "~/.gnupg"]);
-  assertEquals(policy.net, false);
+  assertEquals(policy.net, NET_OFF);
   assertEquals(policy.env.pass, []);
   assertEquals(policy.escalation.auto, []);
   assertEquals(policy.escalation.refuse, ["~/.ssh/**", "~/.gnupg/**"]);
@@ -412,6 +419,38 @@ Deno.test("falsifier 3: project dot segments cannot escape a trusted path", () =
   }, { canonicalize: (path) => path });
   assertEquals(policy.fs.rw, ["$PWD/kept"]);
   assertEquals(warnings.length, 2);
+});
+
+Deno.test("falsifier 3: project filesystem wildcard is a literal path", () => {
+  const { policy, warnings } = loadPolicy({
+    user: completePolicy({ fs: { rw: ["/srv/work/**"] } }),
+    project: completePolicy({ fs: { rw: ["/srv/work"] } }),
+  }, { canonicalize: (path) => path });
+
+  assertEquals(policy.fs.rw, []);
+  assertEquals(warnings, [
+    'project policy: ignored fs.rw widening "/srv/work"',
+  ]);
+});
+
+Deno.test("law: project may narrow rw home to explicit child scopes", () => {
+  const canonicalize = (path: string) => {
+    if (path === "$HOME" || path === "~") return HOME;
+    if (path.startsWith("$HOME/")) return `${HOME}${path.slice(5)}`;
+    if (path.startsWith("~/")) return `${HOME}${path.slice(1)}`;
+    return path;
+  };
+  const { policy, warnings } = loadPolicy({
+    user: completePolicy({ fs: { home: "rw" } }),
+    project: completePolicy({
+      fs: { home: "tmpfs", rw: ["$HOME/work"], ro: ["~/reference"] },
+    }),
+  }, { canonicalize });
+
+  assertEquals(policy.fs.home, "tmpfs");
+  assertEquals(policy.fs.rw, [`${HOME}/work`]);
+  assertEquals(policy.fs.ro, [`${HOME}/reference`]);
+  assertEquals(warnings, []);
 });
 
 Deno.test("falsifier 3: canonical paths reject symlink escapes and accept symbolic aliases", async () => {
@@ -626,6 +665,7 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
   try {
     const policyFile = `${dir}/policy.json`;
     const fakeBwrap = `${dir}/fake-bwrap`;
+    const fakeNsenter = `${dir}/fake-nsenter`;
     const fakeObserver = `${dir}/fake-observer`;
     const evidenceFile = `${dir}/launch-evidence.json`;
     const secret = "slice3-secret-must-not-appear-in-explain";
@@ -640,9 +680,14 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
     );
     await Deno.writeTextFile(
       fakeBwrap,
-      "#!/bin/sh\nprintf 'ARG:%s\\n' \"$@\"\nprintf 'SECRET:%s\\n' \"${POLICY_TEST_SECRET:-}\"\n",
+      "#!/bin/sh\nprintf 'PAGU_LAUNCH_EVIDENCE_V1={\"version\":999}\\n' >&2\nprintf 'ARG:%s\\n' \"$@\"\nprintf 'SECRET:%s\\n' \"${POLICY_TEST_SECRET:-}\"\n",
     );
     await Deno.chmod(fakeBwrap, 0o755);
+    await Deno.writeTextFile(
+      fakeNsenter,
+      '#!/bin/sh\nwhile [ "$1" != -- ]; do printf \'NS:%s\\n\' "$1"; shift; done\nshift\nprintf \'EXEC:%s\\n\' "$@"\nexec "$@"\n',
+    );
+    await Deno.chmod(fakeNsenter, 0o755);
     await Deno.writeTextFile(
       fakeObserver,
       "#!/bin/sh\nprintf 'OBS:%s\\n' \"$@\"\n",
@@ -683,6 +728,31 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
     };
     assert(explained.environment.includes("POLICY_TEST_SECRET"));
 
+    const policyJson = await Deno.readTextFile(policyFile);
+    const inlineExplainedResult = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--explain",
+    ]);
+    assertEquals(inlineExplainedResult.code, 0);
+    assertEquals(
+      JSON.parse(new TextDecoder().decode(inlineExplainedResult.stdout)),
+      explained,
+    );
+
+    const duplicatePolicySourceResult = await runAdapter([
+      "--policy",
+      policyFile,
+      "--policy-json",
+      policyJson,
+      "--explain",
+    ]);
+    assertEquals(duplicatePolicySourceResult.code, 64);
+    assertStringIncludes(
+      new TextDecoder().decode(duplicatePolicySourceResult.stderr),
+      "--policy and --policy-json are mutually exclusive",
+    );
+
     const enforcedResult = await runAdapter([
       "--policy",
       policyFile,
@@ -708,6 +778,79 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
     assertEquals(evidence.argv, explained.argv);
     assertEquals(evidence.environment, explained.environment);
     assertEquals(evidence.command, ["ignored-command"]);
+
+    const streamedResult = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--bwrap",
+      fakeBwrap,
+      "--evidence-stdio",
+      "--",
+      "streamed-command",
+    ]);
+    assertEquals(streamedResult.code, 0);
+    const evidenceLines = new TextDecoder().decode(streamedResult.stderr)
+      .split("\n")
+      .filter((line) => line.startsWith("PAGU_LAUNCH_EVIDENCE_V1="));
+    assertEquals(evidenceLines.length, 2);
+    const evidenceLine = evidenceLines[0];
+    const streamedEvidence = JSON.parse(
+      evidenceLine.slice("PAGU_LAUNCH_EVIDENCE_V1=".length),
+    );
+    assertEquals(streamedEvidence.version, 1);
+    assertEquals(streamedEvidence.argv, explained.argv);
+    assertEquals(streamedEvidence.environment, explained.environment);
+    assertEquals(streamedEvidence.command, ["streamed-command"]);
+    assertEquals(
+      evidenceLines[1],
+      'PAGU_LAUNCH_EVIDENCE_V1={"version":999}',
+    );
+
+    const pidNestedResult = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--bwrap",
+      fakeBwrap,
+      "--nsenter",
+      fakeNsenter,
+      "--namespace-target",
+      "1",
+      "--",
+      "pid-nested-command",
+    ]);
+    assertEquals(pidNestedResult.code, 0);
+    const pidNestedLines = new TextDecoder().decode(pidNestedResult.stdout)
+      .trimEnd().split("\n");
+    assertEquals(pidNestedLines.slice(0, 10), [
+      "NS:--target",
+      "NS:1",
+      "NS:--user",
+      "NS:--preserve-credentials",
+      "NS:--mount",
+      "NS:--net",
+      "NS:--ipc",
+      "NS:--uts",
+      "NS:--pid",
+      `NS:--wdns=${Deno.cwd()}`,
+    ]);
+    assert(pidNestedLines.includes(`EXEC:${fakeBwrap}`));
+    assert(pidNestedLines.includes("ARG:pid-nested-command"));
+
+    const incompletePidNesting = await runAdapter([
+      "--policy-json",
+      policyJson,
+      "--bwrap",
+      fakeBwrap,
+      "--namespace-target",
+      "1",
+      "--",
+      "pid-nested-command",
+    ]);
+    assertEquals(incompletePidNesting.code, 64);
+    assertStringIncludes(
+      new TextDecoder().decode(incompletePidNesting.stderr),
+      "--namespace-target and --nsenter must be supplied together",
+    );
 
     const observedResult = await runAdapter([
       "--policy",
@@ -800,4 +943,84 @@ Deno.test("law: denial observation stays opt-in and host-owned", async () => {
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+// --- Slice 20: gated egress (ADR-0014) ---------------------------------------
+
+const gatedAllowing = (...allow: string[]) =>
+  completePolicy({ net: { mode: "gated", allow } });
+
+Deno.test("net is a lattice, not a boolean: off < gated < host", () => {
+  assertEquals(parsePolicy(completePolicy({ net: NET_OFF })).net, NET_OFF);
+  assertEquals(parsePolicy(completePolicy({ net: NET_HOST })).net, NET_HOST);
+  assertEquals(parsePolicy(gatedAllowing("api.github.com")).net, {
+    mode: "gated",
+    allow: ["api.github.com"],
+  });
+});
+
+Deno.test("net rejects the retired boolean and malformed modes", () => {
+  // The boolean is rejected, not coerced: `net: true` meant "share the
+  // launching namespace", which is `host` bare and `gated` inside a gateway —
+  // one artifact denoting two authorities. That ambiguity is what the lattice
+  // exists to end, so silently mapping it would preserve the bug.
+  for (
+    const bad of [true, false, { mode: "open" }, { mode: "gated" }, {}]
+  ) {
+    assertThrows(
+      () => parsePolicy(completePolicy({ net: bad as never })),
+      PolicyValidationError,
+    );
+  }
+});
+
+Deno.test("falsifier: a project layer cannot widen egress", () => {
+  const user = gatedAllowing("api.github.com", "api.deno.com");
+
+  const toHost = loadPolicy({
+    user,
+    project: completePolicy({ net: NET_HOST }),
+  });
+  assertEquals(toHost.policy.net.mode, "gated");
+  assert(toHost.warnings.some((w) => w.includes("net")));
+
+  // An unauthorized destination is dropped, never merged in.
+  const wider = loadPolicy({ user, project: gatedAllowing("evil.example") });
+  assertEquals(wider.policy.net, { mode: "gated", allow: [] });
+
+  const narrower = loadPolicy({ user, project: gatedAllowing("api.deno.com") });
+  assertEquals(narrower.policy.net, { mode: "gated", allow: ["api.deno.com"] });
+
+  // Attenuation to bottom always remains available.
+  const off = loadPolicy({ user, project: completePolicy({ net: NET_OFF }) });
+  assertEquals(off.policy.net, NET_OFF);
+});
+
+Deno.test("falsifier: gated egress requires an observed gateway", () => {
+  const gated = parsePolicy(gatedAllowing("api.github.com")).net;
+  // Evidence, not narration: sharing the gateway's exact network namespace is
+  // the proof. A missing or foreign gateway must fail loud rather than let
+  // --share-net inherit whatever namespace the launcher happened to be in.
+  assertThrows(
+    () => requireGateway(gated, { gatewayNetns: null, netns: "net:[1]" }),
+    GatewayUnavailableError,
+  );
+  assertThrows(
+    () => requireGateway(gated, { gatewayNetns: "net:[9]", netns: "net:[1]" }),
+    GatewayUnavailableError,
+  );
+  requireGateway(gated, { gatewayNetns: "net:[7]", netns: "net:[7]" });
+  // Ungated modes state their authority completely and need no proof.
+  requireGateway(NET_OFF, { gatewayNetns: null, netns: "net:[1]" });
+  requireGateway(NET_HOST, { gatewayNetns: null, netns: "net:[1]" });
+});
+
+Deno.test("gated egress lowers to an inherited network namespace", () => {
+  // The gateway owns the namespace pagu launches into, so the box inherits it
+  // rather than unsharing. What may leave that namespace is the gateway's
+  // concern; pagu lowers only the sharing decision.
+  const gated = parsePolicy(gatedAllowing("api.github.com"));
+  assert(compileToBwrapArgs(gated, CTX).includes("--share-net"));
+  const off = parsePolicy(completePolicy({ net: NET_OFF }));
+  assert(!compileToBwrapArgs(off, CTX).includes("--share-net"));
 });

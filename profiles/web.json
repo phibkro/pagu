@@ -20,9 +20,10 @@
       "~/.bash_history",
       "~/.zsh_history",
       "~/.python_history"
-    ]
+    ],
+    "derive": ["/srv/share/projects/**"]
   },
-  "net": true,
+  "net": { "mode": "host" },
   "env": { "pass": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"] },
   "escalation": {
     "auto": [{ "fs.ro": "/srv/share/projects/**", "scope": "session" }],

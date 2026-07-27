@@ -8,9 +8,10 @@ pagu wraps any coding-agent harness in two security components:
   adjudicate them, and retain the decision evidence.
 
 The hermit-crab model is literal: any harness is the crab, `pagu-box` is the
-borrowed shell, and `pagu gate` controls the shell's aperture. A grant never
-mutates a live sandbox: the gate stops its owned child, recompiles the complete
-policy, and resumes the same harness session in a new box.
+borrowed shell, and the gate controls the shell's aperture. The ordinary `pagu`
+command owns both components. A grant never mutates a live sandbox: the gate
+stops its owned child, recompiles the complete policy, and resumes the same
+harness session in a new box.
 
 The former integrated harness is preserved on branch `archive/harness` and at
 tag `harness-final`. It is not part of the live architecture. The pivot and the
@@ -18,7 +19,14 @@ box/gate contract are recorded in
 [ADR-0004](docs/decisions/0004-pivot-to-sandbox-plus-gate.md) and
 [ADR-0005](docs/decisions/0005-grant-schema-and-gate-boundary.md). Curated
 category profiles and their telemetry loop are specified by
-[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md).
+[ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md). The default
+launch and request-only agent interface are specified by
+[ADR-0008](docs/decisions/0008-default-launch-surface.md) and
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md). Nested child
+authority is specified by
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md). Pi's
+assigned-session and native-tool integration is specified by
+[ADR-0012](docs/decisions/0012-pi-native-adapter.md).
 
 ## Platform status
 
@@ -43,12 +51,95 @@ nix build .#pagu-box .#pagu
 Or run either flake package directly:
 
 ```sh
+nix run . -- --help
+nix run . -- box --help
+nix run .#pagu
 nix run .#pagu-box -- --help
-nix run .#pagu -- gate --help
 ```
 
-The default flake package is the `pagu-box` compatibility executable. A unified
-`pagu box` subcommand is planned; it is not shipped yet.
+The default flake package is `pagu`. Direct enforcement lives at `pagu box`;
+`pagu-box` remains an exact compatibility executable for existing automation.
+
+## Start a protected agent
+
+Name the harness. No `--` separator is needed:
+
+```sh
+pagu claude
+pagu codex
+pagu pi
+```
+
+That starts a fresh session under the `worker` category, with the gate outside
+the sandbox and the harness inside it. On first launch, pagu creates private
+session state below `$XDG_RUNTIME_DIR/pagu`; when that environment variable is
+unavailable, pass `--state-dir` explicitly.
+
+Bare `pagu` prints usage and exits. Which policy gets enforced is not something
+to infer from an empty command line, so launching always states its intent —
+through a named harness, through flags, or through the configured defaults
+below.
+
+Select another category for one journey:
+
+```sh
+pagu --profile proof
+```
+
+A path works the same way — pagu infers Codex, Claude, or Pi from the basename:
+
+```sh
+pagu /opt/codex/bin/codex
+```
+
+Use `--` only when the executable would otherwise parse as an option. An opaque
+wrapper needs an explicit adapter:
+
+```sh
+pagu --harness claude -- /opt/company/agent-wrapper
+```
+
+### Arbitrary commands go in the box
+
+A gated launch wraps exactly one executable and accepts no trailing arguments.
+That is not parser strictness: widening a policy stops the box and relaunches
+the same session, so the adapter must be able to reproduce the harness argv, and
+caller-supplied arguments cannot be merged into a resume invocation.
+
+To sandbox any other command — including a harness run headlessly, which never
+resumes — use the box directly, which does take arbitrary arguments:
+
+```sh
+pagu box --policy ./policy.json -- claude -p "$prompt"
+pagu box --profile worker -- rsync -a ./src ./dst
+```
+
+`pagu` tells you this when you hit it:
+
+```console
+$ pagu claude -p "fix it"
+pagu: a gated launch wraps exactly one executable, because the harness adapter
+owns the argv it replays on resume.
+  to sandbox an arbitrary command instead: pagu box -- claude -p 'fix it'
+```
+
+Persistent user defaults live at `$XDG_CONFIG_HOME/pagu/launch.json`, or
+`~/.config/pagu/launch.json` when `XDG_CONFIG_HOME` is unset:
+
+```json
+{
+  "version": 0,
+  "defaults": {
+    "harness": "claude",
+    "profile": "proof"
+  }
+}
+```
+
+The file is optional and strict: unknown fields, harnesses, profiles, or schema
+versions fail before launch. Command-line choices override configured defaults.
+This trusted launch file is separate from project policy; repository content
+cannot select broader authority.
 
 ## Policy v0
 
@@ -83,6 +174,7 @@ Policy fields:
 | `fs.home`           | Bind the host home read-write, or replace it with a temporary filesystem. |
 | `fs.rw` / `fs.ro`   | Additional read-write or read-only bind mounts.                           |
 | `fs.deny`           | Concealed paths; built-in SSH and GPG denies are always added.            |
+| `fs.derive`         | Optional: where pagu may place mounts derived from repository metadata.   |
 | `net`               | Share or isolate the host network namespace.                              |
 | `env.pass`          | Environment names copied into the scrubbed child environment.             |
 | `escalation.auto`   | Read-only child scopes the gate may approve for the session.              |
@@ -121,11 +213,79 @@ example, advisor launched with `$PWD=$HOME`), Linux lowering fails loud: the
 host could create that path after the check, while bubblewrap cannot install a
 new mask mountpoint below the RO destination. Use a narrower repository root.
 
+### Git linked worktrees
+
+A linked worktree's `.git` is a pointer file, so the repository itself lives
+outside `$PWD`. Launching from one used to produce
+`fatal: not a git repository: (null)`. pagu now derives those mounts, at the
+same access the profile already grants on the launch directory and no wider:
+
+**This table describes _derived_ authority only** — what pagu adds when the
+policy does not already reach the repository. It is a floor, never a cap: a
+profile that already mounts the common directory more broadly stays that broad,
+because derivation composes with the policy and never narrows it. Read every row
+as "at least this".
+
+| Path (when derived)                | Advisor   | Writer profiles |
+| ---------------------------------- | --------- | --------------- |
+| Git common directory root          | read-only | read-only       |
+| `objects`, `refs`, `logs`          | read-only | read-write      |
+| this worktree's `worktrees/<name>` | read-only | read-write      |
+
+Supported when these are the derived mounts: status, diff, log, stage, commit,
+branch and reflog updates, including branches that exist only in `packed-refs`,
+and `git fetch` — Git keeps `FETCH_HEAD` per worktree, inside the writable
+`worktrees/<name>` directory. Refused, because the derived common root is not
+writable: `git config --local`, `pack-refs`, `gc`, `repack`, and
+`worktree add/prune`.
+
+Under an explicit policy that already grants more — an `infra`-style profile
+whose write root holds both the checkout and its common directory — nothing is
+derived, those operations are **not** refused, and even an advisor sees whatever
+that policy granted. pagu reports the skipped derivation on stderr so the wider
+authority is visible rather than inferred from absent mounts.
+
+#### A worktree is not a branch sandbox
+
+Objects and refs are **shared repository state**, so working-tree isolation is
+not ref isolation. A writer in one linked worktree can create, move, or delete
+any branch in the repository, and every other worktree and the host see it
+immediately — without ever reading another worktree's files. Use worktrees to
+keep concurrent agents out of each other's _files_; do not rely on them to keep
+one agent out of another's _branch_.
+
+#### Where a derived mount may be placed
+
+Placement is an explicit trusted capability, graded by the access it needs:
+
+| Access needed  | May be placed inside                                     |
+| -------------- | -------------------------------------------------------- |
+| read-only      | `fs.derive`, plus any root the policy already mounts     |
+| **read-write** | `fs.derive`, plus roots the policy already mounts **rw** |
+
+```json
+"fs": { "…": "…", "derive": ["/srv/share/projects/**"] }
+```
+
+`fs.derive` is the only way to widen placement, and only the _trusted_ layer can
+set it: a project policy may shrink it, never extend it. `escalation.auto`
+deliberately does **not** count — it names read scopes the gate may grant on
+request, and a read-only rule must not become the source of write authority on a
+shared object and ref store. The shipped profiles declare the projects region
+they already pre-authorize.
+
+A repository pointer that resolves outside the ceiling for the access it needs,
+or that cannot prove it belongs to this worktree, aborts the launch with a
+diagnostic instead of being mounted. Submodules and `--separate-git-dir` layouts
+are refused for that reason. Ordinary checkouts and bare repositories are
+untouched, and when the profile already mounts the whole repository read-write,
+nothing is derived at all — derivation composes with the policy and never
+narrows it.
+
 ## Run a boxed harness
 
 ```sh
-nix run .#pagu-box -- \
-  --policy ./policy.json \
+pagu box --policy ./policy.json \
   -- codex
 ```
 
@@ -135,7 +295,7 @@ sandbox. The standing policy remains the whole authority.
 Inspect the exact Linux lowering without launching anything:
 
 ```sh
-nix run .#pagu-box -- --policy ./policy.json --explain
+pagu box --policy ./policy.json --explain
 ```
 
 The explanation is derived from the same compiler result used for launch. It
@@ -145,7 +305,7 @@ Linux schema-policy launches can opt in to structured denial evidence:
 
 ```sh
 LOG="$(mktemp -t pagu-denial.XXXXXX.jsonl)"
-nix run .#pagu-box -- \
+pagu box \
   --profile worker \
   --observe-denials "$LOG" \
   -- codex
@@ -181,8 +341,8 @@ contract in addition to the filesystem/network boundary.
 Use a name anywhere an explicit schema policy is accepted:
 
 ```sh
-nix run .#pagu-box -- --profile advisor -- codex
-nix run .#pagu-box -- --profile worker -- sh -lc 'touch built.txt'
+pagu box --profile advisor -- codex
+pagu box --profile worker -- sh -lc 'touch built.txt'
 ```
 
 Resolution is deliberately unambiguous: an explicit `--policy FILE` or one
@@ -195,41 +355,53 @@ compatibility names below still select the legacy launcher.
 The imported launcher still supports its compatibility profiles and flags:
 
 ```sh
-nix run .#pagu-box -- --profile=strict -- codex
-nix run .#pagu-box -- --profile=paranoid --no-net -- claude
+pagu box --profile=strict -- codex
+pagu box --profile=paranoid --no-net -- claude
 ```
 
-Run `pagu-box --help` for the complete compatibility surface. Legacy policy
-flags cannot be combined with `--policy` or a category profile.
+Run `pagu box --help` for the complete direct-enforcement surface. The
+compatibility executable accepts the same argv, and
+`deno task journey:box /absolute/path/to/pagu /absolute/path/to/pagu-box` checks
+their help, schema explanation, child environment, output, and exit status
+against each other. Legacy policy flags cannot be combined with `--policy` or a
+category profile.
 
-## Run a gate-owned harness session
+## Operate a gate-owned harness session directly
+
+Bare `pagu` is the normal fresh-session path. The `gate` subcommand below is the
+advanced surface for an explicit policy, state path, or existing session.
 
 The relaunch lifecycle requires the gate to own the boxed child. For an existing
 session UUID, the gate identifies Codex from
-`~/.codex/sessions/**/rollout-*-UUID.jsonl` or Claude from
-`~/.claude/projects/*/UUID.jsonl` unless `--harness` overrides inference; both
-and neither fail loud. The selected harness is retained in gate-session v1
-evidence. Codex resumes the exact UUID with its inner approval and sandbox
-layers disabled because the outer box is the enforced boundary. Claude resumes
-the exact UUID with `claude --resume UUID`.
+`~/.codex/sessions/**/rollout-*-UUID.jsonl`, Claude from
+`~/.claude/projects/*/UUID.jsonl`, or Pi from
+`~/.pi/agent/sessions/**/*_UUID.jsonl` unless `--harness` overrides inference.
+Multiple matches and no match fail loud. The selected harness is retained in
+gate-session v1 evidence. Codex resumes the exact UUID with its inner approval
+and sandbox layers disabled because the outer box is the enforced boundary.
+Claude uses `claude --resume UUID`; Pi uses `pi --session UUID`.
 
-For a new agent, supply `--harness codex|claude` and omit `--session` (or add
+For a new agent, supply `--harness codex|claude|pi` and omit `--session` (or add
 `--fresh`). The initial box runs the harness's fresh command with the same
 authenticated state bind. For Codex, the gate adds an inert nonce marker to the
 initial prompt, snapshots existing session IDs, and binds only the new rollout
 whose content contains that marker. Concurrent unrelated rollouts are ignored,
 and an unflushed marker keeps discovery polling. This attribution assumes
 cooperative peers; hostile writers to the shared Codex session store remain
-outside the current boundary. Claude receives a generated UUID through
-`--session-id` and skips discovery entirely. Gate-session v2 records the
+outside the current boundary. Claude and Pi receive a generated UUID through
+`--session-id` and skip discovery entirely. Gate-session v2 records the
 attributed or assigned UUID and fresh initial mode, and every later widen
 resumes that UUID with context.
 
 Immediately before launch, the gate composes only the selected harness's state:
 Codex receives read-write `~/.codex`; Claude receives `~/.claude` and
-`~/.claude.json`. This launch overlay appears in the compiled explanation and
-does not alter the standing policy or its final secret denies. `persist`
-decisions update only the user policy or named-profile grant overlay.
+`~/.claude.json`; Pi receives `~/.pi`. Common user-local npm roots for the
+Earendil and upstream Pi packages are added read-only when present so a
+temporary home can still run the selected launcher. Other Pi layouts need a
+self-contained executable until pagu has a trusted runtime-root configuration.
+This launch overlay appears in the compiled explanation and does not alter the
+standing policy or its final secret denies. `persist` decisions update only the
+user policy or named-profile grant overlay.
 
 ```sh
 SESSION="<codex-session-uuid>"
@@ -271,11 +443,26 @@ private directory such as the `mktemp` result above. Startup rejects symlinks,
 foreign ownership, broad modes, and replaceable non-sticky ancestry.
 
 The gate starts `pagu-box` itself. On an existing session, pass
-`--harness codex|claude` to skip harness inference. `HarnessInferenceError`
-names both failed location checks; `ResumeAdapterNotVerifiedError` remains the
+`--harness codex|claude|pi` to skip harness inference. `HarnessInferenceError`
+names all failed location checks; `ResumeAdapterNotVerifiedError` remains the
 fail-loud behavior for an explicit unverified harness name.
 
-The in-sandbox SDK call is:
+Gate-owned Codex, Claude, and Pi sessions launched by the packaged `pagu`
+automatically discover one `request_read_access` tool. Codex and Claude receive
+it through session-local MCP configuration. Pi has no MCP client, so it receives
+an immutable session-local native extension which invokes the same packaged
+request-only adapter. After an actual denied read, the inhabitant supplies the
+exact path, what it needs, and why. No special prompt injection or persistent
+harness configuration is required. An approval stops the current box, so the
+tool call may disconnect; after pagu resumes the same session, retry the
+original read.
+
+The tool is request-only. It cannot resolve a request, choose its scope, inspect
+gate state, persist a grant, or launch a child. The pagu agent guide at
+[`skills/pagu/SKILL.md`](skills/pagu/SKILL.md) teaches this lifecycle.
+
+Programmatic clients outside an MCP-capable harness can call the same core
+through the SDK:
 
 ```ts
 import { fileRequest } from "./src/mod.ts";
@@ -289,7 +476,8 @@ const decision = await fileRequest({
 
 The mounted endpoint accepts one strict request per Unix-socket connection and
 returns its tied decision. There is no resolution operation in the sandbox
-protocol.
+protocol. `pagu mcp` is the newline-delimited stdio MCP entrypoint used by the
+packaged harness adapters; it is not an operator interface.
 
 Gate tiers:
 
@@ -345,16 +533,79 @@ candidates, not proof that a mounted path was never accessed: syscall-level use
 evidence remains unavailable. Full-policy denial classification and automatic
 requests remain deferred by ADR-0006.
 
+## Derive a nested child
+
+An agent inside pagu can act as a host to a narrower child while remaining an
+inhabitant of its own parent. The public `deriveChildPolicy` core accepts a
+complete parent policy, complete child proposal, and canonical path resolver. It
+preserves the child's subject and rejects the whole proposal if any filesystem,
+home, network, environment, or auto-escalation field exceeds the parent.
+Ancestor denies and refusals are always inherited.
+
+`rootLineage` and `deriveChildLineage` model whether the observed host is an
+outside operator or a parent inhabitant. Those values become authority evidence
+only when an outside lifecycle owner retains them; a child cannot attest its own
+lineage.
+
+The kernel composition can be exercised against the packaged launcher:
+
+```sh
+deno run --allow-run --allow-read --allow-write --allow-env --allow-net \
+  scripts/nested-box-tracer.ts /absolute/path/to/pagu-box
+```
+
+The tracer launches an ordinary child and then deliberately bypasses the
+derivation API. Both run under a real outer worker namespace; neither can
+recover host filesystem, network, environment, gate state, or control
+capabilities removed by that ancestor.
+
+Slice 16b phase A adds the narrow trusted broker core and a second packaged
+tracer:
+
+```sh
+deno run -A scripts/child-broker-tracer.ts \
+  /absolute/path/to/pagu-box /absolute/path/to/nsenter
+```
+
+The broker accepts only `launch-child`, selects the parent from trusted
+per-message sender/namespace facts rather than a caller-supplied lineage ID,
+derives the complete child policy, and commits strict `child-launch` v0 evidence
+before making the child active. The tracer keeps the packaged policy/evidence
+supervisor wholly in host namespaces, then uses an explicit absolute `nsenter`
+to put only its enforcement child in the live parent namespaces before
+bubblewrap narrows them again. It passes immutable policy JSON to that host
+supervisor, observes distinct child namespace identities, and retains
+parent/child policy hashes, request-route identity, compiled argv/environment
+names, PID, command, cwd, and lineage outside the parent-visible tree. The
+parent actively scans `/proc` and attempts an evidence-FD forgery if that
+supervisor becomes visible. Failure to verify or retain evidence stops the
+provisional child.
+
+This is not yet a `pagu child` product surface. Phase A's controlled tracer
+keeps its numeric parent process target live, but does not claim PID-reuse-safe
+namespace selection. The native phase-B frontend must receive per-message
+`SCM_CREDENTIALS` plus `SCM_PIDFD`, pin the sender's namespace handles, and use
+those exact handles for launch; connection-time `SO_PEERCRED` is explicitly
+insufficient because a connected descriptor can be passed to a child. The agent
+adapter is also phase B; child request adjudication and replacement are phase C.
+Pagu still does not mount a general control socket or treat inhabitant-authored
+lineage as trusted.
+
 ## Programmatic API
 
 The typed front door is [`src/mod.ts`](src/mod.ts). It exports:
 
+- strict launch-config decoding, config discovery, harness inference, and launch
+  resolution;
 - strict policy and grant decoding;
 - trusted-user plus narrow-only project policy folding;
+- strict child-policy derivation and actor/box-lineage construction;
+- the strict namespace-aware child-broker core and child-launch event mapping;
 - pure policy compilation and explanation;
 - strict denial-evidence v1 decoding;
 - the request client, session-bound gate core, and Approver port;
-- Codex/Claude resume adapters and the gate-owned box lifecycle;
+- the request-only MCP session, tool schema, and stdio adapter;
+- Codex/Claude/Pi resume adapters and the gate-owned box lifecycle;
 - queue reads and resolve-only operator submission;
 - retained event-log and capability primitives.
 - category-profile names and the telemetry-v0 collector/projection/formatter.
@@ -364,7 +615,43 @@ package is consumed from a checkout today; publication is not claimed.
 
 The agent-facing boundary guide ships at
 [`skills/pagu/SKILL.md`](skills/pagu/SKILL.md). It teaches the request and
-operator seams while treating the installed SDK as signature authority.
+operator seams while treating the installed tool/SDK as signature authority.
+
+## Test the complete journey without a model
+
+Build the packages, then give the deterministic tracer the absolute `pagu`
+executable path:
+
+```sh
+nix build .#pagu .#pagu-box
+deno task journey:mock /absolute/path/to/result/bin/pagu
+deno task journey:box \
+  /absolute/path/to/result/bin/pagu \
+  /absolute/path/to/result-1/bin/pagu-box
+deno task journey:worktree /absolute/path/to/result-1/bin/pagu-box
+```
+
+`journey:worktree` builds real Git fixtures and runs the shipped advisor and
+worker profiles in real bubblewrap: writer status/stage/commit with packed refs,
+advisor refused at the index, refs, objects and reflog, ordinary checkouts and
+bare repositories preserved, and both a forged and a genuine-but-untrusted
+pointer refused before launch. Its fixture roots must be outside `/tmp` and
+`$HOME`, which the box replaces.
+
+`XDG_RUNTIME_DIR` must name the current user's private runtime directory. The
+tracer launches the real packaged `pagu`, `pagu-box`, and `pagu mcp` surfaces. A
+fake Codex-compatible inhabitant creates a fresh attributed session, files one
+inaccessible read through the injected MCP tool, and waits while the host
+resolves it through `pagu resolve`. The first box must stop and the replacement
+must resume the same session before the fixture becomes readable.
+
+The retained request, operator decision, grant, both compiled launches, exact
+policy transition, MCP injection, and final fixture read are checked together.
+Provider credential variables are removed from the tracer environment and no
+model is called. This is the routine regression journey; use a real supported
+harness only when changing that harness's own session or tool behavior. Pi
+adapter changes should prefer a local Ollama model; remote free tiers remain an
+optional fallback, not CI.
 
 ## Security model and development
 
@@ -378,4 +665,6 @@ operator seams while treating the installed SDK as signature authority.
 deno task ci
 deno task check:docs
 nix build .#pagu-box .#pagu
+deno task journey:mock /absolute/path/to/result/bin/pagu
+deno task journey:box /absolute/path/to/pagu /absolute/path/to/pagu-box
 ```

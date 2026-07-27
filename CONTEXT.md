@@ -20,7 +20,16 @@ interface boundary are authoritative in
 explains the durable model. Category profiles and the policy-growth telemetry
 loop are authoritative in
 [ADR-0006](docs/decisions/0006-profiles-growth-and-telemetry.md). Forward work
-belongs in [ROADMAP.md](ROADMAP.md).
+belongs in [ROADMAP.md](ROADMAP.md). The default product entrypoint is fixed by
+[ADR-0008](docs/decisions/0008-default-launch-surface.md). The inhabitant
+request interface is fixed by
+[ADR-0009](docs/decisions/0009-request-only-agent-interface.md). Nested
+authority and lineage are fixed by
+[ADR-0010](docs/decisions/0010-nested-authority-and-lineage.md). Trusted child
+launch attribution and literal namespace nesting are fixed by
+[ADR-0011](docs/decisions/0011-credential-attested-child-broker.md). Pi's
+assigned-session and native-tool adapter are fixed by
+[ADR-0012](docs/decisions/0012-pi-native-adapter.md).
 
 ## Why the split exists
 
@@ -72,6 +81,7 @@ The box and gate share a schema family, not a process:
 | User policy selected by the operator    | trusted authority        | may grant within schema v0                                           |
 | Project policy supplied by a repository | untrusted                | may only attenuate user authority; widening is ignored with warnings |
 | Harness and everything it reads         | untrusted                | may request; cannot resolve or edit gate state                       |
+| Agent hosting a child from inside a box | untrusted parent         | may derive an initial child; remains bounded by every ancestor       |
 | Gate process and its state directory    | trusted core             | single writer and owner of the boxed child lifecycle                 |
 | Box compiler and OS sandbox             | trusted enforcement core | exact lowering is the security boundary                              |
 | Human-readable explanation              | evidence, not authority  | derived from the same compiled result used to launch                 |
@@ -98,10 +108,11 @@ The standing policy controls:
 An external authority may emit one complete box-accepted profile-grant artifact
 using the published strict `PolicyV0` shape at
 [`schemas/profile-grant-v0.schema.json`](schemas/profile-grant-v0.schema.json).
-This is the same artifact accepted by `pagu-box --policy`, not a second authority
-language or a named-profile overlay. `parsePolicy` remains its semantic
-validator. Named environment channels carry names only; their values must
-already exist in the trusted launch environment and never enter the artifact.
+This is the same artifact accepted by `pagu-box --policy`, not a second
+authority language or a named-profile overlay. `parsePolicy` remains its
+semantic validator. Named environment channels carry names only; their values
+must already exist in the trusted launch environment and never enter the
+artifact.
 
 A gate grant is gate-derived policy data with `parent` and `expires` derivation
 fields. Its distinct strict structural contract is published at
@@ -126,6 +137,65 @@ with an optional project policy. The project layer can:
 Nested paths require canonical containment. Invalid, widening, or symlink-
 escaping candidates are dropped and surfaced as warnings. This is attenuation,
 not a merge of peers.
+
+### Nested child authority
+
+[`src/policy/child.ts`](src/policy/child.ts) derives one complete child policy
+from the effective parent policy. This is stricter than project composition: the
+child subject is retained, but any attempted authority regain rejects the whole
+derivation. Ancestor denies and refusals are inherited; filesystem, network,
+environment, home, and automatic-escalation authority can only narrow.
+[`src/policy/path.ts`](src/policy/path.ts) is the one canonical containment
+primitive shared by both folds. Mount fields use exact path semantics—`/**` is
+literal there—while auto/refuse scopes use pattern semantics. An `rw` parent
+home also acts as the parent read-write root, so a child may mask home with
+`tmpfs` and rebind only a canonical subdirectory.
+
+[`src/policy/lineage.ts`](src/policy/lineage.ts) models host identity as a
+relative position. An agent can be a child host while remaining an inhabitant of
+the parent. Actor kind is metadata, not authority. Canonical lineage becomes
+evidence only when retained by a lifecycle owner outside every governed
+descendant; an environment depth marker, PID ancestry, or an inhabitant-writable
+file is not trusted provenance.
+
+The outer bubblewrap namespace is the final ceiling even when an inhabitant
+bypasses the SDK and invokes another `pagu-box` directly. The reproducible
+two-level tracer in
+[`scripts/nested-box-tracer.ts`](scripts/nested-box-tracer.ts) proves that a
+child cannot recover filesystem, network, environment, gate state, or control
+capabilities removed by its outer worker.
+
+[`src/child/`](src/child/) now supplies the first trusted lifecycle phase. Its
+strict launch frame contains a complete proposed policy, host display metadata,
+and command only. The broker selects authority from trusted per-message
+sender/namespace facts, derives from that exact active parent, mints lineage and
+route identity, and rolls a provisional child back unless namespace checks and
+outside-owned `child-launch` evidence commit. A child cannot name a parent,
+resolution, operator state, signal, or persistence operation.
+
+[`scripts/child-broker-tracer.ts`](scripts/child-broker-tracer.ts) proves the
+host can own the process while launching it by controlled construction through a
+live parent process's user, mount, PID, network, IPC, and UTS namespaces. Policy
+crosses that boundary as a strict immutable argv value; exact compiled evidence
+returns through a machine-prefixed adapter line that the trusted adapter emits
+before forwarding child stderr. The adapter itself remains wholly in host
+namespaces; only its `nsenter` enforcement child enters the parent namespaces,
+so the parent PID namespace cannot discover the adapter and write its evidence
+FD. The retained event binds lineage, both policy identities, request-route
+identity, compiled argv/environment names, command, cwd, PID, and observed
+namespaces. The log remains outside every governed write root. The separate
+adversarial nested tracer, not unequal namespace IDs alone, proves the
+ancestor-final claim.
+
+The stable Deno Unix socket API does not expose the ancillary-message facts
+required for sender attribution, so the native credential frontend and
+inhabitant adapter remain phase B. That frontend must receive per-message
+`SCM_CREDENTIALS` and a kernel-bound `SCM_PIDFD`, pin the sender namespace
+handles, and launch through those exact handles; it must never substitute
+connection-time `SO_PEERCRED` or the phase-A tracer's numeric PID targeting.
+Child request adjudication/replacement remain phase C. Until those land, pagu
+does not claim an inhabitant-accessible child command, lineage-attributed child
+requests, or host-owned child resume.
 
 ### Deny wins
 
@@ -172,12 +242,117 @@ Security-relevant properties:
 - network remains isolated unless `net` is true;
 - the optional request socket and its environment name exist only when `--gate`
   is supplied;
+- a linked worktree's Git metadata is derived, validated, and frozen before
+  launch, and an unsafe or unsupported repository shape aborts compilation
+  instead of producing a box where Git silently fails;
 - binding `/nix/var/nix/daemon-socket` adds `NIX_REMOTE=daemon` to the compiled
   environment and explanation; without the bind it is absent;
 - `--explain` is a projection of the exact compiled result and omits secret
   values;
 - gate-owned launches use `--evidence` to persist that spawned result's argv,
   environment names, command, and PID.
+
+### Linked-worktree metadata is derived, not configured
+
+A Git linked worktree keeps no repository inside the working directory: `.git`
+is a pointer file naming an administrative directory under the main repository's
+common directory, outside every mount a `$PWD`-scoped profile grants. So the box
+needs a mount the policy does not name, derived from material the project
+controls. [`src/policy/worktree.ts`](src/policy/worktree.ts) derives it, and
+[`src/policy/repository-fs.ts`](src/policy/repository-fs.ts) probes and freezes
+the facts once per launch, before bubblewrap starts.
+
+The derivation grants nothing on the repository's word. It takes authority only
+from what the repository can prove, and every check is a refusal, never a
+downgrade:
+
+- the pointer must name a directory whose own `gitdir` back pointer canonically
+  names this launch worktree — a foreign or invented target cannot satisfy that
+  without already holding write access to it;
+- `commondir` must resolve to the exact parent of `worktrees/<name>`, which is
+  Git's own linked-worktree layout, so rewriting it cannot select an unrelated
+  directory;
+- every resulting path must sit inside a trusted _placement_ ceiling that a
+  project can only narrow, and inside no denied root;
+- the access mode mirrors the profile's authority on the launch directory, so an
+  advisor derives read-only metadata and a writer derives no more than it
+  already holds on `$PWD`.
+
+#### Placement authority is explicit and graded
+
+Where a derived mount may be _placed_ is a different question from what may be
+read, so it has its own answer. `fs.derive` is the trusted derivation
+capability: the region inside which pagu may place mounts derived from
+repository metadata, at the launch directory's own authority. Beyond it, a
+derived mount may land only inside a root the policy already mounts at that
+access or stronger — a read-only policy root can host the derived common
+directory, and can never host a derived writable object or ref store.
+
+`escalation.auto` deliberately contributes nothing. It names read scopes the
+_gate_ may grant on request; letting it answer "may a writable Git mount be
+placed here" would make a read-only rule the source of write authority on shared
+repository state, which is exactly what invariant #3 forbids. `fs.derive` is set
+only by the trusted layer; `src/policy/load.ts` and `src/policy/child.ts`
+attenuate it like any other positive authority.
+
+#### Derivation composes with the policy; it never re-decides it
+
+Derived mounts are emitted after the policy's own, so a derived read-only parent
+would _overlay_ — silently narrow — write authority the trusted profile already
+granted. Derivation is therefore only the difference. The whole required path
+set is still validated, but a path the policy already mounts at the access this
+launch needs is never re-emitted, and when the read-only common parent must be
+composed, every granted writable root inside it is restored above it. Where one
+trusted read-write root already holds both the checkout and its common
+directory, nothing is derived at all, and that is reported on stderr rather than
+left to be inferred from the absence of mounts.
+
+The supported Git-operation contract, when the mounts _are_ derived, is
+deliberately narrower than "the repository is writable". The common directory
+root stays read-only; only the object store, the ref store, the common reflog
+directory, and this worktree's own administrative directory become writable, in
+specificity order so each overlays the read-only parent instead of being erased
+by it. That covers the ordinary journey — status, diff, log, stage, commit,
+branch and reflog updates, including branches that exist only in `packed-refs` —
+and `git fetch`, because Git keeps `FETCH_HEAD` per worktree, inside the
+writable `worktrees/<name>` directory. It excludes operations that rewrite the
+common root itself: `git config --local`, `pack-refs`, `gc`, `repack`, and
+`worktree add/prune`. Those fail loudly inside the box on a read-only filesystem
+rather than being granted for convenience. An absent common reflog directory is
+reported on stderr, not silently dropped.
+
+Submodules and `--separate-git-dir` layouts have no per-worktree back pointer,
+so they are refused before launch with a stable diagnostic rather than trusted
+on a weaker check. Ordinary checkouts and bare repositories derive nothing at
+all: whatever Git needs is already inside `$PWD`.
+
+#### Working-tree isolation is not ref isolation
+
+An advisor or writer launched in a linked worktree can read the main
+repository's object and ref store — the history is exactly what Git inspection
+needs — and reaches no working tree other than its own. That bounds _files_, not
+_refs_. Objects and refs are shared repository state, so a writer that can
+update refs can create, move, or delete any branch in the repository, and every
+other worktree and the host observe it, without ever touching another worktree's
+working-tree files. Worktrees are the isolation primitive for concurrent agents'
+files; they are not a branch sandbox, and nothing in this derivation makes them
+one.
+
+#### What the frozen probe does and does not buy
+
+[`src/policy/repository-fs.ts`](src/policy/repository-fs.ts) memoizes every
+repository fact for the launch, so the derivation that was validated is the
+derivation that gets compiled: a repository cannot answer one way during
+validation and another way during lowering, and the recorded paths are canonical
+at probe time.
+
+It does **not** eliminate the compile-to-exec race. bubblewrap resolves a bind
+source when it runs, so a path component replaced by a symlink between the probe
+and launch redirects that mount — observed directly against real bubblewrap.
+Derived mounts therefore carry exactly the same residual assumption as ordinary
+policy mounts, no more and no less: the ancestors of a mounted path are not
+writable by an attacker during launch. Nothing about derivation improves or
+worsens it.
 
 On Linux, `--observe-denials FILE` opts a schema-policy launch into the seccomp
 user-notif supervisor in [`box/src/denial-spike.c`](box/src/denial-spike.c). The
@@ -196,6 +371,50 @@ Nix-built `pagu-box` launcher. Linux schema-policy compilation is implemented.
 The macOS schema compiler fails with a typed unsupported-platform error; the
 legacy seatbelt profiles remain separate compatibility behavior.
 
+## Product launch surface
+
+`pagu HARNESS` is a user-journey adapter over the existing gate-owned fresh
+launch, not a third security component. The typed resolver in
+[`src/launch/launch.ts`](src/launch/launch.ts) selects the built-in worker
+category, a trusted user override from strict launch-config v0, or an explicit
+CLI choice. It may infer Codex, Claude, or Pi from one named executable's
+basename. The result still enters the same gate, verified harness resume port,
+policy compiler, and box.
+
+A launch states its intent: the harness is a bare positional (`pagu claude`),
+and `--` is needed only when the executable would otherwise parse as an option.
+Bare `pagu` — the empty command line — prints usage and launches nothing,
+because the thing inferred from silence would be which policy gets enforced.
+Configured `launch.json` defaults still complete any launch the caller has
+otherwise stated, so `pagu --profile proof` remains valid. This grammar is fixed
+by [ADR-0013](docs/decisions/0013-named-harness-launch-grammar.md), which
+supersedes the bare-launch and `--`-separated forms in ADR-0008.
+
+A gated launch wraps exactly one executable and takes no trailing arguments,
+because the adapter must reproduce that argv when an approved grant stops the
+box and resumes the session. Arbitrary commands — including a harness run
+headlessly, which never resumes — belong to `pagu box`, and the refusal names it
+with the caller's own argv shell-quoted.
+
+Argv tokenisation is delegated to `@std/cli`; every decision downstream of it
+stays hand-owned, because those decisions select which policy is enforced. The
+packaged CLI runs `--cached-only` against a store-resident `vendor/`, so a
+missing module fails loudly at launch rather than fetching over the network
+inside a process holding `--allow-net --allow-write --allow-run`.
+
+The trusted launch file lives outside repository control at the XDG pagu config
+path and names only a checked-in category plus a verified harness adapter. It
+does not define policy fields, grant authority to a project, or enter the
+sandbox. A missing file selects built-in defaults; a malformed, unknown-field,
+or unsupported version fails before launch. The historical integrated-harness
+`config.json` remains a distinct pre-pivot SDK seam, so the new file is named
+`launch.json`.
+
+Direct `pagu gate` operation remains for explicit policies and existing
+sessions. `pagu-box` remains the direct PEP compatibility surface. The root Nix
+package launches `pagu`, making the product journey the default without removing
+either expert surface.
+
 ## Escalation loop
 
 The request schema in [`src/request/schema.ts`](src/request/schema.ts) permits
@@ -213,6 +432,25 @@ deliberately not general RPC:
 Frames and concurrent clients are bounded, incomplete frames time out, active
 listeners cannot be replaced, and the socket is private to the user.
 
+[`src/mcp/server.ts`](src/mcp/server.ts) is the discoverable inhabitant adapter
+over that same channel. It exposes exactly one strict `request_read_access` tool
+and receives only `PAGU_REQUEST_SOCKET`; it cannot resolve, persist, read gate
+state, or launch a child. Fresh and resumed Codex/Claude commands receive the
+server through session-local harness arguments. Pi, which has no MCP client,
+receives [`integrations/pi/pagu.ts`](integrations/pi/pagu.ts) as an immutable
+session-local native extension; its one tool invokes the same packaged MCP
+process rather than reimplementing the request protocol. No adapter edits
+persistent harness configuration. Packaged `pagu mcp` dispatches to the narrow
+helper rather than the broader host CLI runtime. The bundled skill teaches the
+same boundary.
+
+An approved request intentionally stops the old box, including its MCP child,
+before launching the wider replacement. The call may disconnect rather than
+return its approval. The resumed harness retries the denied read and treats the
+new enforcement result as evidence. The stdio server remains responsive to ping
+while a request awaits the host. MCP cancellation suppresses a stale tool
+response but does not retract the retained gate request.
+
 [`src/request/adjudicate.ts`](src/request/adjudicate.ts) applies tiers in this
 order:
 
@@ -229,42 +467,45 @@ canonical path, not the mutable alias.
 [`src/gate/relaunch.ts`](src/gate/relaunch.ts) owns the active child. It
 verifies the request gate is reachable, stops the narrower box, and starts
 `pagu-box` with the complete derived policy. Immediately before each initial or
-approved launch it adds only that harness's RW state: `~/.codex`, or `~/.claude`
-plus `~/.claude.json`. This trusted launch overlay leaves the standing/profile
-policy immutable, passes through the same boundary validation and exact
-compiler/evidence path, and retains final secret denies. Session-store inference
-selects exactly one of Codex or Claude; ambiguous and missing matches fail loud,
-while an explicit harness skips inference. Gate-session v1 retains that
-selection for existing-session launches. A fresh launch requires an explicit
-harness and establishes ownership rather than inferring it from file timing.
-Codex receives a generated nonce marker in its inert initial prompt; the gate
-snapshots existing IDs before spawn and polls new rollout contents until that
-exact marker attributes one UUID, ignoring unrelated concurrent sessions and
-waiting through file-before-content flushes. Claude receives a caller-generated
-UUID through `--session-id` and needs no discovery poll. Gate-session v2 retains
-the attributed or assigned UUID and fresh initial mode. Requests arriving during
-Codex attribution wait behind the already-mounted socket and cannot enter the
-session-bound gate until attribution completes. Codex uses UUID resume with its
-inner approval/sandbox posture disabled because bubblewrap is the outer
-boundary; Claude uses `claude --resume SESSION_ID`. Versioned box launch
-evidence v1 and the `policy-launch` event bind compiled argv, cwd, and the fresh
-or resume command together. [`src/gate/resume.ts`](src/gate/resume.ts) is the
-harness command/state port; [`src/gate/harness.ts`](src/gate/harness.ts) owns
-fresh identity attribution and existing-session inference.
+approved launch it adds only that harness's RW state: `~/.codex`; `~/.claude`
+plus `~/.claude.json`; or `~/.pi`. Pi's common user-local installed package
+roots are added read-only when present so a temporary home can execute the
+selected runtime without exposing the rest of home. This trusted launch overlay
+leaves the standing/profile policy immutable, passes through the same boundary
+validation and exact compiler/evidence path, and retains final secret denies.
+Session-store inference selects exactly one of Codex, Claude, or Pi; ambiguous
+and missing matches fail loud, while an explicit harness skips inference.
+Gate-session v1 retains that selection for existing-session launches. A fresh
+launch requires an explicit harness and establishes ownership rather than
+inferring it from file timing. Codex receives a generated nonce marker in its
+inert initial prompt; the gate snapshots existing IDs before spawn and polls new
+rollout contents until that exact marker attributes one UUID, ignoring unrelated
+concurrent sessions and waiting through file-before-content flushes. Claude and
+Pi receive a caller-generated UUID through `--session-id` and need no discovery
+poll. Gate-session v2 retains the attributed or assigned UUID and fresh initial
+mode. Requests arriving during Codex attribution wait behind the already-mounted
+socket and cannot enter the session-bound gate until attribution completes.
+Codex uses UUID resume with its inner approval/sandbox posture disabled because
+bubblewrap is the outer boundary; Claude uses `claude --resume SESSION_ID`; Pi
+uses `pi --session SESSION_ID`. Versioned box launch evidence v1 and the
+`policy-launch` event bind compiled argv, cwd, and the fresh or resume command
+together. [`src/gate/resume.ts`](src/gate/resume.ts) is the harness
+command/state port; [`src/gate/harness.ts`](src/gate/harness.ts) owns fresh
+identity attribution and existing-session inference.
 
-Nonce attribution handles cooperative fleet concurrency, not adversarial
-writers to the shared harness store. Every gate-owned Codex box intentionally
-receives the same `~/.codex` tree read-write for authentication and resume; a
-hostile concurrent box could copy or delete another launch's marker/session
-material. Per-launch write isolation or a harness-assigned Codex UUID is needed
-before treating mutually hostile fleet peers as an attribution boundary. The
-operator accepts cooperative peers for the current Slice 13 boundary; hostile-
-peer isolation is explicitly deferred.
+Nonce attribution handles cooperative fleet concurrency, not adversarial writers
+to the shared harness store. Every gate-owned Codex box intentionally receives
+the same `~/.codex` tree read-write for authentication and resume; a hostile
+concurrent box could copy or delete another launch's marker/session material.
+Per-launch write isolation or a harness-assigned Codex UUID is needed before
+treating mutually hostile fleet peers as an attribution boundary. The operator
+accepts cooperative peers for the current Slice 13 boundary; hostile- peer
+isolation is explicitly deferred.
 
 The existing `pagu-box --evidence` adapter remains the supported launch-evidence
 path for harness integrations. A general arbitrary-harness gate/resume port is
 deferred because it requires a separate boundary design; the current gate's
-Codex and Claude resume adapters are not generalized implicitly.
+Codex, Claude, and Pi resume adapters are not generalized implicitly.
 
 ## Gate state and evidence
 
@@ -338,6 +579,10 @@ Claims about enforcement bind to executable evidence:
 
 - policy schema, attenuation, canonical paths, and explain equivalence:
   [`src/policy/policy.test.ts`](src/policy/policy.test.ts);
+- child derivation, transitive attenuation, lineage position, and symlink
+  falsifiers: [`src/policy/child.test.ts`](src/policy/child.test.ts), plus the
+  packaged two-level
+  [`scripts/nested-box-tracer.ts`](scripts/nested-box-tracer.ts);
 - request protocol, tiers, persistence, socket boundary, and real bubblewrap
   falsifier: [`src/request/request.test.ts`](src/request/request.test.ts);
 - relaunch, resume, TOCTOU, once, binding, operator, and fail-secure falsifiers:

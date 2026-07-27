@@ -35,6 +35,12 @@ export {
   sanitizeProjectLayer,
 } from "./config/project-config.ts";
 
+// Human/agent launch defaults and harness inference.
+export * from "./launch/index.ts";
+
+// Request-only inhabitant MCP surface.
+export * from "./mcp/index.ts";
+
 // Event store and addressable event stream.
 export * from "./log/index.ts";
 export { eventStream } from "./events.ts";
@@ -49,6 +55,11 @@ export type { SandboxKind, SandboxScope } from "./runner/sandbox.ts";
 
 // Versioned standing policy / grant schema and pure policy compiler.
 export * from "./policy/index.ts";
+// Frozen probe over project-controlled repository metadata.
+export { createRepositoryMetadataContext } from "./policy/repository-fs.ts";
+
+// Credential/namespace-aware child-host broker core.
+export * from "./child/index.ts";
 
 // Sandbox request SDK and outside-sandbox gate ports.
 export * from "./request/index.ts";

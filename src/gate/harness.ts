@@ -97,9 +97,9 @@ export interface FreshSessionPlannerOptions {
   readonly delayMs?: number;
 }
 
-/** Prepare one harness-owned fresh identity before spawn. Claude binds a UUID
- * assigned in argv. Codex snapshots ids, injects a nonce marker, then attributes
- * only a new rollout whose content contains that marker. */
+/** Prepare one harness-owned fresh identity before spawn. Claude and Pi bind a
+ * UUID assigned in argv. Codex snapshots ids, injects a nonce marker, then
+ * attributes only a new rollout whose content contains that marker. */
 export function createFreshSessionPlanner(
   adapter: ResumeAdapter,
   home: string,
@@ -111,7 +111,7 @@ export function createFreshSessionPlanner(
   return {
     async prepare() {
       const attribution = uuid();
-      if (adapter.harness === "claude") {
+      if (adapter.harness === "claude" || adapter.harness === "pi") {
         return {
           command: adapter.freshCommand(attribution),
           bind: () => Promise.resolve(attribution),
@@ -144,13 +144,17 @@ export class HarnessInferenceError extends Error {
     readonly claudeFound: boolean,
     readonly codexError?: string,
     readonly claudeError?: string,
+    readonly piCheck = "Pi session store not checked",
+    readonly piFound = false,
+    readonly piError?: string,
   ) {
     const result = (found: boolean, error?: string) =>
       error ? `error (${error})` : found ? "found" : "not found";
     super(
       `cannot infer harness for session ${JSON.stringify(session)}: ` +
         `Codex check ${codexCheck} => ${result(codexFound, codexError)}; ` +
-        `Claude check ${claudeCheck} => ${result(claudeFound, claudeError)}`,
+        `Claude check ${claudeCheck} => ${result(claudeFound, claudeError)}; ` +
+        `Pi check ${piCheck} => ${result(piFound, piError)}`,
     );
   }
 }
@@ -189,6 +193,21 @@ async function findClaudeSession(
   return false;
 }
 
+async function findPiSession(
+  root: string,
+  filenameSuffix: string,
+): Promise<boolean> {
+  for await (const entry of Deno.readDir(root)) {
+    const path = `${root}/${entry.name}`;
+    if (entry.isDirectory) {
+      if (await findPiSession(path, filenameSuffix)) return true;
+    } else if (entry.isFile && entry.name.endsWith(filenameSuffix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function check(run: () => Promise<boolean>): Promise<CheckResult> {
   try {
     return { found: await run() };
@@ -214,6 +233,7 @@ export async function resolveHarness(
 
   const codexCheck = `${home}/.codex/sessions/**/rollout-*-${session}.jsonl`;
   const claudeCheck = `${home}/.claude/projects/*/${session}.jsonl`;
+  const piCheck = `${home}/.pi/agent/sessions/**/*_${session}.jsonl`;
   if (
     !session || session === "." || session === ".." || /[/\\]/.test(session)
   ) {
@@ -225,18 +245,29 @@ export async function resolveHarness(
       false,
       "invalid session ID",
       "invalid session ID",
+      piCheck,
+      false,
+      "invalid session ID",
     );
   }
-  const [codex, claude] = await Promise.all([
+  const [codex, claude, pi] = await Promise.all([
     check(() =>
       findCodexSession(`${home}/.codex/sessions`, `-${session}.jsonl`)
     ),
     check(() =>
       findClaudeSession(`${home}/.claude/projects`, `${session}.jsonl`)
     ),
+    check(() =>
+      findPiSession(`${home}/.pi/agent/sessions`, `_${session}.jsonl`)
+    ),
   ]);
-  if (!codex.error && !claude.error && codex.found !== claude.found) {
-    return codex.found ? "codex" : "claude";
+  const found = [
+    ["codex", codex] as const,
+    ["claude", claude] as const,
+    ["pi", pi] as const,
+  ].filter((entry) => entry[1].found);
+  if (!codex.error && !claude.error && !pi.error && found.length === 1) {
+    return found[0][0];
   }
   throw new HarnessInferenceError(
     session,
@@ -246,5 +277,8 @@ export async function resolveHarness(
     claude.found,
     codex.error,
     claude.error,
+    piCheck,
+    pi.found,
+    pi.error,
   );
 }

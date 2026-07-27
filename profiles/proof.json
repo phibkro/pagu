@@ -20,9 +20,10 @@
       "~/.bash_history",
       "~/.zsh_history",
       "~/.python_history"
-    ]
+    ],
+    "derive": ["/srv/share/projects/**"]
   },
-  "net": false,
+  "net": { "mode": "off" },
   "env": { "pass": ["NIX_REMOTE"] },
   "escalation": {
     "auto": [{ "fs.ro": "/srv/share/projects/**", "scope": "session" }],

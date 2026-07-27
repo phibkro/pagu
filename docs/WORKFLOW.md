@@ -31,6 +31,27 @@ deno task test
 Preserve unrelated working-tree changes. Pick the next bounded slice from
 `ROADMAP.md`, and state the behavior that will prove it is done.
 
+## Deliver a user journey, not a component
+
+Every feature slice starts with a short journey:
+
+1. name the actor as a human host, agent host, or pagu inhabitant;
+2. state the outcome in language that actor can observe;
+3. trace one path through the typed SDK, human or agent adapter, gate, and box;
+4. name the falsifier that would disprove either the outcome or its authority
+   boundary;
+5. explicitly defer variants that do not need to cross that tracer.
+
+Write the pure SDK test first. Then add the thinnest CLI, MCP, skill, or other
+adapter needed by the actor. A component-only unit may support the slice, but it
+does not complete it. Completion requires the packaged journey, retained
+evidence where applicable, and documentation written from the actor's point of
+view.
+
+This keeps the workflow compatible with the architecture: human and agent
+surfaces share one typed core, while box enforcement and gate adjudication stay
+separate. A journey may cross both planes without merging their authority.
+
 ## Build from the policy boundary outward
 
 The dependency direction is deliberate:
@@ -73,14 +94,65 @@ deno task ci
 For box behavior, also build and exercise the real Nix package:
 
 ```sh
-nix build .#pagu-box
-./result/bin/pagu-box --help
+nix build .#pagu .#pagu-box
+nix run . -- --help
+nix run . -- box --help
+nix run .#pagu-box -- --help
+deno task journey:box /absolute/path/to/pagu /absolute/path/to/pagu-box
 ```
 
-For gate behavior, give `pagu gate` a real harness session ID so it owns the
-boxed child. Exercise request → operator resolution → stop → recompile → resume,
-then compare the retained launch evidence with the applied policy. A model stub
-is not a substitute when the changed seam depends on live process behavior.
+The box journey compares help, schema-policy explanation, and a real launch
+through both names. Its child-visible `PATH` check prevents a convenience
+wrapper from silently changing the compiled launch environment.
+
+For ordinary gate behavior, build both packages and run the deterministic
+packaged journey:
+
+```sh
+deno task journey:mock /absolute/path/to/pagu
+```
+
+It uses a fake Codex-compatible inhabitant but not a fake lifecycle: the real
+packaged root command attributes a fresh session, injects the packaged MCP
+server, receives its request, accepts a host-side `pagu resolve`, stops the
+first box, and resumes the same session in a second compiled box. The tracer
+checks retained request/decision/grant/launch evidence and starts with the
+fixture outside the initial policy. It removes provider credentials and makes no
+model call.
+
+Use a real supported harness when the changed seam is that harness's own session
+storage, resume syntax, MCP configuration interpretation, or other
+client-specific behavior. A deterministic inhabitant is not evidence for those
+external contracts.
+
+For an inhabitant MCP change, exercise the packaged `pagu mcp` protocol and
+verify the generated session-local configuration with the actual supported
+harness clients. If request behavior changed, file the request through that MCP
+surface in a real box and confirm that resolution remains host-only.
+
+For nested authority, run
+`scripts/nested-box-tracer.ts /absolute/path/to/pagu-box`. The accepted child
+must complete ordinary work, and the deliberate derivation bypass must still
+fail to recover every capability removed by the outer box. Do not count
+inhabitant-authored lineage or evidence as trusted merely because the nested
+process launched.
+
+For trusted child-lifecycle work, additionally run
+`deno run -A scripts/child-broker-tracer.ts /absolute/path/to/pagu-box
+/absolute/path/to/nsenter`.
+It must enter the real parent namespaces from the host, complete ordinary child
+work, retain a strict `child-launch` event outside the parent policy, and
+observe distinct child user/mount/PID/network namespaces. The packaged
+compiler/evidence supervisor must stay wholly outside the parent PID namespace;
+the parent-side `/proc` scan and evidence-FD injection attempt must not find it.
+Only the supervisor's enforcement child enters the live parent namespaces before
+bubblewrap narrows them. This controlled phase-A tracer keeps that numeric
+process target alive; it is not evidence of PID-reuse-safe selection. Phase B
+work must replace the tracer-supplied sender fact with per-message
+`SCM_CREDENTIALS` plus `SCM_PIDFD`, pin the attributed namespace handles, and
+launch through those exact handles. Connection-time `SO_PEERCRED` and numeric
+PID targeting are falsifiers, not production implementations. Phase C must
+exercise the child request → decision → replacement chain.
 
 Security-boundary work should receive an independent-context review. The
 reviewer should try to falsify the claim, not merely restate the diff.

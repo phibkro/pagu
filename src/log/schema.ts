@@ -25,7 +25,8 @@ export type Entry =
   | PolicyGrantEntry
   | PolicyLaunchEntry
   | PolicyLaunchFailedEntry
-  | PolicyGrantSpentEntry;
+  | PolicyGrantSpentEntry
+  | ChildLaunchEntry;
 
 /** Versioned gate-run metadata. Later request events inherit the most recent
  * metadata in their log; the event keeps telemetry a projection of the
@@ -124,6 +125,40 @@ export interface PolicyGrantSpentEntry {
   at?: string;
   grant: string;
   session: string;
+}
+
+/** Versioned evidence for a broker-owned literal child launch. */
+export interface ChildLaunchEntry {
+  kind: "child-launch";
+  version: 0;
+  at?: string;
+  id: string;
+  parent: string;
+  depth: number;
+  host: {
+    actor: {
+      kind: "human" | "agent";
+      id: string;
+    };
+    position: "parent-inhabitant";
+  };
+  parentPolicy: string;
+  policy: string;
+  requestRoute: string;
+  pid: number;
+  namespace: {
+    version: 0;
+    user: string;
+    mount: string;
+    pid: string;
+    network: string;
+    ipc: string;
+    uts: string;
+  };
+  cwd: string;
+  command: string[];
+  argv: string[];
+  environment: string[];
 }
 
 /** A conversational turn (the user's task, or the model's prose). */

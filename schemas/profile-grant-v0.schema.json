@@ -6,81 +6,228 @@
   "$comment": "parsePolicy remains the semantic validator: it inserts built-in secret denies, normalizes duplicate arrays, and checks that escalation.refuse is covered by fs.deny.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "subject", "fs", "net", "env", "escalation"],
+  "required": [
+    "version",
+    "subject",
+    "fs",
+    "net",
+    "env",
+    "escalation"
+  ],
   "properties": {
-    "version": { "const": 0 },
-    "subject": { "$ref": "#/$defs/subject" },
-    "fs": { "$ref": "#/$defs/fs" },
-    "net": { "type": "boolean" },
-    "env": { "$ref": "#/$defs/env" },
-    "escalation": { "$ref": "#/$defs/escalation" }
+    "version": {
+      "const": 0
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "fs": {
+      "$ref": "#/$defs/fs"
+    },
+    "net": {
+      "$ref": "#/$defs/net"
+    },
+    "env": {
+      "$ref": "#/$defs/env"
+    },
+    "escalation": {
+      "$ref": "#/$defs/escalation"
+    }
   },
   "$defs": {
     "subject": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["agent", "label"],
+      "required": [
+        "agent",
+        "label"
+      ],
       "properties": {
-        "agent": { "type": "string" },
-        "label": { "type": "string" }
+        "agent": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
       }
     },
     "fs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["home", "rw", "ro", "deny"],
+      "required": [
+        "home",
+        "rw",
+        "ro",
+        "deny"
+      ],
       "properties": {
-        "home": { "enum": ["rw", "tmpfs"] },
-        "rw": { "type": "array", "items": { "type": "string" } },
-        "ro": { "type": "array", "items": { "type": "string" } },
-        "deny": { "type": "array", "items": { "type": "string" } }
+        "home": {
+          "enum": [
+            "rw",
+            "tmpfs"
+          ]
+        },
+        "rw": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ro": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deny": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "derive": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "env": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pass"],
+      "required": [
+        "pass"
+      ],
       "properties": {
-        "pass": { "type": "array", "items": { "type": "string" } }
+        "pass": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "autoEscalation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["fs.ro", "scope"],
+      "required": [
+        "fs.ro",
+        "scope"
+      ],
       "properties": {
-        "fs.ro": { "type": "string" },
-        "scope": { "const": "session" }
+        "fs.ro": {
+          "type": "string"
+        },
+        "scope": {
+          "const": "session"
+        }
       }
     },
     "escalation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["auto", "refuse"],
+      "required": [
+        "auto",
+        "refuse"
+      ],
       "properties": {
         "auto": {
           "type": "array",
-          "items": { "$ref": "#/$defs/autoEscalation" }
+          "items": {
+            "$ref": "#/$defs/autoEscalation"
+          }
         },
-        "refuse": { "type": "array", "items": { "type": "string" } }
+        "refuse": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
+    },
+    "net": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "off"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "mode",
+            "allow"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "gated"
+            },
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "mode"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "host"
+            }
+          }
+        }
+      ]
     }
   },
   "examples": [
     {
       "version": 0,
-      "subject": { "agent": "flue", "label": "flow worker" },
+      "subject": {
+        "agent": "flue",
+        "label": "flow worker"
+      },
       "fs": {
         "home": "tmpfs",
-        "rw": ["$PWD"],
-        "ro": ["/srv/share/projects/reference"],
-        "deny": ["~/.ssh", "~/.gnupg"]
+        "rw": [
+          "$PWD"
+        ],
+        "ro": [
+          "/srv/share/projects/reference"
+        ],
+        "deny": [
+          "~/.ssh",
+          "~/.gnupg"
+        ]
       },
-      "net": true,
-      "env": { "pass": ["OPENAI_API_KEY"] },
+      "net": {
+        "mode": "host"
+      },
+      "env": {
+        "pass": [
+          "OPENAI_API_KEY"
+        ]
+      },
       "escalation": {
         "auto": [],
-        "refuse": ["~/.ssh/**", "~/.gnupg/**"]
+        "refuse": [
+          "~/.ssh/**",
+          "~/.gnupg/**"
+        ]
       }
     }
   ]
