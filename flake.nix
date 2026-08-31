@@ -44,9 +44,9 @@
             '';
           };
           paguBox =
-            if pkgs.stdenv.isLinux then
+            if pkgs.stdenv.hostPlatform.isLinux then
               import ./box/src/linux.nix { inherit pkgs; }
-            else if pkgs.stdenv.isDarwin then
+            else if pkgs.stdenv.hostPlatform.isDarwin then
               import ./box/src/darwin.nix { inherit pkgs; }
             else
               throw "pagu-box: unsupported system ${system}";
@@ -56,7 +56,7 @@
           inherit pagu;
           pagu-box = paguBox;
         }
-        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           pagu-denial-spike = import ./box/src/denial-spike.nix { inherit pkgs; };
         }
       );

@@ -20,9 +20,9 @@
         system: pkgs:
         let
           drv =
-            if pkgs.stdenv.isLinux then
+            if pkgs.stdenv.hostPlatform.isLinux then
               import ./src/linux.nix { inherit pkgs; }
-            else if pkgs.stdenv.isDarwin then
+            else if pkgs.stdenv.hostPlatform.isDarwin then
               import ./src/darwin.nix { inherit pkgs; }
             else
               throw "pagu-box: unsupported system ${system}";
@@ -31,7 +31,7 @@
           default = drv;
           pagu-box = drv;
         }
-        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           pagu-denial-spike = import ./src/denial-spike.nix { inherit pkgs; };
         }
       );
